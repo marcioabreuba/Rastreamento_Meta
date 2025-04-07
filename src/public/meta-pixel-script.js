@@ -4,7 +4,7 @@
  * Este script detecta automaticamente o tipo de página e envia eventos equivalentes aos da TracLead
  * Incluindo Advanced Matching e parâmetros adicionais
  * 
- * Versão 1.2 - Suporte a domínios cruzados para checkout
+ * Versão 1.3 - Suporte a domínios cruzados para checkout e eventos adicionais
  */
 
 (function() {
@@ -13,6 +13,41 @@
   
   // ID do seu pixel do Facebook
   const PIXEL_ID = '1163339595278098';
+  
+  // Mapeamento de eventos para o Facebook
+  const EVENT_MAPPING = {
+    'PageView': 'PageView',
+    'ViewHome': 'ViewHome',
+    'ViewList': 'ViewContent',
+    'ViewContent': 'ViewContent',
+    'AddToCart': 'AddToCart',
+    'ViewCart': 'ViewContent',
+    'StartCheckout': 'InitiateCheckout',
+    'RegisterDone': 'CompleteRegistration',
+    'ShippingLoaded': 'AddPaymentInfo',
+    'AddPaymentInfo': 'AddPaymentInfo',
+    'Purchase': 'Purchase',
+    'Purchase - credit_card': 'Purchase',
+    'Purchase - pix': 'Purchase',
+    'Purchase - billet': 'Purchase',
+    'Purchase - paid_pix': 'Purchase',
+    'Purchase - high_ticket': 'Purchase',
+    'ViewCategory': 'ViewContent',
+    'AddCoupon': 'AddToCart',
+    'Refused - credit_card': 'CustomEvent',
+    'Pesquisar': 'Search',
+    'ViewSearchResults': 'Search',
+    'Timer_1min': 'CustomEvent',
+    'Scroll_25': 'CustomEvent',
+    'Scroll_50': 'CustomEvent'
+  };
+  
+  // Controle de eventos já enviados para evitar duplicação
+  const sentEvents = {
+    timer_1min: false,
+    scroll_25: false,
+    scroll_50: false
+  };
   
   // Função para obter parâmetros da URL
   function getUrlParameter(name) {
@@ -99,6 +134,26 @@
   function detectPageType() {
     const path = window.location.pathname;
     const hostname = window.location.hostname;
+    const search = window.location.search;
+    
+    // Detecção de resultados de pesquisa
+    if (search.includes('q=') || search.includes('query=') || search.includes('search=')) {
+      const searchQuery = new URLSearchParams(window.location.search).get('q') || 
+                         new URLSearchParams(window.location.search).get('query') || 
+                         new URLSearchParams(window.location.search).get('search') || '';
+      
+      if (searchQuery) {
+        return {
+          type: 'search_results',
+          eventName: 'ViewSearchResults',
+          data: {
+            searchString: searchQuery,
+            contentType: 'search_results',
+            contentName: `Resultados para "${searchQuery}"`
+          }
+        };
+      }
+    }
     
     // Detecção específica para domínio de checkout
     if (hostname.includes('seguro.') || hostname.includes('checkout.')) {
@@ -490,6 +545,71 @@
     }
   }
 
+  // Função para monitorar rolagem da página
+  function setupScrollTracking() {
+    let maxScrollPercentage = 0;
+    
+    // Função para calcular a porcentagem de rolagem
+    function getScrollPercentage() {
+      const windowHeight = window.innerHeight;
+      const documentHeight = Math.max(
+        document.body.scrollHeight, 
+        document.body.offsetHeight, 
+        document.documentElement.clientHeight, 
+        document.documentElement.scrollHeight, 
+        document.documentElement.offsetHeight
+      );
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      
+      // Se o documento tiver a mesma altura que a janela, retorna 100%
+      if (documentHeight <= windowHeight) {
+        return 100;
+      }
+      
+      return Math.round((scrollTop / (documentHeight - windowHeight)) * 100);
+    }
+    
+    // Event listener para rolagem
+    window.addEventListener('scroll', function() {
+      const scrollPercentage = getScrollPercentage();
+      maxScrollPercentage = Math.max(maxScrollPercentage, scrollPercentage);
+      
+      // Verificar se atingiu 25% e não foi enviado ainda
+      if (maxScrollPercentage >= 25 && !sentEvents.scroll_25) {
+        sentEvents.scroll_25 = true;
+        sendEvent('Scroll_25', {
+          scrollPercentage: 25,
+          pageUrl: window.location.href,
+          contentName: document.title
+        });
+      }
+      
+      // Verificar se atingiu 50% e não foi enviado ainda
+      if (maxScrollPercentage >= 50 && !sentEvents.scroll_50) {
+        sentEvents.scroll_50 = true;
+        sendEvent('Scroll_50', {
+          scrollPercentage: 50,
+          pageUrl: window.location.href,
+          contentName: document.title
+        });
+      }
+    }, { passive: true });
+  }
+  
+  // Função para iniciar timer de 1 minuto
+  function setupTimerTracking() {
+    setTimeout(function() {
+      if (!sentEvents.timer_1min) {
+        sentEvents.timer_1min = true;
+        sendEvent('Timer_1min', {
+          timeOnPage: 60, // segundos
+          pageUrl: window.location.href,
+          contentName: document.title
+        });
+      }
+    }, 60000); // 60 segundos = 1 minuto
+  }
+
   // Função principal - detecta a página e envia os eventos
   function init() {
     // Inicializar o pixel do Facebook
@@ -542,6 +662,12 @@
         link.addEventListener('click', addCheckoutParams);
         link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
       });
+    
+    // Configurar rastreamento de rolagem
+    setupScrollTracking();
+    
+    // Configurar timer de 1 minuto
+    setupTimerTracking();
     
     // Sempre enviar PageView
     sendEvent('PageView');
