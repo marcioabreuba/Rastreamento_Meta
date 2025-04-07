@@ -209,13 +209,14 @@
         ts: Date.now(),
         v: '2.9.194',
         r: 'stable',
-        eid: eventID,
-        ud: JSON.stringify({
-          external_id: external_id,
-          client_user_agent: client_user_agent,
-          fbp: fbp
-        })
+        eid: eventID
       });
+      
+      // Adicionar Advanced Matching no formato ud[campo]=valor
+      // Este é o formato exato que o Pixel Helper reconhece
+      baseParams.append('ud[external_id]', external_id);
+      baseParams.append('ud[client_user_agent]', client_user_agent);
+      baseParams.append('ud[fbp]', fbp);
       
       // Adicionar os custom data params
       Object.entries(enhancedCustomData).forEach(([key, value]) => {
