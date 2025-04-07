@@ -41,10 +41,8 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // Para aparecer no Pixel Helper como o TracLead, precisamos usar o formato "options"
-    fbq('init', PIXEL_ID);
-    
-    console.log('Facebook Pixel inicializado com ID:', PIXEL_ID);
+    // NÃO inicializar o pixel imediatamente - vamos fazer isso em cada evento
+    console.log('Facebook Pixel script carregado para ID:', PIXEL_ID);
   }
 
   // Funções para encontrar elementos específicos na página
@@ -192,30 +190,41 @@
         ...extraParams
       };
       
-      // Configurar os parâmetros para envio ao Facebook
-      // Adicionar parâmetros de Advanced Matching no formato que o Pixel Helper reconhece
-      const options = {
-        eventID: 'meta_tracking_' + Date.now()
-      };
+      // Gerar event ID único para este evento
+      const eventID = 'meta_tracking_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
       
-      // Definir os parâmetros de Advanced Matching diretamente como userData
-      // Isso faz aparecer no formato ud[external_id] no Pixel Helper
-      window.fbq.getDefaultConfig().set('autoConfig', false, PIXEL_ID);
-      fbq('init', PIXEL_ID, {
-        external_id: external_id,
-        client_user_agent: client_user_agent,
-        fbp: fbp
+      // Inicializar o pixel com Advanced Matching a cada evento
+      // Isso garante que o Pixel Helper capture corretamente os parâmetros
+      fbq('init', PIXEL_ID);
+      
+      // Formato explícito de ud[] que o TracLead usa
+      // Isso força o Pixel Helper a exibir os parâmetros corretamente
+      const pixelUrl = 'https://www.facebook.com/tr/';
+      const baseParams = new URLSearchParams({
+        id: PIXEL_ID,
+        ev: eventName === 'ViewHome' ? 'ViewHome' : eventName,
+        dl: document.location.href,
+        rl: document.referrer,
+        if: false,
+        ts: Date.now(),
+        v: '2.9.194',
+        r: 'stable',
+        eid: eventID,
+        ud: JSON.stringify({
+          external_id: external_id,
+          client_user_agent: client_user_agent,
+          fbp: fbp
+        })
       });
       
-      // 1. Enviar para o Pixel do Facebook diretamente
-      // Formato que aparece no Pixel Helper
-      if (eventName === 'ViewHome') {
-        // Para ViewHome, usar trackCustom com os parâmetros exatos
-        fbq('trackCustom', 'ViewHome', enhancedCustomData, options);
-      } else {
-        // Para outros eventos, usar track padrão
-        fbq('track', eventName, enhancedCustomData, options);
-      }
+      // Adicionar os custom data params
+      Object.entries(enhancedCustomData).forEach(([key, value]) => {
+        baseParams.append(`cd[${key}]`, value);
+      });
+      
+      // Criar e enviar o pixel manualmente usando um image request
+      const pixelImg = new Image();
+      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
       
       // 2. Dados para nossa API
       const eventData = {
@@ -237,7 +246,7 @@
         }
       };
 
-      // Enviar para a API
+      // Também enviar para a API backend
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -250,7 +259,7 @@
         throw new Error(`Erro na resposta: ${response.status}`);
       }
 
-      console.log(`Evento ${eventName} enviado com sucesso`);
+      console.log(`Evento ${eventName} enviado com sucesso (ID: ${eventID})`);
       return await response.json();
     } catch (error) {
       console.error('Erro ao enviar evento:', error);
