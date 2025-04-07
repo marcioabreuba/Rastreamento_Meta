@@ -70,6 +70,12 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
   try {
     const { eventName, userData, customData, serverData } = event;
     
+    // Criar uma cópia dos dados do usuário e remover o campo state se existir
+    const userDataCopy = { ...userData };
+    if ('state' in userDataCopy) {
+      delete userDataCopy.state;
+    }
+    
     // Preparar os dados para envio
     const requestData = {
       data: [
@@ -79,7 +85,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
           event_source_url: serverData.event_source_url,
           action_source: serverData.action_source,
           event_id: serverData.event_id,
-          user_data: userData,
+          user_data: userDataCopy, // Usando a cópia sem o campo state
           custom_data: customData
         }
       ],

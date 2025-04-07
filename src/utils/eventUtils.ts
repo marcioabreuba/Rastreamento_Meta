@@ -102,7 +102,6 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     lead_id: userData?.leadId || null,
     // Adicionar dados de geolocalização
     country: geoData?.country?.code || null,
-    state: geoData?.region?.code || null,
     city: geoData?.city || null,
     zip: geoData?.postal || null,
   };

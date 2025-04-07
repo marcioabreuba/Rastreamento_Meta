@@ -47,7 +47,7 @@ export interface NormalizedUserData {
   fb_login_id: string | null;
   lead_id: string | null;
   country: string | null;
-  state: string | null;
+  state?: string | null;
   city: string | null;
   zip: string | null;
 }
