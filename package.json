@@ -13,7 +13,8 @@
     "test:api": "ts-node src/tests/api.test.ts",
     "test:geoip": "ts-node src/tests/geoip.test.ts",
     "download-geoip": "node download-geoip.js",
-    "download-geoip:ts": "ts-node src/scripts/download-geoip.ts"
+    "download-geoip:ts": "ts-node src/scripts/download-geoip.ts",
+    "migrate:deploy": "npx prisma migrate resolve --applied 20250407104804_remove_event_id && npx prisma migrate deploy"
   },
   "keywords": [],
   "author": "",
