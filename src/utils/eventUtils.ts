@@ -117,14 +117,23 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     state: userData?.state || geoData?.region?.code || null,
     city: userData?.city || geoData?.city || null,
     zip: userData?.zip || geoData?.postal || null,
-    // Novos parâmetros
+    // Novos parâmetros que não são específicos de app
     ctwa_clid: userData?.ctwaClid || null,
     ig_account_id: userData?.igAccountId || null,
     ig_sid: userData?.igSid || null,
-    anon_id: isAppEvent ? (userData?.anonId || null) : null,
-    madid: isAppEvent ? (userData?.madid || null) : null,
-    vendor_id: isAppEvent ? (userData?.vendorId || null) : null
+    
+    // Parâmetros específicos de app - Definir como null para eventos web
+    anon_id: null,
+    madid: null,
+    vendor_id: null
   };
+  
+  // Se for um evento de app, adicionar os parâmetros específicos
+  if (isAppEvent) {
+    normalizedUserData.anon_id = userData?.anonId || null;
+    normalizedUserData.madid = userData?.madid || null;
+    normalizedUserData.vendor_id = userData?.vendorId || null;
+  }
   
   // Normalizar dados personalizados
   const normalizedCustomData: NormalizedCustomData = {

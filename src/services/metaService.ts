@@ -87,6 +87,19 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       }
     });
 
+    // Remover campos específicos de app quando não for um evento de app
+    // Isso evita o erro "Unexpected key" na API
+    const isAppEvent = serverData.action_source === 'app';
+    if (!isAppEvent) {
+      // Esses campos são válidos apenas para eventos de app
+      const appOnlyFields = ['vendor_id', 'anon_id', 'madid'];
+      appOnlyFields.forEach(field => {
+        if (field in userDataCopy) {
+          delete userDataCopy[field];
+        }
+      });
+    }
+
     // Adicionar dados de geolocalização completos como um objeto separado se disponível
     if (serverData.geo_data) {
       customDataCopy.geo_data = serverData.geo_data;
