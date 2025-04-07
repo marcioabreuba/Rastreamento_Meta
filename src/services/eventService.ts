@@ -85,10 +85,28 @@ export const processQueuedEvent = async (event: NormalizedEvent): Promise<boolea
     if (event.serverData && event.serverData.event_id) {
       const eventId = parseInt(event.serverData.event_id);
       if (!isNaN(eventId)) {
-        await prisma.event.update({
-          where: { id: eventId },
-          data: { status: result ? 'sent' : 'failed' },
-        });
+        try {
+          // Usando upsert para garantir que o registro será atualizado mesmo que não exista
+          await prisma.event.upsert({
+            where: { id: eventId },
+            update: { status: result ? 'sent' : 'failed' },
+            create: {
+              id: eventId,
+              eventName: event.eventName,
+              status: result ? 'sent' : 'failed',
+              userData: event.userData as unknown as any,
+              customData: event.customData as unknown as any,
+              serverData: event.serverData as unknown as any,
+              eventTime: new Date(),
+            }
+          });
+        } catch (dbError) {
+          logger.warn(`Não foi possível atualizar o evento no banco de dados: ${dbError.message}`, {
+            eventId,
+            eventName: event.eventName
+          });
+          // Continuamos o processamento mesmo com erro no banco de dados
+        }
       }
     }
     
