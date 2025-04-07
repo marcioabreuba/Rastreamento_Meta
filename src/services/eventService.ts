@@ -97,7 +97,6 @@ export const processQueuedEvent = async (event: NormalizedEvent): Promise<boolea
               userData: event.userData as unknown as any,
               customData: event.customData as unknown as any,
               serverData: event.serverData as unknown as any,
-              eventTime: new Date(),
             }
           });
         } catch (dbError) {
