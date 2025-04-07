@@ -109,6 +109,65 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       test_event_code: config.nodeEnv === 'development' ? 'TEST12345' : undefined
     };
     
+    // Log formatado similar ao Pixel Helper para debug
+    const eventTime = new Date(serverData.event_time * 1000).toISOString();
+    console.log('\n');
+    console.log('┌──────────────────────────────────────────────────────────┐');
+    console.log(`│ 🔵 META PIXEL EVENTO RASTREADO: ${eventName.padEnd(28)} │`);
+    console.log('├──────────────────────────────────────────────────────────┤');
+    console.log(`│ 📆 Data/Hora: ${eventTime.padEnd(42)} │`);
+    console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
+    console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
+    console.log('├──────────────────────────────────────────────────────────┤');
+    console.log('│ 👤 DADOS DO USUÁRIO:                                     │');
+    console.log('├──────────────────────────────────────────────────────────┤');
+    Object.entries(userDataCopy).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        // Limitar a exibição de hashes
+        const displayValue = typeof value === 'string' && value.length > 20 
+          ? value.substring(0, 17) + '...' 
+          : value;
+        console.log(`│ ${key.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
+      }
+    });
+    console.log('├──────────────────────────────────────────────────────────┤');
+    console.log('│ 📊 DADOS PERSONALIZADOS:                                 │');
+    console.log('├──────────────────────────────────────────────────────────┤');
+    Object.entries(customDataCopy).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && key !== 'geo_data') {
+        const displayValue = typeof value === 'object' 
+          ? JSON.stringify(value).substring(0, 37) + '...' 
+          : String(value).substring(0, 40);
+        console.log(`│ ${key.padEnd(15)}: ${displayValue.padEnd(40)} │`);
+      }
+    });
+    
+    // Exibir dados geográficos de forma mais organizada se existirem
+    if (customDataCopy.geo_data) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 🌎 DADOS GEOGRÁFICOS:                                    │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      const geo = customDataCopy.geo_data;
+      if (geo.country && geo.country.name) {
+        console.log(`│ País:          ${String(geo.country.name + ' (' + geo.country.code + ')').padEnd(40)} │`);
+      }
+      if (geo.region && geo.region.name) {
+        console.log(`│ Estado:        ${String(geo.region.name + ' (' + geo.region.code + ')').padEnd(40)} │`);
+      }
+      if (geo.city) {
+        console.log(`│ Cidade:        ${String(geo.city).padEnd(40)} │`);
+      }
+      if (geo.postal) {
+        console.log(`│ CEP:           ${String(geo.postal).padEnd(40)} │`);
+      }
+      if (geo.location) {
+        console.log(`│ Coordenadas:   ${String(`${geo.location.latitude}, ${geo.location.longitude}`).padEnd(40)} │`);
+      }
+    }
+    
+    console.log('└──────────────────────────────────────────────────────────┘');
+    console.log('\n');
+    
     // Enviar para a API do Facebook
     const url = `${config.fbApiUrl}/${config.fbPixelId}/events`;
     
