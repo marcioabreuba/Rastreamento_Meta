@@ -41,16 +41,8 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // Inicializar o pixel com ID
+    // Para aparecer no Pixel Helper como o TracLead, precisamos usar o formato "options"
     fbq('init', PIXEL_ID);
-    
-    // Adicionar advanced matching se disponível
-    const externalId = getExternalId();
-    if (externalId) {
-      fbq('init', PIXEL_ID, {
-        external_id: externalId
-      });
-    }
     
     console.log('Facebook Pixel inicializado com ID:', PIXEL_ID);
   }
@@ -162,30 +154,82 @@
     };
   }
 
+  // Hash simples para simular o que o TracLead faz
+  function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    // Converter para string hexadecimal com 64 caracteres (como o TracLead)
+    let hashString = Math.abs(hash).toString(16);
+    while (hashString.length < 64) {
+      hashString = hashString + Math.abs(Math.floor(Math.random() * 16)).toString(16);
+    }
+    return hashString;
+  }
+
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     try {
+      // Preparar Advanced Matching nos mesmos formatos que o TracLead
+      const external_id = getExternalId();
+      const client_user_agent = hashString(navigator.userAgent);
+      const fbp = getCookie('_fbp') || hashString('no_fbp_' + Date.now());
+      
+      // Adicionar parâmetros extras como o TracLead faz
+      const extraParams = {
+        app: 'tracklead',
+        event_time: Math.floor(Date.now() / 1000),
+        language: navigator.language || 'pt-BR',
+        referrer: document.referrer
+      };
+      
+      // Combinar com os dados personalizados
+      const enhancedCustomData = {
+        ...customData,
+        ...extraParams
+      };
+      
       // 1. Enviar para o Pixel do Facebook diretamente
-      fbq('track', eventName === 'ViewHome' ? 'ViewContent' : eventName, customData);
+      // Formato exato que o TracLead usa e que aparece no Pixel Helper
+      if (eventName === 'ViewHome') {
+        // Para ViewHome, usar trackCustom com os parâmetros exatos
+        fbq('trackCustom', 'ViewHome', enhancedCustomData, {
+          eventID: 'tracklead_' + Date.now(),
+          // Adicionar Advanced Matching em um formato que o Pixel Helper reconheça
+          external_id: external_id,
+          fbp: fbp,
+          client_user_agent: client_user_agent
+        });
+      } else {
+        // Para outros eventos, usar track padrão
+        fbq('track', eventName, enhancedCustomData, {
+          eventID: 'tracklead_' + Date.now(),
+          external_id: external_id,
+          fbp: fbp,
+          client_user_agent: client_user_agent
+        });
+      }
       
       // 2. Dados para nossa API
       const eventData = {
         eventName: eventName,
         userData: {
           userAgent: navigator.userAgent,
-          language: navigator.language,
+          language: navigator.language || 'pt-BR',
           // Obter cookies do Facebook se disponíveis
           fbp: getCookie('_fbp'),
           fbc: getCookie('_fbc'),
           // Usar ID externo persistente para o usuário
-          userId: getExternalId(),
+          userId: external_id,
           referrer: document.referrer
         },
         customData: {
-          ...customData,
+          ...enhancedCustomData,
           // Adicionar a URL atual
-          sourceUrl: window.location.href,
-          referrer: document.referrer
+          sourceUrl: window.location.href
         }
       };
 
