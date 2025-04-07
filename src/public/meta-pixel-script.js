@@ -178,7 +178,7 @@
       const client_user_agent = hashString(navigator.userAgent);
       const fbp = getCookie('_fbp') || hashString('no_fbp_' + Date.now());
       
-      // Adicionar parâmetros extras como o TracLead faz
+      // Adicionar parâmetros extras
       const extraParams = {
         app: 'meta-tracking',
         event_time: Math.floor(Date.now() / 1000),
@@ -193,11 +193,11 @@
       };
       
       // 1. Enviar para o Pixel do Facebook diretamente
-      // Formato exato que o TracLead usa e que aparece no Pixel Helper
+      // Formato que aparece no Pixel Helper
       if (eventName === 'ViewHome') {
         // Para ViewHome, usar trackCustom com os parâmetros exatos
         fbq('trackCustom', 'ViewHome', enhancedCustomData, {
-          eventID: 'tracklead_' + Date.now(),
+          eventID: 'meta_tracking_' + Date.now(),
           // Adicionar Advanced Matching em um formato que o Pixel Helper reconheça
           external_id: external_id,
           fbp: fbp,
@@ -206,7 +206,7 @@
       } else {
         // Para outros eventos, usar track padrão
         fbq('track', eventName, enhancedCustomData, {
-          eventID: 'tracklead_' + Date.now(),
+          eventID: 'meta_tracking_' + Date.now(),
           external_id: external_id,
           fbp: fbp,
           client_user_agent: client_user_agent

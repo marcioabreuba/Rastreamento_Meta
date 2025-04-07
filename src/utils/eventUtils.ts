@@ -120,7 +120,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     status: customData?.status || null,
     predicted_ltv: customData?.predictedLtv || null,
     contents: customData?.contents || null,
-    app: 'tracklead',
+    app: 'meta-tracking',
     language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
     referrer: customData?.referrer || userData?.referrer || null,
     event_time: Math.floor(Date.now() / 1000),
