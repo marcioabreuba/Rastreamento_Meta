@@ -14,6 +14,7 @@ import logger from './utils/logger';
 import { httpLogger } from './middleware/loggerMiddleware';
 import Queue from 'bull';
 import { NormalizedEvent } from './types';
+import path from 'path';
 
 // Inicializar aplicação Express
 const app = express();
@@ -26,6 +27,9 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(httpLogger);
+
+// Servir arquivos estáticos da pasta public
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Configurar rotas
 app.use('/', routes);

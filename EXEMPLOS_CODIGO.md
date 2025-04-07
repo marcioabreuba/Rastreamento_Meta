@@ -581,6 +581,128 @@ curl -X POST https://seu-servidor.onrender.com/track \
   }'
 ```
 
+## Implementação no Site
+
+Para implementar o rastreamento em seu site, você pode adicionar o seguinte código antes do fechamento da tag `</body>`:
+
+```html
+<!-- Meta Tracking (Substitui o TracLead) -->
+<script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
+```
+
+Ou você pode incorporar o script diretamente no seu HTML:
+
+```html
+<!-- Meta Tracking (Substitui o TracLead) -->
+<script>
+  (function() {
+    // URL da API de rastreamento
+    const API_URL = 'https://rastreamento-meta.onrender.com/track';
+    
+    // Função para obter cookies
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      if (match) return match[2];
+      return null;
+    }
+  
+    // Cria ou recupera ID externo para o usuário
+    function getExternalId() {
+      let externalId = localStorage.getItem('meta_tracking_external_id');
+      if (!externalId) {
+        externalId = 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('meta_tracking_external_id', externalId);
+      }
+      return externalId;
+    }
+  
+    // Enviar evento para a API
+    async function sendEvent(eventName, customData = {}) {
+      try {
+        // Dados básicos do evento
+        const eventData = {
+          eventName: eventName,
+          userData: {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            // Obter cookies do Facebook se disponíveis
+            fbp: getCookie('_fbp'),
+            fbc: getCookie('_fbc'),
+            // Usar ID externo persistente para o usuário
+            userId: getExternalId(),
+            referrer: document.referrer
+          },
+          customData: {
+            ...customData,
+            // Adicionar a URL atual
+            sourceUrl: window.location.href,
+            referrer: document.referrer
+          }
+        };
+  
+        // Enviar para a API
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(eventData)
+        });
+  
+        if (!response.ok) {
+          throw new Error(`Erro na resposta: ${response.status}`);
+        }
+  
+        console.log(`Evento ${eventName} enviado com sucesso`);
+        return await response.json();
+      } catch (error) {
+        console.error('Erro ao enviar evento:', error);
+        return null;
+      }
+    }
+  
+    // Função principal
+    function init() {
+      // Sempre enviar PageView
+      sendEvent('PageView');
+      
+      // Na página inicial, enviar ViewHome
+      if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+        setTimeout(() => {
+          sendEvent('ViewHome', {
+            contentName: 'Home Page',
+            contentType: 'home_page'
+          });
+        }, 500);
+      }
+    }
+  
+    // Iniciar após o carregamento da página
+    if (document.readyState === 'complete') {
+      init();
+    } else {
+      window.addEventListener('load', init);
+    }
+  })();
+</script>
+```
+
+### Substituindo o código do TracLead
+
+Se você estiver usando o TracLead atualmente, substitua o script dele pelo nosso:
+
+1. Remova o script atual do TracLead
+2. Adicione nosso script conforme mostrado acima
+3. Os eventos serão enviados com o mesmo formato e parâmetros
+
+Nosso sistema é compatível com os mesmos eventos e nomenclatura do TracLead:
+- PageView
+- ViewHome (em vez de ViewContent para a página inicial)
+- ViewContent
+- AddToCart
+- Purchase
+- etc.
+
 ---
 
 Este documento fornece exemplos básicos para testar e implementar o sistema de rastreamento Meta. Esses exemplos podem ser adaptados conforme necessário para seu caso de uso específico. 
