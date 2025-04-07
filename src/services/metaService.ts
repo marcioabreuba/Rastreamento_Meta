@@ -70,11 +70,18 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
   try {
     const { eventName, userData, customData, serverData } = event;
     
-    // Criar uma cópia dos dados do usuário e remover o campo state se existir
+    // Criar uma cópia dos dados do usuário e remover campos não aceitos pela API do Facebook
     const userDataCopy = { ...userData };
-    if ('state' in userDataCopy) {
-      delete userDataCopy.state;
-    }
+    
+    // Lista de campos geográficos que não são aceitos diretamente na API do Facebook
+    const fieldsToRemove = ['state', 'city', 'country', 'zip'];
+    
+    // Remover campos não aceitos
+    fieldsToRemove.forEach(field => {
+      if (field in userDataCopy) {
+        delete userDataCopy[field];
+      }
+    });
     
     // Preparar os dados para envio
     const requestData = {
@@ -85,7 +92,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
           event_source_url: serverData.event_source_url,
           action_source: serverData.action_source,
           event_id: serverData.event_id,
-          user_data: userDataCopy, // Usando a cópia sem o campo state
+          user_data: userDataCopy, // Usando a cópia sem os campos geográficos não aceitos
           custom_data: customData
         }
       ],
