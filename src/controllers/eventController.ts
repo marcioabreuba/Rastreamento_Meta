@@ -17,7 +17,16 @@ import logger from '../utils/logger';
 export const trackEvent = async (req: Request, res: Response): Promise<void> => {
   try {
     // Validar a requisição
-    const { eventName, userData, customData } = req.body as TrackRequest;
+    const { 
+      eventName, 
+      userData, 
+      customData, 
+      dataProcessingOptions, 
+      dataProcessingOptionsCountry, 
+      dataProcessingOptionsState,
+      customerSegmentation,
+      isAppEvent 
+    } = req.body as TrackRequest;
     
     if (!eventName) {
       res.status(400).json({ error: 'Evento não especificado' });
@@ -45,17 +54,26 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       userDataWithIP.userAgent = req.headers['user-agent'] || '';
     }
     
-    // Normalizar o evento
+    // Normalizar o evento com todos os parâmetros
     const normalizedEvent = normalizeEvent({
       eventName,
       userData: userDataWithIP,
       customData,
+      dataProcessingOptions,
+      dataProcessingOptionsCountry,
+      dataProcessingOptionsState,
+      customerSegmentation,
+      isAppEvent
     });
     
-    logger.info(`Recebido evento para rastreamento: ${eventName}`, {
+    // Determinar a origem do evento para logging
+    const eventSource = isAppEvent ? 'app' : 'web';
+    
+    logger.info(`Recebido evento para rastreamento: ${eventName} (origem: ${eventSource})`, {
       eventName,
       eventId: normalizedEvent.serverData.event_id,
-      ip: userDataWithIP.ip
+      ip: userDataWithIP.ip,
+      eventSource
     });
     
     // Salvar o evento no banco de dados
@@ -69,6 +87,7 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       success: true,
       eventId: normalizedEvent.serverData.event_id,
       eventName: normalizedEvent.eventName,
+      eventSource
     });
   } catch (error: any) {
     logger.error(`Erro ao processar requisição de rastreamento: ${error.message}`, {
@@ -90,7 +109,16 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
  */
 export const getPixelCode = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { eventName, userData, customData } = req.body as TrackRequest;
+    const { 
+      eventName, 
+      userData, 
+      customData,
+      dataProcessingOptions, 
+      dataProcessingOptionsCountry, 
+      dataProcessingOptionsState,
+      customerSegmentation,
+      isAppEvent 
+    } = req.body as TrackRequest;
     
     if (!eventName) {
       res.status(400).json({ error: 'Evento não especificado' });
@@ -102,6 +130,11 @@ export const getPixelCode = async (req: Request, res: Response): Promise<void> =
       eventName,
       userData,
       customData,
+      dataProcessingOptions,
+      dataProcessingOptionsCountry,
+      dataProcessingOptionsState,
+      customerSegmentation,
+      isAppEvent
     });
     
     // Gerar código do pixel
@@ -123,26 +156,20 @@ export const getPixelCode = async (req: Request, res: Response): Promise<void> =
 };
 
 /**
- * Retorna o status do servidor
+ * Retorna o status do serviço
  * @param {Request} req - Requisição
  * @param {Response} res - Resposta
  */
 export const getStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Obter estatísticas do banco de dados
-    // Simulado por enquanto - substituir por consultas reais ao banco de dados
-    
     res.status(200).json({
       status: 'online',
-      timestamp: new Date().toISOString(),
-      version: '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      version: '1.5.0',
+      message: 'Meta Tracking Server funcionando normalmente'
     });
   } catch (error: any) {
-    logger.error(`Erro ao obter status: ${error.message}`, { error: error.message });
-    
     res.status(500).json({
-      error: 'Erro ao obter status',
+      error: 'Erro ao verificar status',
       message: error.message,
     });
   }
