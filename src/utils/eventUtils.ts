@@ -10,7 +10,7 @@ import { getGeoIPInfo } from './geoip';
 // Mapeamento de eventos do Shopify para eventos do Facebook
 export const EVENT_MAPPING: Record<string, string> = {
   'PageView': 'PageView',
-  'ViewHome': 'ViewContent',
+  'ViewHome': 'ViewHome',
   'ViewList': 'ViewContent',
   'ViewContent': 'ViewContent',
   'AddToCart': 'AddToCart',
@@ -120,7 +120,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     status: customData?.status || null,
     predicted_ltv: customData?.predictedLtv || null,
     contents: customData?.contents || null,
-    app: 'meta-tracking',
+    app: 'tracklead',
     language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
     referrer: customData?.referrer || userData?.referrer || null,
     event_time: Math.floor(Date.now() / 1000),
