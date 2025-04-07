@@ -3,6 +3,8 @@
  * 
  * Este script detecta automaticamente o tipo de página e envia eventos equivalentes aos da TracLead
  * Incluindo Advanced Matching e parâmetros adicionais
+ * 
+ * Versão 1.2 - Suporte a domínios cruzados para checkout
  */
 
 (function() {
@@ -12,8 +14,19 @@
   // ID do seu pixel do Facebook
   const PIXEL_ID = '1163339595278098';
   
+  // Função para obter parâmetros da URL
+  function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+  }
+  
   // Função para obter cookies
   function getCookie(name) {
+    // Primeiro verificar se o cookie existe como parâmetro na URL (para domínios cruzados)
+    const urlValue = getUrlParameter(name);
+    if (urlValue) return urlValue;
+    
+    // Caso contrário, buscar no cookie
     const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
     if (match) return match[2];
     return null;
@@ -21,6 +34,15 @@
 
   // Cria ou recupera ID externo para o usuário
   function getExternalId() {
+    // Primeiro verificar se o ID externo existe como parâmetro na URL (para domínios cruzados)
+    const urlExternalId = getUrlParameter('external_id');
+    if (urlExternalId) {
+      // Se encontrado na URL, salvar no localStorage
+      localStorage.setItem('meta_tracking_external_id', urlExternalId);
+      return urlExternalId;
+    }
+    
+    // Caso contrário, usar o localStorage
     let externalId = localStorage.getItem('meta_tracking_external_id');
     if (!externalId) {
       externalId = 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
@@ -76,7 +98,50 @@
   // Detecta o tipo de página
   function detectPageType() {
     const path = window.location.pathname;
+    const hostname = window.location.hostname;
     
+    // Detecção específica para domínio de checkout
+    if (hostname.includes('seguro.') || hostname.includes('checkout.')) {
+      // Checkout específico do site seguro.soleterra.com.br
+      if (path.includes('/checkout') || path === '/' || path === '') {
+        return {
+          type: 'checkout',
+          eventName: 'StartCheckout',
+          data: {
+            contentName: 'Checkout',
+            contentType: 'checkout'
+          }
+        };
+      }
+      
+      // Página de pagamento
+      if (path.includes('/payment') || path.includes('/pagamento')) {
+        return {
+          type: 'payment',
+          eventName: 'AddPaymentInfo',
+          data: {
+            contentName: 'Payment Information',
+            contentType: 'payment'
+          }
+        };
+      }
+      
+      // Página de confirmação/sucesso
+      if (path.includes('/success') || path.includes('/sucesso') || path.includes('/confirmacao')) {
+        return {
+          type: 'purchase',
+          eventName: 'Purchase',
+          data: {
+            contentName: 'Purchase Confirmation',
+            contentType: 'purchase',
+            // Tentar obter ID do pedido da URL
+            orderId: getUrlParameter('order_id') || getUrlParameter('pedido')
+          }
+        };
+      }
+    }
+    
+    // Continue com as detecções padrão
     if (path === '/' || path === '/home' || path === '/index.html' || path.includes('index')) {
       return {
         type: 'home',
@@ -126,17 +191,6 @@
         data: {
           searchString: searchQuery,
           contentType: 'search'
-        }
-      };
-    }
-    
-    if (path.includes('/checkout')) {
-      return {
-        type: 'checkout',
-        eventName: 'StartCheckout',
-        data: {
-          contentName: 'Checkout',
-          contentType: 'checkout'
         }
       };
     }
@@ -272,8 +326,10 @@
       // Preparar Advanced Matching nos mesmos formatos que o Pixel Helper reconhece
       const external_id = getExternalId();
       const client_user_agent = hashString(navigator.userAgent);
-      const fbp = getCookie('_fbp') || hashString('no_fbp_' + Date.now());
-      const fbc = getCookie('_fbc') || null;
+      
+      // Obter cookies do Facebook com suporte a parâmetros de URL
+      const fbp = getCookie('_fbp') || getUrlParameter('fbp') || hashString('no_fbp_' + Date.now());
+      const fbc = getCookie('_fbc') || getUrlParameter('fbc') || null;
       
       // Obter informações adicionais do usuário, se disponíveis
       const userData = getUserData();
@@ -438,6 +494,54 @@
   function init() {
     // Inicializar o pixel do Facebook
     initFacebookPixel();
+    
+    // Verificar se precisamos passar parâmetros para links externos de checkout
+    function addCheckoutParams(e) {
+      const link = e.currentTarget;
+      if (!link) return;
+      
+      const href = link.getAttribute('href');
+      if (!href) return;
+      
+      // Verificar se o link é para o domínio de checkout
+      if (href.includes('seguro.soleterra.com.br') || 
+          href.includes('checkout.') || 
+          href.includes('/checkout')) {
+        
+        // Obter os parâmetros que vamos passar
+        const external_id = getExternalId();
+        const fbp = getCookie('_fbp');
+        const fbc = getCookie('_fbc');
+        
+        // Criar a URL com os parâmetros
+        let newHref = href;
+        const hasParams = href.includes('?');
+        const paramPrefix = hasParams ? '&' : '?';
+        
+        // Adicionar external_id
+        newHref += `${paramPrefix}external_id=${encodeURIComponent(external_id)}`;
+        
+        // Adicionar fbp se disponível
+        if (fbp) {
+          newHref += `&fbp=${encodeURIComponent(fbp)}`;
+        }
+        
+        // Adicionar fbc se disponível
+        if (fbc) {
+          newHref += `&fbc=${encodeURIComponent(fbc)}`;
+        }
+        
+        // Atualizar o link
+        link.setAttribute('href', newHref);
+      }
+    }
+    
+    // Adicionar listener para links de checkout
+    document.querySelectorAll('a[href*="seguro."], a[href*="checkout."], a[href*="/checkout"]')
+      .forEach(link => {
+        link.addEventListener('click', addCheckoutParams);
+        link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
+      });
     
     // Sempre enviar PageView
     sendEvent('PageView');
