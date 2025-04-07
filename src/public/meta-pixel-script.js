@@ -173,7 +173,7 @@
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     try {
-      // Preparar Advanced Matching nos mesmos formatos que o TracLead
+      // Preparar Advanced Matching nos mesmos formatos que o Pixel Helper reconhece
       const external_id = getExternalId();
       const client_user_agent = hashString(navigator.userAgent);
       const fbp = getCookie('_fbp') || hashString('no_fbp_' + Date.now());
@@ -192,25 +192,29 @@
         ...extraParams
       };
       
+      // Configurar os parâmetros para envio ao Facebook
+      // Adicionar parâmetros de Advanced Matching no formato que o Pixel Helper reconhece
+      const options = {
+        eventID: 'meta_tracking_' + Date.now()
+      };
+      
+      // Definir os parâmetros de Advanced Matching diretamente como userData
+      // Isso faz aparecer no formato ud[external_id] no Pixel Helper
+      window.fbq.getDefaultConfig().set('autoConfig', false, PIXEL_ID);
+      fbq('init', PIXEL_ID, {
+        external_id: external_id,
+        client_user_agent: client_user_agent,
+        fbp: fbp
+      });
+      
       // 1. Enviar para o Pixel do Facebook diretamente
       // Formato que aparece no Pixel Helper
       if (eventName === 'ViewHome') {
         // Para ViewHome, usar trackCustom com os parâmetros exatos
-        fbq('trackCustom', 'ViewHome', enhancedCustomData, {
-          eventID: 'meta_tracking_' + Date.now(),
-          // Adicionar Advanced Matching em um formato que o Pixel Helper reconheça
-          external_id: external_id,
-          fbp: fbp,
-          client_user_agent: client_user_agent
-        });
+        fbq('trackCustom', 'ViewHome', enhancedCustomData, options);
       } else {
         // Para outros eventos, usar track padrão
-        fbq('track', eventName, enhancedCustomData, {
-          eventID: 'meta_tracking_' + Date.now(),
-          external_id: external_id,
-          fbp: fbp,
-          client_user_agent: client_user_agent
-        });
+        fbq('track', eventName, enhancedCustomData, options);
       }
       
       // 2. Dados para nossa API
@@ -265,7 +269,7 @@
     // Detectar o tipo de página e enviar evento específico
     const pageInfo = detectPageType();
     if (pageInfo.type !== 'other') {
-      // Aguardar um pouco para enviar o segundo evento (igual ao TracLead)
+      // Aguardar um pouco para enviar o segundo evento
       setTimeout(() => {
         sendEvent(pageInfo.eventName, pageInfo.data);
       }, 500);
