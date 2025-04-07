@@ -92,21 +92,45 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       customDataCopy.geo_data = serverData.geo_data;
     }
     
-    // Preparar os dados para envio
+    // Preparar o evento principal
+    const eventPayload: any = {
+      event_name: eventName,
+      event_time: serverData.event_time,
+      event_source_url: serverData.event_source_url,
+      action_source: serverData.action_source,
+      event_id: serverData.event_id,
+      user_data: userDataCopy,
+      custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
+    };
+    
+    // Adicionar opções de processamento de dados (para conformidade com LGPD, CCPA, etc.)
+    if (serverData.data_processing_options && serverData.data_processing_options.length > 0) {
+      eventPayload.data_processing_options = serverData.data_processing_options;
+      
+      if (serverData.data_processing_options_country !== null) {
+        eventPayload.data_processing_options_country = serverData.data_processing_options_country;
+      }
+      
+      if (serverData.data_processing_options_state !== null) {
+        eventPayload.data_processing_options_state = serverData.data_processing_options_state;
+      }
+    }
+    
+    // Adicionar URL de referência se disponível
+    if (serverData.referrer_url) {
+      eventPayload.referrer_url = serverData.referrer_url;
+    }
+    
+    // Adicionar segmentação de cliente se disponível
+    if (serverData.customer_segmentation) {
+      eventPayload.customer_segmentation = serverData.customer_segmentation;
+    }
+    
+    // Preparar os dados completos para envio
     const requestData = {
-      data: [
-        {
-          event_name: eventName,
-          event_time: serverData.event_time,
-          event_source_url: serverData.event_source_url,
-          action_source: serverData.action_source,
-          event_id: serverData.event_id,
-          user_data: userDataCopy,
-          custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
-        }
-      ],
+      data: [eventPayload],
       access_token: config.fbAccessToken,
-      test_event_code: config.nodeEnv === 'development' ? 'TEST12345' : undefined
+      test_event_code: config.nodeEnv === 'development' ? config.fbTestEventCode || 'TEST12345' : undefined
     };
     
     // Log formatado similar ao Pixel Helper para debug
@@ -118,6 +142,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 📆 Data/Hora: ${eventTime.padEnd(42)} │`);
     console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
     console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
+    console.log(`│ 🔄 Action Source: ${serverData.action_source.padEnd(42)} │`);
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
     console.log('├──────────────────────────────────────────────────────────┤');
@@ -184,6 +209,37 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       }
       if (geo.location) {
         console.log(`│ Coordenadas:   ${String(`${geo.location.latitude}, ${geo.location.longitude}`).padEnd(40)} │`);
+      }
+    }
+    
+    // Exibir opções de processamento de dados se existirem
+    if (eventPayload.data_processing_options) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 🛡️ OPÇÕES DE PROCESSAMENTO DE DADOS:                     │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log(`│ Opções:        ${String(eventPayload.data_processing_options.join(', ')).padEnd(40)} │`);
+      if (eventPayload.data_processing_options_country !== undefined) {
+        console.log(`│ País:          ${String(eventPayload.data_processing_options_country).padEnd(40)} │`);
+      }
+      if (eventPayload.data_processing_options_state !== undefined) {
+        console.log(`│ Estado:        ${String(eventPayload.data_processing_options_state).padEnd(40)} │`);
+      }
+    }
+    
+    // Exibir segmentação de cliente se existir
+    if (eventPayload.customer_segmentation) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 👥 SEGMENTAÇÃO DE CLIENTE:                               │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      const cs = eventPayload.customer_segmentation;
+      if (cs.priority_segment) {
+        console.log(`│ Segmento:      ${String(cs.priority_segment).padEnd(40)} │`);
+      }
+      if (cs.lifecycle_stage) {
+        console.log(`│ Ciclo de Vida: ${String(cs.lifecycle_stage).padEnd(40)} │`);
+      }
+      if (cs.predicted_ltv_range) {
+        console.log(`│ Faixa LTV:     ${String(cs.predicted_ltv_range).padEnd(40)} │`);
       }
     }
     

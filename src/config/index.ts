@@ -14,6 +14,7 @@ interface Config {
   fbApiUrl: string;
   fbPixelId: string;
   fbAccessToken: string;
+  fbTestEventCode: string;
   shopifyDomain: string;
   renderExternalUrl: string;
   geoipDbPath: string;
@@ -35,6 +36,7 @@ const config: Config = {
   fbApiUrl: process.env.FB_API_URL || 'https://graph.facebook.com/v18.0',
   fbPixelId: process.env.FB_PIXEL_ID || '1163339595278098',
   fbAccessToken: process.env.FB_ACCESS_TOKEN || '',
+  fbTestEventCode: process.env.FB_TEST_EVENT_CODE || '',
   shopifyDomain: process.env.SHOPIFY_DOMAIN || 'soleterra.com.br',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3001',
   geoipDbPath: process.env.GEOIP_DB_PATH || 'data/GeoLite2-City.mmdb',

@@ -28,7 +28,18 @@ export const EVENT_MAPPING: Record<string, string> = {
   'ViewCategory': 'ViewContent',
   'AddCoupon': 'AddToCart',
   'Refused - credit_card': 'CustomEvent',
-  'Pesquisar': 'Search'
+  'Pesquisar': 'Search',
+  // Adicionar novos eventos
+  'Lead': 'Lead',
+  'Subscribe': 'Subscribe',
+  'Contact': 'Contact',
+  'Schedule': 'Schedule',
+  'ViewSearchResults': 'Search',
+  'Timer_1min': 'CustomEvent',
+  'Scroll_25': 'CustomEvent',
+  'Scroll_50': 'CustomEvent',
+  'Scroll_75': 'CustomEvent',
+  'Scroll_100': 'CustomEvent'
 };
 
 /**
@@ -55,7 +66,7 @@ export const hashData = (data: string | undefined | null): string | null => {
  * @returns {NormalizedEvent} Evento normalizado
  */
 export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
-  const { eventName, userData, customData } = eventData;
+  const { eventName, userData, customData, isAppEvent } = eventData;
   
   // Verificar se o evento é válido
   if (!eventName || !EVENT_MAPPING[eventName]) {
@@ -92,6 +103,8 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     ph: userData?.phone ? hashData(userData.phone.replace(/\D/g, '')) : null,
     fn: userData?.firstName ? hashData(userData.firstName.toLowerCase().trim()) : null,
     ln: userData?.lastName ? hashData(userData.lastName.toLowerCase().trim()) : null,
+    ge: userData?.gender ? hashData(userData.gender.toLowerCase().trim()) : null,
+    db: userData?.dateOfBirth ? hashData(userData.dateOfBirth.trim()) : null,
     external_id: userData?.userId || generateUserId(),
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
@@ -100,10 +113,17 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,
-    country: geoData?.country?.code || null,
-    state: geoData?.region?.code || null,
-    city: geoData?.city || null,
-    zip: geoData?.postal || null,
+    country: userData?.country || geoData?.country?.code || null,
+    state: userData?.state || geoData?.region?.code || null,
+    city: userData?.city || geoData?.city || null,
+    zip: userData?.zip || geoData?.postal || null,
+    // Novos parâmetros
+    ctwa_clid: userData?.ctwaClid || null,
+    ig_account_id: userData?.igAccountId || null,
+    ig_sid: userData?.igSid || null,
+    anon_id: isAppEvent ? (userData?.anonId || null) : null,
+    madid: isAppEvent ? (userData?.madid || null) : null,
+    vendor_id: isAppEvent ? (userData?.vendorId || null) : null
   };
   
   // Normalizar dados personalizados
@@ -126,13 +146,36 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     event_time: Math.floor(Date.now() / 1000),
   };
   
+  // Adicionar dados de app se for um evento de app
+  if (isAppEvent) {
+    normalizedCustomData.advertiser_tracking_enabled = customData?.advertiserTrackingEnabled ?? true;
+    normalizedCustomData.application_tracking_enabled = customData?.applicationTrackingEnabled ?? true;
+    normalizedCustomData.extinfo = customData?.extinfo || null;
+    normalizedCustomData.campaign_ids = customData?.campaignIds || null;
+    normalizedCustomData.install_referrer = customData?.installReferrer || null;
+    normalizedCustomData.installer_package = customData?.installerPackage || null;
+    normalizedCustomData.url_schemes = customData?.urlSchemes || null;
+    normalizedCustomData.windows_attribution_id = customData?.windowsAttributionId || null;
+  }
+  
+  // Preparar as opções de processamento de dados (para LGPD, CCPA, etc.)
+  const dataProcessingOptions = eventData.dataProcessingOptions || [];
+  const dataProcessingOptionsCountry = eventData.dataProcessingOptionsCountry || null;
+  const dataProcessingOptionsState = eventData.dataProcessingOptionsState || null;
+  
   // Dados do servidor
   const serverData = {
     event_time: Math.floor(Date.now() / 1000),
     event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
-    action_source: 'website',
+    action_source: isAppEvent ? 'app' : 'website',
     event_id: generateEventId(),
     geo_data: geoData,
+    // Novos campos
+    data_processing_options: dataProcessingOptions,
+    data_processing_options_country: dataProcessingOptionsCountry,
+    data_processing_options_state: dataProcessingOptionsState,
+    referrer_url: customData?.referrer || userData?.referrer || null,
+    customer_segmentation: eventData.customerSegmentation || null
   };
   
   return {
