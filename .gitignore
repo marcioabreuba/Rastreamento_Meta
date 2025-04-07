@@ -1,0 +1,22 @@
+# Dependencies
+/node_modules
+
+# Build
+/dist
+
+# Logs
+/logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# GeoIP database
+/data/*.mmdb
+/data/temp
