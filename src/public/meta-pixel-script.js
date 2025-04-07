@@ -9,6 +9,9 @@
   // URL da API de rastreamento
   const API_URL = 'https://rastreamento-meta.onrender.com/track';
   
+  // ID do seu pixel do Facebook
+  const PIXEL_ID = '1163339595278098';
+  
   // Função para obter cookies
   function getCookie(name) {
     const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -24,6 +27,32 @@
       localStorage.setItem('meta_tracking_external_id', externalId);
     }
     return externalId;
+  }
+
+  // Inicializar o Facebook Pixel
+  function initFacebookPixel() {
+    // Inicializar o pixel do Facebook
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    
+    // Inicializar o pixel com ID
+    fbq('init', PIXEL_ID);
+    
+    // Adicionar advanced matching se disponível
+    const externalId = getExternalId();
+    if (externalId) {
+      fbq('init', PIXEL_ID, {
+        external_id: externalId
+      });
+    }
+    
+    console.log('Facebook Pixel inicializado com ID:', PIXEL_ID);
   }
 
   // Funções para encontrar elementos específicos na página
@@ -133,10 +162,13 @@
     };
   }
 
-  // Enviar evento para a API
+  // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     try {
-      // Dados básicos do evento
+      // 1. Enviar para o Pixel do Facebook diretamente
+      fbq('track', eventName === 'ViewHome' ? 'ViewContent' : eventName, customData);
+      
+      // 2. Dados para nossa API
       const eventData = {
         eventName: eventName,
         userData: {
@@ -180,6 +212,9 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
+    // Inicializar o pixel do Facebook
+    initFacebookPixel();
+    
     // Sempre enviar PageView
     sendEvent('PageView');
 
