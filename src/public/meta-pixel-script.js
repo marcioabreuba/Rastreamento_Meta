@@ -167,6 +167,104 @@
     }
     return hashString;
   }
+  
+  // Função para hash de dados sensíveis (SHA-256) para o Facebook
+  function hashData(data) {
+    // Se não tivermos o dado ou estiver vazio, retornar null
+    if (!data) return null;
+    
+    // Se o browser tiver suporte para crypto.subtle
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        // Converter string para ArrayBuffer
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+        
+        // Criar um hash SHA-256
+        const hashBuffer = crypto.subtle.digest('SHA-256', dataBuffer);
+        
+        // Converter o hash para string hexadecimal
+        return hashBuffer.then(hash => {
+          const hashArray = Array.from(new Uint8Array(hash));
+          const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+          return hashHex;
+        });
+      } catch (e) {
+        console.error('Erro ao calcular hash:', e);
+        return hashString(data); // Fallback para hashString
+      }
+    }
+    
+    // Fallback se crypto.subtle não estiver disponível
+    return hashString(data);
+  }
+  
+  // Tenta obter dados do usuário de várias fontes
+  function getUserData() {
+    // Objeto para armazenar os dados do usuário
+    const userData = {};
+    
+    // Tentar obter dados de scripts globais ou objetos de dados
+    try {
+      // 1. Verificar se há variáveis globais com dados do usuário (comum em e-commerces)
+      if (window.userEmail) userData.email = window.userEmail;
+      if (window.userName) userData.firstName = window.userName;
+      if (window.userPhone) userData.phone = window.userPhone;
+      
+      // 2. Buscar em meta tags específicas
+      const metaTags = document.querySelectorAll('meta');
+      metaTags.forEach(tag => {
+        const name = tag.getAttribute('name');
+        const content = tag.getAttribute('content');
+        
+        if (name === 'user:email') userData.email = content;
+        if (name === 'user:phone') userData.phone = content;
+        if (name === 'user:first_name') userData.firstName = content;
+        if (name === 'user:last_name') userData.lastName = content;
+        if (name === 'user:city') userData.city = content;
+        if (name === 'user:state') userData.state = content;
+        if (name === 'user:country') userData.country = content;
+      });
+      
+      // 3. Verificar dados em elementos com data attributes
+      const userDataElement = document.querySelector('[data-user]');
+      if (userDataElement) {
+        try {
+          const dataUser = JSON.parse(userDataElement.dataset.user);
+          if (dataUser.email) userData.email = dataUser.email;
+          if (dataUser.phone) userData.phone = dataUser.phone;
+          if (dataUser.firstName) userData.firstName = dataUser.firstName;
+          if (dataUser.lastName) userData.lastName = dataUser.lastName;
+          if (dataUser.city) userData.city = dataUser.city;
+          if (dataUser.state) userData.state = dataUser.state;
+          if (dataUser.country) userData.country = dataUser.country;
+        } catch (e) {
+          console.error('Erro ao processar dados do usuário:', e);
+        }
+      }
+      
+      // 4. Shopify específico (se for uma loja Shopify)
+      if (window.Shopify && window.Shopify.customer) {
+        const customer = window.Shopify.customer;
+        if (customer.email) userData.email = customer.email;
+        if (customer.firstName) userData.firstName = customer.firstName;
+        if (customer.lastName) userData.lastName = customer.lastName;
+        if (customer.phone) userData.phone = customer.phone;
+        
+        // Dados de endereço
+        if (customer.defaultAddress) {
+          if (customer.defaultAddress.city) userData.city = customer.defaultAddress.city;
+          if (customer.defaultAddress.province) userData.state = customer.defaultAddress.province;
+          if (customer.defaultAddress.country) userData.country = customer.defaultAddress.country;
+          if (customer.defaultAddress.zip) userData.zip = customer.defaultAddress.zip;
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao obter dados do usuário:', e);
+    }
+    
+    return userData;
+  }
 
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
@@ -175,6 +273,10 @@
       const external_id = getExternalId();
       const client_user_agent = hashString(navigator.userAgent);
       const fbp = getCookie('_fbp') || hashString('no_fbp_' + Date.now());
+      const fbc = getCookie('_fbc') || null;
+      
+      // Obter informações adicionais do usuário, se disponíveis
+      const userData = getUserData();
       
       // Adicionar parâmetros extras
       const extraParams = {
@@ -213,10 +315,67 @@
       });
       
       // Adicionar Advanced Matching no formato ud[campo]=valor
-      // Este é o formato exato que o Pixel Helper reconhece
+      // Parâmetros básicos
       baseParams.append('ud[external_id]', external_id);
       baseParams.append('ud[client_user_agent]', client_user_agent);
       baseParams.append('ud[fbp]', fbp);
+      
+      // Adicionar FBC se disponível
+      if (fbc) {
+        baseParams.append('ud[fbc]', fbc);
+      }
+      
+      // Funções para processar e adicionar dados com hash
+      const addHashedData = async (name, value) => {
+        if (value) {
+          try {
+            // Se o valor já for uma promessa (de hashData), aguardar
+            if (value instanceof Promise) {
+              const hashedValue = await value;
+              baseParams.append(`ud[${name}]`, hashedValue);
+            } else {
+              const hashedValue = await hashData(value);
+              baseParams.append(`ud[${name}]`, hashedValue);
+            }
+          } catch (e) {
+            console.error(`Erro ao processar ${name}:`, e);
+          }
+        }
+      };
+      
+      // Adicionar outros parâmetros de Advanced Matching se disponíveis
+      if (userData.email) {
+        await addHashedData('em', userData.email.toLowerCase().trim());
+      }
+      
+      if (userData.phone) {
+        await addHashedData('ph', userData.phone.replace(/\D/g, ''));
+      }
+      
+      if (userData.firstName) {
+        await addHashedData('fn', userData.firstName.toLowerCase().trim());
+      }
+      
+      if (userData.lastName) {
+        await addHashedData('ln', userData.lastName.toLowerCase().trim());
+      }
+      
+      // Adicionar dados geográficos sem hash
+      if (userData.city) {
+        baseParams.append('ud[ct]', userData.city);
+      }
+      
+      if (userData.state) {
+        baseParams.append('ud[st]', userData.state);
+      }
+      
+      if (userData.country) {
+        baseParams.append('ud[country]', userData.country);
+      }
+      
+      if (userData.zip) {
+        baseParams.append('ud[zp]', userData.zip);
+      }
       
       // Adicionar os custom data params
       Object.entries(enhancedCustomData).forEach(([key, value]) => {
@@ -234,11 +393,13 @@
           userAgent: navigator.userAgent,
           language: navigator.language || 'pt-BR',
           // Obter cookies do Facebook se disponíveis
-          fbp: getCookie('_fbp'),
-          fbc: getCookie('_fbc'),
+          fbp: fbp,
+          fbc: fbc,
           // Usar ID externo persistente para o usuário
           userId: external_id,
-          referrer: document.referrer
+          referrer: document.referrer,
+          // Adicionar dados adicionais do usuário, se disponíveis
+          ...userData
         },
         customData: {
           ...enhancedCustomData,
