@@ -379,7 +379,12 @@
       
       // Adicionar os custom data params
       Object.entries(enhancedCustomData).forEach(([key, value]) => {
-        baseParams.append(`cd[${key}]`, value);
+        // Não adicionar dados geográficos do usuário como custom data params
+        // para evitar duplicidade, pois já foram adicionados como ud[] acima
+        if (key !== 'user_city' && key !== 'user_state' && 
+            key !== 'user_country' && key !== 'user_zip') {
+          baseParams.append(`cd[${key}]`, value);
+        }
       });
       
       // Criar e enviar o pixel manualmente usando um image request
