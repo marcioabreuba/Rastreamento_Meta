@@ -14,23 +14,21 @@ const prisma = new PrismaClient();
 /**
  * Salva um evento no banco de dados
  * @param {NormalizedEvent} event - Evento normalizado
- * @returns {Promise<string>} ID do evento salvo
+ * @returns {Promise<number>} ID do evento salvo
  */
-export const saveEvent = async (event: NormalizedEvent): Promise<string> => {
+export const saveEvent = async (event: NormalizedEvent): Promise<number> => {
   try {
     const { eventName, userData, customData, serverData } = event;
     
     // Salvar no banco de dados
     const savedEvent = await prisma.event.create({
       data: {
-        id: serverData.event_id,
         eventName,
         // Converter objetos para JSON antes de salvar
         userData: userData as unknown as any,
         customData: customData as unknown as any,
         serverData: serverData as unknown as any,
-        pixelSent: false,
-        cAPIsSent: false,
+        status: 'pending'
       },
     });
     
@@ -84,10 +82,15 @@ export const processQueuedEvent = async (event: NormalizedEvent): Promise<boolea
     const result = await sendToConversionsAPI(event);
     
     // Atualizar o status no banco de dados
-    await prisma.event.update({
-      where: { id: event.serverData.event_id },
-      data: { cAPIsSent: result },
-    });
+    if (event.serverData && event.serverData.event_id) {
+      const eventId = parseInt(event.serverData.event_id);
+      if (!isNaN(eventId)) {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { status: result ? 'sent' : 'failed' },
+        });
+      }
+    }
     
     return result;
   } catch (error: any) {
@@ -109,7 +112,7 @@ export const processQueuedEvent = async (event: NormalizedEvent): Promise<boolea
 export const getPendingEvents = async (limit: number = 100): Promise<NormalizedEvent[]> => {
   try {
     const pendingEvents = await prisma.event.findMany({
-      where: { cAPIsSent: false },
+      where: { status: 'pending' },
       take: limit,
       orderBy: { createdAt: 'asc' },
     });
