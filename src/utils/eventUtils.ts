@@ -92,7 +92,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     ph: userData?.phone ? hashData(userData.phone.replace(/\D/g, '')) : null,
     fn: userData?.firstName ? hashData(userData.firstName.toLowerCase().trim()) : null,
     ln: userData?.lastName ? hashData(userData.lastName.toLowerCase().trim()) : null,
-    external_id: userData?.userId || null,
+    external_id: userData?.userId || generateUserId(),
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
     fbc: userData?.fbc || null,
@@ -100,8 +100,8 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,
-    // Adicionar dados de geolocalização
     country: geoData?.country?.code || null,
+    state: geoData?.region?.code || null,
     city: geoData?.city || null,
     zip: geoData?.postal || null,
   };
@@ -120,6 +120,10 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     status: customData?.status || null,
     predicted_ltv: customData?.predictedLtv || null,
     contents: customData?.contents || null,
+    app: 'meta-tracking',
+    language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
+    referrer: customData?.referrer || userData?.referrer || null,
+    event_time: Math.floor(Date.now() / 1000),
   };
   
   // Dados do servidor
@@ -128,7 +132,6 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
     action_source: 'website',
     event_id: generateEventId(),
-    // Adicionar dados de geolocalização completos
     geo_data: geoData,
   };
   
@@ -138,4 +141,13 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     customData: normalizedCustomData,
     serverData,
   };
+};
+
+/**
+ * Gera um ID de usuário persistente se não existir
+ * @returns {string} ID de usuário
+ */
+export const generateUserId = (): string => {
+  // Gerar um ID de usuário aleatório
+  return `user_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 }; 

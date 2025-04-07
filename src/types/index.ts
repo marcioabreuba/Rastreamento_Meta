@@ -30,6 +30,8 @@ export interface UserData {
   subscriptionId?: string;
   fbLoginId?: string;
   leadId?: string;
+  language?: string;
+  referrer?: string;
 }
 
 // Dados normalizados do usuário
@@ -67,6 +69,7 @@ export interface CustomData {
   predictedLtv?: number;
   contents?: any[];
   sourceUrl?: string;
+  referrer?: string;
 }
 
 // Dados normalizados personalizados
