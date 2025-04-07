@@ -20,3 +20,6 @@
 # GeoIP database
 /data/*.mmdb
 /data/temp
+
+# Permitir arquivos de backup do GeoIP
+!/data/backup/*.mmdb
