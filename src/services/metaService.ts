@@ -119,7 +119,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
     console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
     console.log('├──────────────────────────────────────────────────────────┤');
-    console.log('│ 👤 DADOS DO USUÁRIO:                                     │');
+    console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
     console.log('├──────────────────────────────────────────────────────────┤');
     Object.entries(userDataCopy).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
@@ -133,8 +133,30 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log('│ 📊 DADOS PERSONALIZADOS:                                 │');
     console.log('├──────────────────────────────────────────────────────────┤');
+    
+    // Destacar os parâmetros do TracLead que foram adicionados
+    const priorityParams = ['app', 'language', 'referrer', 'event_time'];
+    
+    // Primeiro exibir os parâmetros prioritários
+    priorityParams.forEach(param => {
+      if (customDataCopy[param] !== null && customDataCopy[param] !== undefined) {
+        let displayValue = customDataCopy[param];
+        if (param === 'event_time') {
+          // Formatar timestamp para data legível
+          displayValue = new Date(customDataCopy[param] * 1000).toISOString();
+        }
+        console.log(`│ ${param.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
+      }
+    });
+    
+    // Depois exibir os demais parâmetros
     Object.entries(customDataCopy).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && key !== 'geo_data') {
+      if (
+        value !== null && 
+        value !== undefined && 
+        key !== 'geo_data' && 
+        !priorityParams.includes(key)
+      ) {
         const displayValue = typeof value === 'object' 
           ? JSON.stringify(value).substring(0, 37) + '...' 
           : String(value).substring(0, 40);
