@@ -83,6 +83,12 @@ export interface NormalizedCustomData {
   status: string | null;
   predicted_ltv: number | null;
   contents: any[] | null;
+  user_city?: string | null;
+  user_state?: string | null;
+  user_country?: string | null;
+  user_zip?: string | null;
+  geo_data?: GeoData | null;
+  [key: string]: any;
 }
 
 // Dados do servidor
