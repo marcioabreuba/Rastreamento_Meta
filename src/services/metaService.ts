@@ -70,18 +70,27 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
   try {
     const { eventName, userData, customData, serverData } = event;
     
-    // Criar uma cópia dos dados do usuário e remover campos não aceitos pela API do Facebook
+    // Criar uma cópia dos dados do usuário e dos dados personalizados
     const userDataCopy = { ...userData };
+    const customDataCopy = { ...customData };
     
-    // Lista de campos geográficos que não são aceitos diretamente na API do Facebook
-    const fieldsToRemove = ['state', 'city', 'country', 'zip'];
+    // Lista de campos geográficos que não são aceitos diretamente na API do Facebook em user_data
+    const geoFields = ['state', 'city', 'country', 'zip'];
     
-    // Remover campos não aceitos
-    fieldsToRemove.forEach(field => {
-      if (field in userDataCopy) {
+    // Transferir campos geográficos de user_data para custom_data
+    geoFields.forEach(field => {
+      if (field in userDataCopy && userDataCopy[field] !== null) {
+        // Adicionar prefixo "user_" para diferenciar de outros campos personalizados
+        customDataCopy[`user_${field}`] = userDataCopy[field];
+        // Remover do user_data para evitar erro na API
         delete userDataCopy[field];
       }
     });
+
+    // Adicionar dados de geolocalização completos como um objeto separado se disponível
+    if (serverData.geo_data) {
+      customDataCopy.geo_data = serverData.geo_data;
+    }
     
     // Preparar os dados para envio
     const requestData = {
@@ -92,8 +101,8 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
           event_source_url: serverData.event_source_url,
           action_source: serverData.action_source,
           event_id: serverData.event_id,
-          user_data: userDataCopy, // Usando a cópia sem os campos geográficos não aceitos
-          custom_data: customData
+          user_data: userDataCopy,
+          custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
         }
       ],
       access_token: config.fbAccessToken,
