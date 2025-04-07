@@ -192,25 +192,47 @@
         ...extraParams
       };
       
+      // Criar URL de forma manual para garantir o formato correto
+      const eventId = 'tracklead_' + Date.now();
+      const baseUrl = 'https://www.facebook.com/tr/';
+      
+      // Parâmetros comuns a todos os eventos
+      const commonParams = new URLSearchParams({
+        id: PIXEL_ID,
+        dl: encodeURIComponent(window.location.href),
+        rl: encodeURIComponent(document.referrer),
+        if: 'false',
+        ts: Date.now(),
+        sw: window.innerWidth,
+        sh: window.innerHeight,
+        // Parâmetros de Advanced Matching
+        'ud[external_id]': external_id,
+        'ud[client_user_agent]': client_user_agent,
+        'ud[fbp]': fbp,
+        v: '2.9.194',
+        r: 'stable',
+        eid: eventId,
+        fbp: getCookie('_fbp') || ''
+      });
+      
+      // Adicionar parâmetros personalizados
+      Object.entries(enhancedCustomData).forEach(([key, value]) => {
+        commonParams.append(`cd[${key}]`, value);
+      });
+      
       // 1. Enviar para o Pixel do Facebook diretamente
-      // Formato exato que o TracLead usa e que aparece no Pixel Helper
+      // Para a página inicial, enviar ViewHome como o TracLead
       if (eventName === 'ViewHome') {
-        // Para ViewHome, usar trackCustom com os parâmetros exatos
-        fbq('trackCustom', 'ViewHome', enhancedCustomData, {
-          eventID: 'tracklead_' + Date.now(),
-          // Adicionar Advanced Matching em um formato que o Pixel Helper reconheça
-          external_id: external_id,
-          fbp: fbp,
-          client_user_agent: client_user_agent
-        });
+        // Com trackCustom
+        fbq('trackCustom', 'ViewHome', enhancedCustomData, { eventID: eventId });
+        
+        // Fazer uma chamada direta para garantir que aparece no Pixel Helper
+        const viewHomeUrl = `${baseUrl}?${commonParams.toString()}&ev=ViewHome`;
+        fetch(viewHomeUrl, { mode: 'no-cors' })
+          .catch(e => console.error('Erro ao enviar ViewHome', e));
       } else {
-        // Para outros eventos, usar track padrão
-        fbq('track', eventName, enhancedCustomData, {
-          eventID: 'tracklead_' + Date.now(),
-          external_id: external_id,
-          fbp: fbp,
-          client_user_agent: client_user_agent
-        });
+        // Para outros eventos
+        fbq('track', eventName, enhancedCustomData, { eventID: eventId });
       }
       
       // 2. Dados para nossa API
