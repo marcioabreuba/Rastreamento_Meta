@@ -6,19 +6,28 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Event {
-  id          String   @id @default(uuid())
-  eventName   String
-  eventTime   DateTime @default(now())
-  userData    Json?
-  customData  Json?
-  serverData  Json?
-  pixelSent   Boolean  @default(false)
-  cAPIsSent   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  eventName  String
+  userData   Json     @default("{}")
+  customData Json     @default("{}")
+  serverData Json     @default("{}")
+  status     String   @default("pending") // pending, sent, failed
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PixelCode {
+  id        Int      @id @default(autoincrement())
+  eventName String
+  domain    String
+  code      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventName, domain])
 }
