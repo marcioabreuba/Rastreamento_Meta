@@ -152,6 +152,12 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       customDataCopy.content_category = customDataCopy.content_category.join(',');
     }
 
+    // Converter content_name de array para string para a API do Facebook Conversions
+    if (customDataCopy.content_name && Array.isArray(customDataCopy.content_name)) {
+      // Se for um array, juntar os elementos com vírgula
+      customDataCopy.content_name = customDataCopy.content_name.join(', ');
+    }
+
     // Adicionando o nome do evento original como um campo personalizado
     customDataCopy.original_event_name = eventName;
     
