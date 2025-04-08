@@ -424,7 +424,16 @@
       
       // Garantir que todos os parâmetros obrigatórios estão presentes
       const standardizedCustomData = {
-        content_category: customData.contentCategory || customData.content_category || (Array.isArray(customData.contentIds) && customData.contentIds.length ? [customData.contentIds[0].split('-')[0]] : null),
+        content_category: customData.contentCategory || customData.content_category || 
+          (Array.isArray(customData.contentIds) && customData.contentIds.length ? 
+            [customData.contentIds[0].split('-')[0]] : 
+            // Usar informações do evento para definir uma categoria padrão
+            eventName === 'ViewHome' ? 'homepage' : 
+            eventName === 'ViewContent' ? 'product' : 
+            eventName === 'ViewList' || eventName === 'ViewCategory' ? 'category' : 
+            eventName === 'Search' || eventName === 'ViewSearchResults' ? 'search' : 
+            eventName === 'AddToCart' ? 'cart' : 
+            eventName === 'Purchase' ? 'purchase' : 'general'),
         content_ids: customData.contentIds || customData.content_ids || null,
         content_name: customData.contentName || customData.content_name || null,
         content_type: customData.contentType || customData.content_type || "product_group",
