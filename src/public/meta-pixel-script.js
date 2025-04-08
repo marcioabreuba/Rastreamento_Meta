@@ -375,6 +375,30 @@
     return userData;
   }
 
+  /**
+   * Valida e corrige o formato do FBP
+   * @param {string|null} fbp - Valor do FBP a ser validado
+   * @returns {string|null} FBP válido ou null
+   */
+  function validateFbp(fbp) {
+    if (!fbp) return null;
+    
+    // Verificar se já está no formato correto
+    if (/^fb\.1\.\d+\.\d+$/.test(fbp)) {
+      return fbp;
+    }
+    
+    // Se começar com fb.2, corrigir para fb.1
+    if (fbp.startsWith('fb.2.')) {
+      return 'fb.1.' + fbp.substring(5);
+    }
+    
+    // Se for um hash ou outro formato, gerar um novo FBP válido
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000000000);
+    return `fb.1.${timestamp}.${random}`;
+  }
+
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     try {
@@ -383,7 +407,8 @@
       const client_user_agent = hashString(navigator.userAgent);
       
       // Obter cookies do Facebook com suporte a parâmetros de URL
-      const fbp = getCookie('_fbp') || getUrlParameter('fbp') || hashString('no_fbp_' + Date.now());
+      const fbp_raw = getCookie('_fbp') || getUrlParameter('fbp') || hashString('no_fbp_' + Date.now());
+      const fbp = validateFbp(fbp_raw);
       const fbc = getCookie('_fbc') || getUrlParameter('fbc') || null;
       
       // Obter informações adicionais do usuário, se disponíveis

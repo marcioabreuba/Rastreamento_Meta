@@ -45,20 +45,57 @@ export const EVENT_MAPPING: Record<string, string> = {
 };
 
 /**
+ * Valida e corrige o formato do FBP
+ * @param {string | null} fbp - Valor do FBP a ser validado
+ * @returns {string | null} FBP válido ou null
+ */
+export const validateFbp = (fbp: string | null): string | null => {
+  if (!fbp) return null;
+  
+  // Verificar se já está no formato correto
+  if (/^fb\.1\.\d+\.\d+$/.test(fbp)) {
+    return fbp;
+  }
+  
+  // Se começar com fb.2, corrigir para fb.1
+  if (fbp.startsWith('fb.2.')) {
+    return 'fb.1.' + fbp.substring(5);
+  }
+  
+  // Se for um hash ou outro formato, gerar um novo FBP válido
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000000000);
+  return `fb.1.${timestamp}.${random}`;
+};
+
+/**
  * Verifica se todos os parâmetros requeridos estão presentes
  * @param {NormalizedUserData} userData - Dados do usuário normalizados
  * @returns {string[]} Lista de parâmetros faltantes
  */
 export const validateRequiredParameters = (userData: NormalizedUserData): string[] => {
+  // Parâmetros realmente obrigatórios para o Facebook
   const requiredParams: Array<keyof NormalizedUserData> = [
-    'em', 'ph', 'fn', 'ln', 'ge', 'db', 'city', 'state', 'zip', 'country', 
-    'external_id', 'client_ip_address', 'client_user_agent', 'fbc', 'fbp', 
-    'subscription_id', 'fb_login_id', 'lead_id', 'ctwa_clid', 'ig_account_id',
-    'ig_sid', 'page_id', 'page_scoped_user_id'
+    'external_id', 'client_ip_address', 'client_user_agent'
   ];
   
-  const missingParams = requiredParams.filter(param => userData[param] === null);
-  return missingParams;
+  // Parâmetros opcionais mas úteis para matching
+  const optionalParams: Array<keyof NormalizedUserData> = [
+    'em', 'ph', 'fn', 'ln', 'ge', 'db', 'city', 'state', 'zip', 'country', 
+    'fbc', 'fbp', 'subscription_id', 'fb_login_id', 'lead_id', 'ctwa_clid', 
+    'ig_account_id', 'ig_sid', 'page_id', 'page_scoped_user_id'
+  ];
+  
+  const missingRequired = requiredParams.filter(param => userData[param] === null);
+  const missingOptional = optionalParams.filter(param => userData[param] === null);
+  
+  // Registrar parâmetros opcionais faltantes com nível de log info
+  if (missingOptional.length > 0) {
+    console.info(`Parâmetros opcionais faltantes: ${missingOptional.join(', ')}`);
+  }
+  
+  // Retornar apenas parâmetros obrigatórios faltantes
+  return missingRequired;
 };
 
 /**
@@ -141,7 +178,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
     fbc: userData?.fbc || null,
-    fbp: userData?.fbp || null,
+    fbp: userData?.fbp ? validateFbp(userData.fbp) : null,
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,

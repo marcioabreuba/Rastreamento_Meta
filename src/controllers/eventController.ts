@@ -4,7 +4,7 @@
 
 import { Request, Response } from 'express';
 import { TrackRequest } from '../types';
-import { normalizeEvent } from '../utils/eventUtils';
+import { normalizeEvent, validateFbp } from '../utils/eventUtils';
 import { saveEvent, processEvent } from '../services/eventService';
 import { generatePixelCode } from '../services/metaService';
 import logger from '../utils/logger';
@@ -52,6 +52,11 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
     // Adicionar User-Agent ao userData se não estiver presente
     if (!userDataWithIP.userAgent) {
       userDataWithIP.userAgent = req.headers['user-agent'] || '';
+    }
+    
+    // Validar e corrigir FBP se existir
+    if (userDataWithIP.fbp) {
+      userDataWithIP.fbp = validateFbp(userDataWithIP.fbp);
     }
     
     // Normalizar o evento com todos os parâmetros
@@ -125,10 +130,16 @@ export const getPixelCode = async (req: Request, res: Response): Promise<void> =
       return;
     }
     
+    // Validar e corrigir FBP se existir
+    const userDataFixed = { ...userData };
+    if (userDataFixed && userDataFixed.fbp) {
+      userDataFixed.fbp = validateFbp(userDataFixed.fbp);
+    }
+    
     // Normalizar o evento
     const normalizedEvent = normalizeEvent({
       eventName,
-      userData,
+      userData: userDataFixed,
       customData,
       dataProcessingOptions,
       dataProcessingOptionsCountry,

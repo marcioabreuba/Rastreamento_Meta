@@ -6,7 +6,7 @@ import fetch from 'node-fetch';
 import { NormalizedEvent } from '../types';
 import config from '../config';
 import logger from '../utils/logger';
-import { EVENT_MAPPING } from '../utils/eventUtils';
+import { EVENT_MAPPING, validateFbp } from '../utils/eventUtils';
 
 /**
  * Gera o código do pixel para um evento
@@ -80,6 +80,11 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     // Criar uma cópia dos dados do usuário e dos dados personalizados
     const userDataCopy = { ...userData };
     const customDataCopy = { ...customData };
+    
+    // Garantir que o FBP esteja no formato correto
+    if (userDataCopy.fbp) {
+      userDataCopy.fbp = validateFbp(userDataCopy.fbp);
+    }
     
     // Lista de campos geográficos que não são aceitos diretamente na API do Facebook em user_data
     const geoFields = ['state', 'city', 'country', 'zip'];
