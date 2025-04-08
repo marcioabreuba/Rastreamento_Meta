@@ -487,8 +487,6 @@
       // Função para extrair dados do carrinho
       function extractCartData() {
         try {
-          console.log('[Meta-Tracking] Iniciando extração de dados do carrinho');
-          
           // 1. Tentar obter dados do carrinho de objetos JSON em scripts
           const scripts = document.querySelectorAll('script');
           for (const script of scripts) {
@@ -506,7 +504,7 @@
                     try {
                       const shopifyMeta = JSON.parse(shopifyMetaMatch[1]);
                       if (shopifyMeta.cart && shopifyMeta.cart.items && Array.isArray(shopifyMeta.cart.items)) {
-                        console.log('[Meta-Tracking] Encontrado dados do carrinho em ShopifyAnalytics', shopifyMeta.cart);
+                        console.log('Encontrado dados do carrinho em ShopifyAnalytics');
                         return processCartItems(shopifyMeta.cart.items, true);
                       }
                     } catch (e) {
@@ -790,142 +788,71 @@
           const categories = new Set();
           const itemNames = [];
           
-          console.log('[Meta-Tracking] Processando itens do carrinho:', items);
-          console.log('[Meta-Tracking] É um carrinho Shopify?', isShopify);
+          // Verificar se estamos no site da Soleterra
+          const isSoleterra = window.location.hostname.includes('soleterra.com.br');
           
-          // Verificar se recebemos itens válidos
-          if (!items || !Array.isArray(items) || items.length === 0) {
-            console.log('[Meta-Tracking] Alerta: Nenhum item válido para processar');
-            
-            // Verificar se podemos obter dados do referrer
-            const referrer = document.referrer;
-            console.log('[Meta-Tracking] Verificando referrer para extrair ID do produto:', referrer);
-            
-            // Verificar se veio de uma página de produto
-            if (referrer && (referrer.includes('/products/') || referrer.includes('/produto/'))) {
-              // Extrair ID do produto do URL referrer
-              let productId = null;
-              let productTitle = '';
+          // Se estivermos na Soleterra e o URL incluir parâmetros de carrinho, tentar extrair IDs
+          if (isSoleterra) {
+            try {
+              // Produtos conhecidos da Soleterra e seus IDs
+              const soleterraProducts = {
+                'penha': '9049684377843',
+                'croche': '9049684377843', // Bolsa de crochê Penha duo
+                'arpoador': '9025426129139', // Bolsa de palha Arpoador
+                'copacabana': '8912458727731', // Bolsa de palha Copacabana
+                'trama': '9068696764659', // Bolsa de palha trama
+                'palha': '9025426129139' // Id genérico para bolsas de palha
+              };
               
-              try {
-                // Extrair nome do produto da URL
-                const urlParts = referrer.split('/');
-                const productSlug = urlParts[urlParts.length - 1].split('?')[0];
-                
-                console.log('[Meta-Tracking] Produto extraído do referrer:', productSlug);
-                
-                // Para Soleterra, mapear slug para ID conhecido
-                if (window.location.hostname.includes('soleterra.com.br')) {
-                  // Produtos conhecidos da Soleterra
-                  const soleterraProducts = {
-                    'bolsa-de-croche-penha-duo': '9049684377843',
-                    'bolsa-de-palha-arpoador': '9025426129139',
-                    'bolsa-de-palha-copacabana': '8912458727731',
-                    'bolsa-de-palha-trama': '9068696764659'
-                  };
-                  
-                  // Verificar match direto
-                  if (soleterraProducts[productSlug]) {
-                    productId = soleterraProducts[productSlug];
-                    console.log('[Meta-Tracking] ID de produto Soleterra encontrado para slug:', productSlug, productId);
-                  } else {
-                    // Verificar match parcial
-                    for (const [slug, id] of Object.entries(soleterraProducts)) {
-                      if (productSlug.includes(slug.split('-').pop())) {
-                        productId = id;
-                        console.log('[Meta-Tracking] ID de produto Soleterra encontrado por correspondência parcial:', slug, productId);
+              // Se os itens não têm IDs válidos do Shopify, tentar mapear pelos nomes
+              const needsIdMapping = items.some(item => {
+                const id = item.id || item.product_id || item.variant_id || '';
+                return !id || !isValidShopifyId(id);
+              });
+              
+              if (needsIdMapping) {
+                // Mapear IDs baseado nos nomes dos produtos
+                items.forEach(item => {
+                  const title = item.title || item.product_title || '';
+                  if (title) {
+                    const titleLower = title.toLowerCase();
+                    
+                    // Tentar encontrar um match entre palavras-chave e produtos conhecidos
+                    for (const [keyword, productId] of Object.entries(soleterraProducts)) {
+                      if (titleLower.includes(keyword)) {
+                        item.mapped_id = productId;
                         break;
                       }
                     }
-                    
-                    // Se ainda não encontrou, verificar keywords
-                    if (!productId) {
-                      const keywords = {
-                        'penha': '9049684377843',
-                        'croche': '9049684377843',
-                        'arpoador': '9025426129139',
-                        'copacabana': '8912458727731',
-                        'trama': '9068696764659',
-                        'palha': '9025426129139'
-                      };
-                      
-                      for (const [keyword, id] of Object.entries(keywords)) {
-                        if (productSlug.includes(keyword)) {
-                          productId = id;
-                          console.log('[Meta-Tracking] ID de produto Soleterra encontrado por keyword:', keyword, productId);
-                          break;
-                        }
-                      }
-                    }
                   }
-                  
-                  // Formatar o título do produto a partir do slug
-                  productTitle = productSlug
-                    .split('-')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
-                }
-                
-                // Se encontramos um productId do referrer, usá-lo
-                if (productId) {
-                  console.log('[Meta-Tracking] Usando ID do produto do referrer:', productId);
-                  return {
-                    items: [{
-                      id: productId,
-                      quantity: 1,
-                      item_price: 299 // Preço padrão para itens da Soleterra
-                    }],
-                    total: 299,
-                    quantity: 1,
-                    categories: ['bolsa'], // Categoria padrão para Soleterra
-                    itemNames: [productTitle || 'Produto do carrinho']
-                  };
-                }
-              } catch (e) {
-                console.error('Erro ao processar URL do referrer:', e);
+                });
               }
+            } catch (e) {
+              console.error('Erro ao mapear produtos específicos da Soleterra:', e);
             }
-            
-            // Se não conseguimos extrair do referrer, retornar dados vazios
-            return {
-              items: [],
-              total: 0,
-              quantity: 0,
-              categories: ['bolsa'], // Categoria padrão
-              itemNames: []
-            };
           }
           
-          // Código existente para processamento normal de itens...
-          items.forEach((item, index) => {
-            console.log(`[Meta-Tracking] Processando item ${index}:`, item);
-            
+          items.forEach(item => {
             // Extrair ID no formato correto do Shopify
             let id = '';
             
             // 1. Priorizar ID mapeado para Soleterra
             if (item.mapped_id) {
               id = item.mapped_id;
-              console.log('[Meta-Tracking] Usando ID mapeado:', id);
             }
             // 2. Se for do Shopify, priorizar product_id ou variant_id
             else if (isShopify) {
               id = item.product_id || item.variant_id || item.id || '';
-              console.log('[Meta-Tracking] Usando ID do Shopify:', id, 'de produto_id:', item.product_id, 'variant_id:', item.variant_id);
-              
               // Se ainda não tiver ID e tiver handle, tentar extrair ID do handle
               if (!id && item.handle && item.handle.match(/\d{8,12}$/)) {
                 id = item.handle.match(/\d{8,12}$/)[0];
-                console.log('[Meta-Tracking] Extraído ID do handle:', id);
               }
             } else {
               id = item.id || item.product_id || item.variant_id || item.sku || '';
-              console.log('[Meta-Tracking] Usando ID genérico:', id);
             }
             
             // Verificar se temos um ID válido do Shopify
-            if ((!id || id === '' || !isValidShopifyId(id)) && isSoleterra) {
-              console.log('[Meta-Tracking] ID não válido, usando padrão para Soleterra');
+            if (id && !isValidShopifyId(id) && isSoleterra) {
               // Para Soleterra, usar um ID padrão de produto conhecido se não temos um ID válido
               id = '9049684377843'; // ID padrão para Bolsa de crochê Penha duo
             }
@@ -945,8 +872,8 @@
             let productTitle = '';
             if (item.title || item.product_title) {
               productTitle = item.title || item.product_title;
-            } else if (item.name) {
-              productTitle = item.name;
+            } else if (item.product_title || item.name) {
+              productTitle = item.product_title || item.name;
             }
             
             // Adicionar o título à lista se existir
@@ -980,23 +907,6 @@
               }
             }
             
-            // Verificar se temos um ID final válido
-            if (!id || id.trim() === '') {
-              console.log('[Meta-Tracking] ALERTA: Item sem ID válido após processamento!');
-              if (isSoleterra) {
-                id = '9049684377843'; // ID padrão para Soleterra
-                console.log('[Meta-Tracking] Atribuído ID padrão:', id);
-              }
-            }
-            
-            // Log do item processado antes de adicionar
-            console.log('[Meta-Tracking] Item processado:', {
-              id: id,
-              quantidade: qty,
-              preco: price / qty,
-              titulo: productTitle
-            });
-            
             if (id) {
               processedItems.push({
                 id,
@@ -1022,29 +932,13 @@
             }
           }
           
-          const result = {
+          return {
             items: processedItems,
             total,
             quantity,
             categories: [primaryCategory], // Usar apenas a categoria principal
             itemNames: itemNames.length > 0 ? itemNames : null
           };
-          
-          console.log('[Meta-Tracking] Resultado do processamento:', result);
-          
-          // Verificar se há itens sem ID válido
-          if (result.items.length === 0 && isSoleterra) {
-            console.log('[Meta-Tracking] Nenhum item processado com ID válido, adicionando item padrão Soleterra');
-            result.items.push({
-              id: '9049684377843', // ID padrão Soleterra
-              quantity: 1,
-              item_price: 299
-            });
-            result.total = 299;
-            result.quantity = 1;
-          }
-          
-          return result;
         } catch (e) {
           console.error('Erro ao processar itens do carrinho:', e);
           return {
@@ -1057,249 +951,17 @@
         }
       }
       
-      // Fazer uma requisição AJAX para a API do Shopify para obter dados atualizados do carrinho
-      function fetchShopifyCart() {
-        console.log('[Meta-Tracking] Tentando obter dados do carrinho via AJAX');
-        return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('GET', '/cart.js');
-          xhr.setRequestHeader('Content-Type', 'application/json');
-          xhr.onload = function() {
-            if (xhr.status === 200) {
-              try {
-                const cartData = JSON.parse(xhr.responseText);
-                console.log('[Meta-Tracking] Dados do carrinho Shopify via AJAX:', cartData);
-                if (cartData.items && Array.isArray(cartData.items)) {
-                  resolve(cartData);
-                } else {
-                  reject(new Error('Dados do carrinho inválidos'));
-                }
-              } catch (e) {
-                reject(e);
-              }
-            } else {
-              reject(new Error('Erro ao buscar carrinho: ' + xhr.status));
-            }
-          };
-          xhr.onerror = function() {
-            reject(new Error('Erro de rede ao buscar carrinho'));
-          };
-          xhr.send();
-        });
-      }
-
       // Extrair dados do carrinho
-      let cartData = null;
+      const cartData = extractCartData();
+      console.log('Dados do carrinho detectados:', cartData);
       
-      // Primeiro tentar via AJAX (mais confiável para dados do Shopify)
-      if (window.location.hostname.includes('soleterra.com.br')) {
-        try {
-          // Verificar se temos informações no referrer que podem nos ajudar
-          const referrer = document.referrer;
-          console.log('[Meta-Tracking] Referrer detectado:', referrer);
-          
-          // Tentar extrair ID do produto do referrer como fallback
-          const hasProductReferrer = referrer && (
-            referrer.includes('/products/') || 
-            referrer.includes('/produto/')
-          );
-          
-          if (hasProductReferrer) {
-            console.log('[Meta-Tracking] Referrer contém página de produto, tentando extrair ID');
-            
-            // Extrair o slug do produto do referrer
-            const referrerUrl = new URL(referrer);
-            const pathParts = referrerUrl.pathname.split('/');
-            const productSlug = pathParts[pathParts.length - 1];
-            
-            console.log('[Meta-Tracking] Slug do produto extraído do referrer:', productSlug);
-            
-            // Mapeamento de produtos Soleterra conhecidos
-            const soleterraProducts = {
-              'bolsa-de-croche-penha-duo': '9049684377843',
-              'bolsa-de-palha-arpoador': '9025426129139',
-              'bolsa-de-palha-copacabana': '8912458727731',
-              'bolsa-de-palha-trama': '9068696764659'
-            };
-            
-            // Verificar se o slug corresponde diretamente a um produto conhecido
-            if (soleterraProducts[productSlug]) {
-              console.log('[Meta-Tracking] Produto Soleterra identificado pelo slug:', productSlug);
-              
-              // Criar dados do carrinho baseados no produto do referrer
-              const fallbackCartData = {
-                items: [{
-                  id: soleterraProducts[productSlug],
-                  quantity: 1,
-                  price: 299,
-                  title: productSlug
-                    .split('-')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ')
-                }],
-                total_price: 299
-              };
-              
-              console.log('[Meta-Tracking] Dados do carrinho criados a partir do referrer:', fallbackCartData);
-              
-              // Processar e enviar os dados do carrinho obtidos do referrer
-              cartData = processCartItems(fallbackCartData.items, true);
-              
-              // Enviar evento com os dados obtidos do referrer
-              if (cartData && cartData.items && cartData.items.length > 0) {
-                const eventData = {
-                  contentName: cartData.itemNames || 'Carrinho com produto do referrer',
-                  contentType: 'cart',
-                  contentCategory: cartData.categories,
-                  contentIds: cartData.items.map(item => item.id),
-                  contents: cartData.items,
-                  value: cartData.total,
-                  numItems: cartData.quantity,
-                  currency: 'BRL'
-                };
-                
-                console.log('[Meta-Tracking] Enviando evento com dados do produto do referrer:', eventData);
-                sendEvent('ViewCart', eventData);
-              }
-            }
-          }
-          
-          // Prosseguir com a busca AJAX normal
-          fetchShopifyCart()
-            .then(data => {
-              console.log('[Meta-Tracking] Carrinho obtido via AJAX:', data);
-              if (data && data.items && data.items.length > 0) {
-                cartData = processCartItems(data.items, true);
-                console.log('[Meta-Tracking] Dados processados do carrinho AJAX:', cartData);
-                
-                // Verificar IDs de produtos obtidos
-                console.log('[Meta-Tracking] IDs de produtos obtidos:', 
-                  cartData.items.map(item => ({ id: item.id, title: item.title || 'Sem título' })));
-                
-                // Enviar evento com dados atualizados
-                const eventData = {
-                  contentName: cartData.itemNames || 'Shopping Cart',
-                  contentType: 'cart',
-                  contentCategory: cartData.categories,
-                  contentIds: cartData.items.map(item => item.id),
-                  contents: cartData.items,
-                  value: cartData.total,
-                  numItems: cartData.quantity,
-                  currency: 'BRL'
-                };
-                
-                console.log('[Meta-Tracking] Enviando evento de carrinho atualizado:', eventData);
-                sendEvent('ViewCart', eventData);
-              } else if (hasProductReferrer) {
-                console.log('[Meta-Tracking] Carrinho AJAX vazio, mas já enviamos dados do referrer');
-              } else {
-                console.log('[Meta-Tracking] Carrinho AJAX vazio e sem referrer, continuando com DOM extraction');
-              }
-            })
-            .catch(err => {
-              console.error('[Meta-Tracking] Erro ao buscar carrinho via AJAX:', err);
-              // Continuar com extração normal
-            });
-        } catch (e) {
-          console.error('[Meta-Tracking] Erro ao iniciar busca de carrinho AJAX:', e);
-        }
-      }
-      
-      // Extração regular (fallback)
-      cartData = extractCartData();
-      console.log('[Meta-Tracking] Dados do carrinho detectados via DOM:', cartData);
-      
-      // Log detalhado dos itens antes da verificação de carrinho vazio
-      console.log('[Meta-Tracking] Itens do carrinho antes da verificação:', {
-        quantidadeItens: cartData.items ? cartData.items.length : 0,
-        total: cartData.total,
-        itens: cartData.items
-      });
-      
-      // Verificar se o carrinho está vazio - condição melhorada
-      const carrinhoVazio = (
-        !cartData.items || 
-        cartData.items.length === 0 || 
-        (cartData.items.length === 0 && cartData.total === 0)
-      );
-      
-      console.log('[Meta-Tracking] Carrinho está vazio?', carrinhoVazio);
-      
-      if (carrinhoVazio) {
+      // Verificar se o carrinho está vazio
+      if (cartData.items.length === 0 && cartData.total === 0) {
         // Carrinho vazio
-        console.log('[Meta-Tracking] Detectado carrinho vazio, enviando evento simplificado');
-        
-        // Se estamos na Soleterra e o usuário veio de uma página de produto,
-        // podemos tentar extrair o ID do produto do referrer
-        const referrer = document.referrer;
-        
-        if (window.location.hostname.includes('soleterra.com.br') && 
-            referrer && (referrer.includes('/products/') || referrer.includes('/produto/'))) {
-          
-          console.log('[Meta-Tracking] Tentando recuperar produto do referrer:', referrer);
-          
-          try {
-            // Extrair slug do produto
-            const referrerUrl = new URL(referrer);
-            const pathParts = referrerUrl.pathname.split('/');
-            const productSlug = pathParts[pathParts.length - 1].split('?')[0];
-            
-            // Mapeamento de produtos conhecidos da Soleterra
-            const soleterraProducts = {
-              'bolsa-de-croche-penha-duo': '9049684377843',
-              'bolsa-de-palha-arpoador': '9025426129139',
-              'bolsa-de-palha-copacabana': '8912458727731',
-              'bolsa-de-palha-trama': '9068696764659',
-              'penha': '9049684377843',
-              'croche': '9049684377843',
-              'arpoador': '9025426129139',
-              'copacabana': '8912458727731',
-              'trama': '9068696764659',
-              'palha': '9025426129139'
-            };
-            
-            // Verificar se temos um match direto ou parcial
-            let productId = null;
-            
-            if (soleterraProducts[productSlug]) {
-              productId = soleterraProducts[productSlug];
-            } else {
-              // Verificar matches parciais
-              for (const [slug, id] of Object.entries(soleterraProducts)) {
-                if (productSlug.includes(slug)) {
-                  productId = id;
-                  break;
-                }
-              }
-            }
-            
-            if (productId) {
-              console.log('[Meta-Tracking] Produto do referrer identificado:', productId);
-              
-              return {
-                type: 'cart',
-                eventName: 'ViewCart',
-                data: {
-                  contentName: 'Carrinho com produto do referrer',
-                  contentType: 'cart',
-                  contentCategory: ['bolsa'],
-                  contentIds: [productId],
-                  contents: [{ id: productId, quantity: 1, item_price: 299 }],
-                  value: 299,
-                  numItems: 1,
-                  currency: 'BRL'
-                }
-              };
-            }
-          } catch (e) {
-            console.error('[Meta-Tracking] Erro ao processar referrer:', e);
-          }
-        }
-        
-        return {
-          type: 'cart',
-          eventName: 'ViewCart',
-          data: {
+      return {
+        type: 'cart', 
+        eventName: 'ViewCart',
+        data: {
             contentName: 'Carrinho Vazio',
             contentType: 'cart',
             contentCategory: ['cart'],
@@ -1309,91 +971,18 @@
         };
       }
       
-      // Se chegamos aqui, o carrinho tem itens
-      console.log('[Meta-Tracking] Carrinho com itens, processando dados completos');
-      
       // Criar array de content_ids a partir dos items
       const contentIds = cartData.items.map(item => item.id);
-      console.log('[Meta-Tracking] Content IDs finais (raw):', contentIds);
-      
-      // Verificar se há IDs vazios e filtrar
-      const contentIdsValidos = contentIds.filter(id => id && id.trim() !== '');
-      console.log('[Meta-Tracking] Content IDs válidos após filtro:', contentIdsValidos);
-      
-      // Se não houver IDs válidos e estivermos no site da Soleterra, tentar extrair do referrer
-      if (contentIdsValidos.length === 0 && window.location.hostname.includes('soleterra.com.br')) {
-        console.log('[Meta-Tracking] Nenhum ID válido encontrado, verificando referrer');
-        
-        const referrer = document.referrer;
-        let idProduto = '9049684377843'; // ID padrão como fallback
-        
-        if (referrer && (referrer.includes('/products/') || referrer.includes('/produto/'))) {
-          try {
-            // Extrair slug do produto
-            const referrerUrl = new URL(referrer);
-            const pathParts = referrerUrl.pathname.split('/');
-            const productSlug = pathParts[pathParts.length - 1].split('?')[0];
-            
-            console.log('[Meta-Tracking] Produto extraído do referrer:', productSlug);
-            
-            // Mapeamento de produtos conhecidos da Soleterra
-            const soleterraProducts = {
-              'bolsa-de-croche-penha-duo': '9049684377843',
-              'bolsa-de-palha-arpoador': '9025426129139',
-              'bolsa-de-palha-copacabana': '8912458727731',
-              'bolsa-de-palha-trama': '9068696764659'
-            };
-            
-            // Verificar se o produto está em nosso mapeamento
-            if (soleterraProducts[productSlug]) {
-              idProduto = soleterraProducts[productSlug];
-            } else {
-              // Verificar matches parciais por palavras-chave
-              const keywords = {
-                'penha': '9049684377843',
-                'croche': '9049684377843',
-                'arpoador': '9025426129139',
-                'copacabana': '8912458727731',
-                'trama': '9068696764659',
-                'palha': '9025426129139'
-              };
-              
-              for (const [keyword, id] of Object.entries(keywords)) {
-                if (productSlug.includes(keyword)) {
-                  idProduto = id;
-                  break;
-                }
-              }
-            }
-            
-            console.log('[Meta-Tracking] ID do produto extraído do referrer:', idProduto);
-          } catch (e) {
-            console.error('[Meta-Tracking] Erro ao extrair produto do referrer:', e);
-          }
-        }
-        
-        contentIdsValidos.push(idProduto);
-        console.log('[Meta-Tracking] ID de produto adicionado do referrer ou padrão:', idProduto);
-      }
-      
-      console.log('[Meta-Tracking] Content IDs finais:', contentIdsValidos);
-      console.log('[Meta-Tracking] Content Names finais:', cartData.itemNames);
-      console.log('[Meta-Tracking] Content Category final:', cartData.categories);
-      
-      // Definir nome do conteúdo com base nos nomes dos produtos ou fallback
-      const contentName = cartData.itemNames && cartData.itemNames.length > 0 
-        ? (Array.isArray(cartData.itemNames) ? cartData.itemNames.join(', ') : cartData.itemNames)
-        : 'Shopping Cart';
       
       return {
         type: 'cart',
         eventName: 'ViewCart',
         data: {
-          contentName: contentName,
+          contentName: cartData.itemNames || 'Shopping Cart',
           contentType: 'cart',
           contentCategory: cartData.categories,
-          contentIds: contentIdsValidos.length > 0 ? contentIdsValidos : ['1'], // Mínimo um ID default
-          contents: cartData.items.length > 0 ? cartData.items : [{ id: contentIdsValidos[0] || '1', quantity: 1 }],
+          contentIds: contentIds,
+          contents: cartData.items,
           value: cartData.total,
           numItems: cartData.quantity,
           currency: 'BRL'
