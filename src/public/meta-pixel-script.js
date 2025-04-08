@@ -478,12 +478,252 @@
     }
     
     if (path.includes('/cart') || path.includes('/carrinho')) {
+      // Extrair dados do carrinho
+      let cartItems = [];
+      let cartValue = 0;
+      let numItems = 0;
+      let cartCategories = [];
+      
+      // Função para extrair dados do carrinho
+      function extractCartData() {
+        try {
+          // 1. Tentar obter dados do carrinho de objetos JSON em scripts
+          const scripts = document.querySelectorAll('script');
+          for (const script of scripts) {
+            const content = script.textContent || '';
+            
+            // 1.1 Verificar scripts do Shopify que contêm dados do carrinho
+            if (content.includes('cart') && (content.includes('items') || content.includes('line_items'))) {
+              try {
+                // Tentar encontrar e extrair objeto de carrinho JSON
+                const cartMatch = content.match(/\{[^{]*"items"[\s\S]*?\}/);
+                if (cartMatch) {
+                  const cartData = JSON.parse(cartMatch[0]);
+                  if (cartData.items && Array.isArray(cartData.items)) {
+                    return processCartItems(cartData.items);
+                  }
+                }
+                
+                // Tentar extrair do objeto window.cart
+                const windowCartMatch = content.match(/window\.cart\s*=\s*(\{[\s\S]*?\});/);
+                if (windowCartMatch) {
+                  const cartData = JSON.parse(windowCartMatch[1]);
+                  if (cartData.items && Array.isArray(cartData.items)) {
+                    return processCartItems(cartData.items);
+                  }
+                }
+              } catch (e) {
+                console.error('Erro ao processar script de carrinho:', e);
+              }
+            }
+          }
+          
+          // 2. Se ainda não encontrou, procurar elementos DOM de carrinho
+          const cartItemElements = document.querySelectorAll('.cart-item, .cart__item, [data-cart-item], [id*="CartItem"], .line-item, [data-line-item]');
+          if (cartItemElements.length > 0) {
+            const items = [];
+            cartItemElements.forEach(item => {
+              try {
+                const itemId = item.getAttribute('data-product-id') || 
+                              item.getAttribute('data-variant-id') || 
+                              item.getAttribute('data-item-id') || 
+                              item.getAttribute('id')?.match(/\d+/)?.[0];
+                              
+                const quantityEl = item.querySelector('[data-quantity], [name*="quantity"], .quantity-selector, .cart-item__quantity');
+                const quantity = quantityEl ? 
+                  parseInt(quantityEl.value || quantityEl.textContent.trim()) : 1;
+                
+                const priceEl = item.querySelector('.price, [data-price], .cart-item__price, .product-price');
+                let price = 0;
+                if (priceEl) {
+                  const priceText = priceEl.textContent.trim().replace(/[^\d.,]/g, '').replace(',', '.');
+                  price = parseFloat(priceText);
+                }
+                
+                if (itemId) {
+                  items.push({
+                    id: itemId,
+                    quantity: quantity || 1,
+                    price: price || 0
+                  });
+                }
+              } catch (e) {
+                console.error('Erro ao processar item do carrinho:', e);
+              }
+            });
+            
+            if (items.length > 0) {
+              return processCartItems(items);
+            }
+          }
+          
+          // 3. Se ainda não encontrou, tentar obter do HTML total da página
+          const bodyHTML = document.body.innerHTML;
+          
+          // 3.1 Procurar padrões comuns que indicam valores de carrinho
+          // Para Shopify e outros sistemas de carrinho populares
+          const totalMatch = bodyHTML.match(/total[\s:"']*R?\$?\s*([\d.,]+)/i) || 
+                            bodyHTML.match(/cart[\s-]*total[\s:"']*R?\$?\s*([\d.,]+)/i) ||
+                            bodyHTML.match(/subtotal[\s:"']*R?\$?\s*([\d.,]+)/i);
+          
+          if (totalMatch && totalMatch[1]) {
+            cartValue = parseFloat(totalMatch[1].replace(',', '.'));
+          }
+          
+          // 3.2 Procurar padrões que indiquem quantidades
+          const itemCountMatch = bodyHTML.match(/(\d+)\s*ite(?:m|ns)/i) || 
+                               bodyHTML.match(/cart[\s-]*count[^\d]*(\d+)/i);
+          
+          if (itemCountMatch && itemCountMatch[1]) {
+            numItems = parseInt(itemCountMatch[1]);
+          }
+          
+          // 3.3 Procurar IDs de produtos no HTML (último recurso)
+          const productIdMatches = bodyHTML.match(/product_id[=:"']+(\d+)/ig) || 
+                                  bodyHTML.match(/variant_id[=:"']+(\d+)/ig);
+          
+          if (productIdMatches) {
+            const uniqueIds = new Set();
+            productIdMatches.forEach(match => {
+              const id = match.match(/\d+/)[0];
+              uniqueIds.add(id);
+            });
+            
+            cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
+          }
+          
+          // 3.4 Verificar categorias frequentes no HTML
+          const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+          knownCategories.forEach(category => {
+            if (bodyHTML.toLowerCase().includes(category)) {
+              cartCategories.push(category);
+            }
+          });
+          
+          return {
+            items: cartItems,
+            total: cartValue,
+            quantity: numItems || cartItems.length,
+            categories: cartCategories.length > 0 ? cartCategories : ['cart']
+          };
+        } catch (e) {
+          console.error('Erro ao extrair dados do carrinho:', e);
+          return { items: [], total: 0, quantity: 0, categories: ['cart'] };
+        }
+      }
+      
+      // Função para processar os itens do carrinho
+      function processCartItems(items) {
+        try {
+          const processedItems = [];
+          let total = 0;
+          let quantity = 0;
+          const categories = new Set();
+          
+          items.forEach(item => {
+            const id = item.id || item.product_id || item.variant_id || item.sku || '';
+            const qty = item.quantity || 1;
+            let price = item.price || item.line_price || 0;
+            
+            // Se o preço for em centavos (comum em APIs), converter para reais
+            if (price > 1000 && !item.price_includes_taxes) {
+              price = price / 100;
+            }
+            
+            // Extrair categoria do produto, se disponível
+            if (item.product_type) {
+              categories.add(item.product_type.toLowerCase());
+            }
+            
+            if (item.categories || item.category) {
+              const cats = item.categories || item.category;
+              if (Array.isArray(cats)) {
+                cats.forEach(c => categories.add(c.toLowerCase()));
+              } else if (typeof cats === 'string') {
+                categories.add(cats.toLowerCase());
+              }
+            }
+            
+            // Se o título do produto contiver uma categoria conhecida, adicioná-la
+            if (item.title || item.product_title) {
+              const title = (item.title || item.product_title).toLowerCase();
+              const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+              for (const cat of knownCategories) {
+                if (title.includes(cat)) {
+                  categories.add(cat);
+                  break;
+                }
+              }
+            }
+            
+            if (id) {
+              processedItems.push({
+                id,
+                quantity: qty,
+                item_price: price / qty
+              });
+              
+              total += price;
+              quantity += qty;
+            }
+          });
+          
+          if (categories.size === 0) {
+            categories.add('cart');
+          }
+          
+          return {
+            items: processedItems,
+            total,
+            quantity,
+            categories: Array.from(categories)
+          };
+        } catch (e) {
+          console.error('Erro ao processar itens do carrinho:', e);
+          return {
+            items: [],
+            total: 0,
+            quantity: 0,
+            categories: ['cart']
+          };
+        }
+      }
+      
+      // Extrair dados do carrinho
+      const cartData = extractCartData();
+      console.log('Dados do carrinho detectados:', cartData);
+      
+      // Verificar se o carrinho está vazio
+      if (cartData.items.length === 0 && cartData.total === 0) {
+        // Carrinho vazio
+        return {
+          type: 'cart',
+          eventName: 'ViewCart',
+          data: {
+            contentName: 'Carrinho Vazio',
+            contentType: 'cart',
+            contentCategory: ['cart'],
+            value: 0,
+            numItems: 0
+          }
+        };
+      }
+      
+      // Criar array de content_ids a partir dos items
+      const contentIds = cartData.items.map(item => item.id);
+      
       return {
-        type: 'cart', 
+        type: 'cart',
         eventName: 'ViewCart',
         data: {
           contentName: 'Shopping Cart',
-          contentType: 'cart'
+          contentType: 'cart',
+          contentCategory: cartData.categories,
+          contentIds: contentIds,
+          contents: cartData.items,
+          value: cartData.total,
+          numItems: cartData.quantity,
+          currency: 'BRL'
         }
       };
     }
