@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import { NormalizedEvent } from '../types';
 import config from '../config';
 import logger from '../utils/logger';
+import { EVENT_MAPPING } from '../utils/eventUtils';
 
 /**
  * Gera o código do pixel para um evento
@@ -14,6 +15,9 @@ import logger from '../utils/logger';
  */
 export const generatePixelCode = (event: NormalizedEvent): string => {
   const { eventName, userData, customData, serverData } = event;
+  
+  // Obter o nome do evento para o Facebook Pixel (mapeado)
+  const fbPixelEventName = EVENT_MAPPING[eventName] || eventName;
   
   // Código base do pixel
   let pixelCode = `
@@ -31,7 +35,7 @@ fbq('init', '${config.fbPixelId}');
 `;
 
   // Adicionar evento específico
-  pixelCode += `fbq('track', '${eventName}'`;
+  pixelCode += `fbq('track', '${fbPixelEventName}'`;
   
   // Adicionar dados personalizados se existirem
   if (Object.values(customData).some(val => val !== null)) {
@@ -54,7 +58,7 @@ fbq('init', '${config.fbPixelId}');
   pixelCode += `);
 </script>
 <noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=${config.fbPixelId}&ev=${eventName}&noscript=1"
+src="https://www.facebook.com/tr?id=${config.fbPixelId}&ev=${fbPixelEventName}&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->`;
 
@@ -69,6 +73,9 @@ src="https://www.facebook.com/tr?id=${config.fbPixelId}&ev=${eventName}&noscript
 export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<boolean> => {
   try {
     const { eventName, userData, customData, serverData } = event;
+    
+    // Obter o nome do evento para a Conversions API (mapeado)
+    const fbApiEventName = EVENT_MAPPING[eventName] || eventName;
     
     // Criar uma cópia dos dados do usuário e dos dados personalizados
     const userDataCopy = { ...userData };
@@ -107,7 +114,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     
     // Preparar o evento principal
     const eventPayload: any = {
-      event_name: eventName,
+      event_name: fbApiEventName, // Usar o nome mapeado para o Facebook
       event_time: serverData.event_time,
       event_source_url: serverData.event_source_url,
       action_source: serverData.action_source,
@@ -115,6 +122,9 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       user_data: userDataCopy,
       custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
     };
+
+    // Adicionando o nome do evento original como um campo personalizado
+    customDataCopy.original_event_name = eventName;
     
     // Adicionar opções de processamento de dados (para conformidade com LGPD, CCPA, etc.)
     if (serverData.data_processing_options && serverData.data_processing_options.length > 0) {
@@ -156,6 +166,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
     console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
     console.log(`│ 🔄 Action Source: ${serverData.action_source.padEnd(42)} │`);
+    console.log(`│ 📊 Evento Facebook: ${fbApiEventName.padEnd(42)} │`);
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
     console.log('├──────────────────────────────────────────────────────────┤');
@@ -173,7 +184,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log('├──────────────────────────────────────────────────────────┤');
     
     // Destacar os parâmetros do TracLead que foram adicionados
-    const priorityParams = ['app', 'language', 'referrer', 'event_time'];
+    const priorityParams = ['app', 'language', 'referrer', 'event_time', 'original_event_name'];
     
     // Primeiro exibir os parâmetros prioritários
     priorityParams.forEach(param => {

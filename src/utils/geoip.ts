@@ -31,6 +31,29 @@ export async function initGeoIP(): Promise<boolean> {
 }
 
 /**
+ * Converte um endereço IPv4 para formato IPv6
+ * @param {string} ipv4 - Endereço IPv4
+ * @returns {string} Endereço em formato IPv6
+ */
+export function convertIPv4ToIPv6(ipv4: string): string {
+  // Verifica se já é IPv6
+  if (ipv4.includes(':')) {
+    return ipv4;
+  }
+  
+  // Validar formato IPv4
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = ipv4.match(ipv4Regex);
+  
+  if (!match) {
+    return ipv4; // Retorna o original se não for um IPv4 válido
+  }
+  
+  // Formato padrão para IPv6 mapeado a partir de IPv4
+  return `::ffff:${ipv4}`;
+}
+
+/**
  * Obtém informações de geolocalização a partir de um endereço IP
  * @param {string} ip - Endereço IP
  * @returns {GeoData | null} Informações de geolocalização
@@ -47,19 +70,16 @@ export function getGeoIPInfo(ip: string): GeoData | null {
     }
     
     // Se for IPv6, tentar extrair IPv4 se estiver no formato ::ffff:IPv4
+    let ipToUse = ip;
     if (ip.includes(':') && ip.includes('::ffff:')) {
-      ip = ip.split('::ffff:')[1];
+      ipToUse = ip.split('::ffff:')[1];
     }
     
-    // Não processar IPv6 puros para garantir compatibilidade com Facebook
-    if (ip.includes(':')) {
-      console.warn(`IPv6 puro detectado e não processado para maior compatibilidade: ${ip}`);
-      return null;
-    }
+    // Agora aceitamos IPv6 puro para compatibilidade com o Facebook
     
     // Obter informações de geolocalização
     // @ts-ignore - O tipado oficial não está incluindo o método city corretamente
-    const geoData = geoipReader.city(ip);
+    const geoData = geoipReader.city(ipToUse);
     
     // Formatar os dados
     return {

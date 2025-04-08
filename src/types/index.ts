@@ -46,6 +46,9 @@ export interface UserData {
   anonId?: string; // Para eventos de app
   madid?: string; // Mobile Advertiser ID
   vendorId?: string; // Identificador do dispositivo (iOS)
+  // Novos parâmetros adicionais
+  pageId?: string; // ID da página
+  pageScopedUserId?: string; // ID do usuário no escopo da página
 }
 
 // Dados normalizados do usuário
@@ -75,6 +78,8 @@ export interface NormalizedUserData {
   anon_id: string | null; // Para eventos de app
   madid: string | null; // Mobile Advertiser ID (IDFA/AAID)
   vendor_id: string | null; // Vendor ID (iOS)
+  page_id: string | null; // ID da página
+  page_scoped_user_id: string | null; // ID do usuário no escopo da página
 }
 
 // Dados personalizados do evento

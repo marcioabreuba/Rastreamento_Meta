@@ -5,7 +5,7 @@
 import crypto from 'crypto';
 import { CustomData, GeoData, NormalizedCustomData, NormalizedEvent, NormalizedUserData, TrackRequest, UserData } from '../types';
 import config from '../config';
-import { getGeoIPInfo } from './geoip';
+import { getGeoIPInfo, convertIPv4ToIPv6 } from './geoip';
 
 // Mapeamento de eventos do Shopify para eventos do Facebook
 export const EVENT_MAPPING: Record<string, string> = {
@@ -13,13 +13,18 @@ export const EVENT_MAPPING: Record<string, string> = {
   'ViewHome': 'ViewHome',
   'ViewList': 'ViewContent',
   'ViewContent': 'ViewContent',
+  'Ver conteúdo': 'ViewContent',
   'AddToCart': 'AddToCart',
+  'Adicionar ao carrinho': 'AddToCart',
   'ViewCart': 'ViewContent',
   'StartCheckout': 'InitiateCheckout',
+  'Iniciar finalização da compra': 'InitiateCheckout',
   'RegisterDone': 'CompleteRegistration',
   'ShippingLoaded': 'AddPaymentInfo',
   'AddPaymentInfo': 'AddPaymentInfo',
+  'Adicionar informações de pagamento': 'AddPaymentInfo',
   'Purchase': 'Purchase',
+  'Comprar': 'Purchase',
   'Purchase - credit_card': 'Purchase',
   'Purchase - pix': 'Purchase',
   'Purchase - billet': 'Purchase',
@@ -29,17 +34,31 @@ export const EVENT_MAPPING: Record<string, string> = {
   'AddCoupon': 'AddToCart',
   'Refused - credit_card': 'CustomEvent',
   'Pesquisar': 'Search',
-  // Adicionar novos eventos
-  'Lead': 'Lead',
-  'Subscribe': 'Subscribe',
-  'Contact': 'Contact',
-  'Schedule': 'Schedule',
+  'Search': 'Search',
+  // Novos eventos
   'ViewSearchResults': 'Search',
   'Timer_1min': 'CustomEvent',
   'Scroll_25': 'CustomEvent',
   'Scroll_50': 'CustomEvent',
   'Scroll_75': 'CustomEvent',
   'Scroll_100': 'CustomEvent'
+};
+
+/**
+ * Verifica se todos os parâmetros requeridos estão presentes
+ * @param {NormalizedUserData} userData - Dados do usuário normalizados
+ * @returns {string[]} Lista de parâmetros faltantes
+ */
+export const validateRequiredParameters = (userData: NormalizedUserData): string[] => {
+  const requiredParams: Array<keyof NormalizedUserData> = [
+    'em', 'ph', 'fn', 'ln', 'ge', 'db', 'city', 'state', 'zip', 'country', 
+    'external_id', 'client_ip_address', 'client_user_agent', 'fbc', 'fbp', 
+    'subscription_id', 'fb_login_id', 'lead_id', 'ctwa_clid', 'ig_account_id',
+    'ig_sid', 'page_id', 'page_scoped_user_id'
+  ];
+  
+  const missingParams = requiredParams.filter(param => userData[param] === null);
+  return missingParams;
 };
 
 /**
@@ -79,16 +98,10 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   // Obter IP do cliente
   const clientIP = userData?.ip || null;
   
-  // Converter IPv6 para IPv4 se possível e processar apenas IPv4
+  // Converter para IPv6 para todos os eventos enviados para a API de Conversões
   let ipToUse = clientIP;
-  if (ipToUse && ipToUse.includes(':')) {
-    // Se for IPv6 no formato ::ffff:IPv4, extrair apenas o IPv4
-    if (ipToUse.includes('::ffff:')) {
-      ipToUse = ipToUse.split('::ffff:')[1];
-    } else {
-      // Se for IPv6 puro, não usar para garantir compatibilidade com Facebook
-      ipToUse = null;
-    }
+  if (ipToUse) {
+    ipToUse = convertIPv4ToIPv6(ipToUse);
   }
   
   // Obter informações de geolocalização se o IP estiver disponível
@@ -113,14 +126,16 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,
-    country: userData?.country || geoData?.country?.code || null,
-    state: userData?.state || geoData?.region?.code || null,
-    city: userData?.city || geoData?.city || null,
-    zip: userData?.zip || geoData?.postal || null,
+    country: userData?.country ? hashData(userData.country.toLowerCase().trim()) : (geoData?.country?.code ? hashData(geoData.country.code.toLowerCase()) : null),
+    state: userData?.state ? hashData(userData.state.toLowerCase().trim()) : (geoData?.region?.code ? hashData(geoData.region.code.toLowerCase()) : null),
+    city: userData?.city ? hashData(userData.city.toLowerCase().trim()) : (geoData?.city ? hashData(geoData.city.toLowerCase()) : null),
+    zip: userData?.zip ? hashData(userData.zip.replace(/\D/g, '')) : (geoData?.postal ? hashData(geoData.postal) : null),
     // Novos parâmetros que não são específicos de app
     ctwa_clid: userData?.ctwaClid || null,
     ig_account_id: userData?.igAccountId || null,
     ig_sid: userData?.igSid || null,
+    page_id: userData?.pageId || null,
+    page_scoped_user_id: userData?.pageScopedUserId || null,
     
     // Parâmetros específicos de app - Definir como null para eventos web
     anon_id: null,
@@ -133,6 +148,12 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     normalizedUserData.anon_id = userData?.anonId || null;
     normalizedUserData.madid = userData?.madid || null;
     normalizedUserData.vendor_id = userData?.vendorId || null;
+  }
+  
+  // Verificar parâmetros faltantes
+  const missingParams = validateRequiredParameters(normalizedUserData);
+  if (missingParams.length > 0) {
+    console.warn(`Parâmetros obrigatórios faltando no evento ${eventName}:`, missingParams);
   }
   
   // Normalizar dados personalizados
@@ -188,7 +209,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   };
   
   return {
-    eventName: fbEventName,
+    eventName, // Usar o nome do evento original ao invés de fbEventName para manter os nomes originais
     userData: normalizedUserData,
     customData: normalizedCustomData,
     serverData,
