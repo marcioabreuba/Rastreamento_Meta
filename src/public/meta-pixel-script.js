@@ -487,6 +487,8 @@
       // Função para extrair dados do carrinho
       function extractCartData() {
         try {
+          console.log('[Meta-Tracking] Iniciando extração de dados do carrinho');
+          
           // 1. Tentar obter dados do carrinho de objetos JSON em scripts
           const scripts = document.querySelectorAll('script');
           for (const script of scripts) {
@@ -504,7 +506,7 @@
                     try {
                       const shopifyMeta = JSON.parse(shopifyMetaMatch[1]);
                       if (shopifyMeta.cart && shopifyMeta.cart.items && Array.isArray(shopifyMeta.cart.items)) {
-                        console.log('Encontrado dados do carrinho em ShopifyAnalytics');
+                        console.log('[Meta-Tracking] Encontrado dados do carrinho em ShopifyAnalytics', shopifyMeta.cart);
                         return processCartItems(shopifyMeta.cart.items, true);
                       }
                     } catch (e) {
@@ -788,6 +790,8 @@
           const categories = new Set();
           const itemNames = [];
           
+          console.log('[Meta-Tracking] Processando itens do carrinho:', items);
+          
           // Verificar se estamos no site da Soleterra
           const isSoleterra = window.location.hostname.includes('soleterra.com.br');
           
@@ -804,22 +808,31 @@
                 'palha': '9025426129139' // Id genérico para bolsas de palha
               };
               
+              console.log('[Meta-Tracking] Verificando produtos Soleterra');
+              
               // Se os itens não têm IDs válidos do Shopify, tentar mapear pelos nomes
               const needsIdMapping = items.some(item => {
                 const id = item.id || item.product_id || item.variant_id || '';
-                return !id || !isValidShopifyId(id);
+                const isValid = !id || !isValidShopifyId(id);
+                console.log('[Meta-Tracking] Verificando se ID precisa de mapeamento:', id, isValid);
+                return isValid;
               });
               
               if (needsIdMapping) {
+                console.log('[Meta-Tracking] Mapeamento de IDs necessário');
+                
                 // Mapear IDs baseado nos nomes dos produtos
                 items.forEach(item => {
                   const title = item.title || item.product_title || '';
+                  console.log('[Meta-Tracking] Verificando título do produto para mapeamento:', title);
+                  
                   if (title) {
                     const titleLower = title.toLowerCase();
                     
                     // Tentar encontrar um match entre palavras-chave e produtos conhecidos
                     for (const [keyword, productId] of Object.entries(soleterraProducts)) {
                       if (titleLower.includes(keyword)) {
+                        console.log(`[Meta-Tracking] Match encontrado: ${keyword} -> ${productId}`);
                         item.mapped_id = productId;
                         break;
                       }
@@ -833,26 +846,34 @@
           }
           
           items.forEach(item => {
+            console.log('[Meta-Tracking] Processando item:', item);
+            
             // Extrair ID no formato correto do Shopify
             let id = '';
             
             // 1. Priorizar ID mapeado para Soleterra
             if (item.mapped_id) {
               id = item.mapped_id;
+              console.log('[Meta-Tracking] Usando ID mapeado:', id);
             }
             // 2. Se for do Shopify, priorizar product_id ou variant_id
             else if (isShopify) {
               id = item.product_id || item.variant_id || item.id || '';
+              console.log('[Meta-Tracking] Usando ID do Shopify:', id, 'de produto_id:', item.product_id, 'variant_id:', item.variant_id);
+              
               // Se ainda não tiver ID e tiver handle, tentar extrair ID do handle
               if (!id && item.handle && item.handle.match(/\d{8,12}$/)) {
                 id = item.handle.match(/\d{8,12}$/)[0];
+                console.log('[Meta-Tracking] Extraído ID do handle:', id);
               }
             } else {
               id = item.id || item.product_id || item.variant_id || item.sku || '';
+              console.log('[Meta-Tracking] Usando ID genérico:', id);
             }
             
             // Verificar se temos um ID válido do Shopify
             if (id && !isValidShopifyId(id) && isSoleterra) {
+              console.log('[Meta-Tracking] ID não válido, usando padrão:', id);
               // Para Soleterra, usar um ID padrão de produto conhecido se não temos um ID válido
               id = '9049684377843'; // ID padrão para Bolsa de crochê Penha duo
             }
@@ -932,6 +953,12 @@
             }
           }
           
+          console.log('[Meta-Tracking] Resultado do processamento:', {
+            items: processedItems,
+            categories: [primaryCategory],
+            itemNames: itemNames
+          });
+          
           return {
             items: processedItems,
             total,
@@ -951,9 +978,82 @@
         }
       }
       
+      // Fazer uma requisição AJAX para a API do Shopify para obter dados atualizados do carrinho
+      function fetchShopifyCart() {
+        console.log('[Meta-Tracking] Tentando obter dados do carrinho via AJAX');
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', '/cart.js');
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.onload = function() {
+            if (xhr.status === 200) {
+              try {
+                const cartData = JSON.parse(xhr.responseText);
+                console.log('[Meta-Tracking] Dados do carrinho Shopify via AJAX:', cartData);
+                if (cartData.items && Array.isArray(cartData.items)) {
+                  resolve(cartData);
+                } else {
+                  reject(new Error('Dados do carrinho inválidos'));
+                }
+              } catch (e) {
+                reject(e);
+              }
+            } else {
+              reject(new Error('Erro ao buscar carrinho: ' + xhr.status));
+            }
+          };
+          xhr.onerror = function() {
+            reject(new Error('Erro de rede ao buscar carrinho'));
+          };
+          xhr.send();
+        });
+      }
+
       // Extrair dados do carrinho
-      const cartData = extractCartData();
-      console.log('Dados do carrinho detectados:', cartData);
+      let cartData = null;
+      
+      // Primeiro tentar via AJAX (mais confiável para dados do Shopify)
+      if (window.location.hostname.includes('soleterra.com.br')) {
+        try {
+          fetchShopifyCart()
+            .then(data => {
+              console.log('[Meta-Tracking] Carrinho obtido via AJAX:', data);
+              if (data && data.items && data.items.length > 0) {
+                cartData = processCartItems(data.items, true);
+                console.log('[Meta-Tracking] Dados processados do carrinho AJAX:', cartData);
+                
+                // Verificar IDs de produtos obtidos
+                console.log('[Meta-Tracking] IDs de produtos obtidos:', 
+                  cartData.items.map(item => ({ id: item.id, title: item.title || 'Sem título' })));
+                
+                // Enviar evento com dados atualizados
+                const eventData = {
+                  contentName: cartData.itemNames || 'Shopping Cart',
+                  contentType: 'cart',
+                  contentCategory: cartData.categories,
+                  contentIds: cartData.items.map(item => item.id),
+                  contents: cartData.items,
+                  value: cartData.total,
+                  numItems: cartData.quantity,
+                  currency: 'BRL'
+                };
+                
+                console.log('[Meta-Tracking] Enviando evento de carrinho atualizado:', eventData);
+                sendEvent('ViewCart', eventData);
+              }
+            })
+            .catch(err => {
+              console.error('[Meta-Tracking] Erro ao buscar carrinho via AJAX:', err);
+              // Continuar com extração normal
+            });
+        } catch (e) {
+          console.error('[Meta-Tracking] Erro ao iniciar busca de carrinho AJAX:', e);
+        }
+      }
+      
+      // Extração regular (fallback)
+      cartData = extractCartData();
+      console.log('[Meta-Tracking] Dados do carrinho detectados via DOM:', cartData);
       
       // Verificar se o carrinho está vazio
       if (cartData.items.length === 0 && cartData.total === 0) {
@@ -973,6 +1073,9 @@
       
       // Criar array de content_ids a partir dos items
       const contentIds = cartData.items.map(item => item.id);
+      console.log('[Meta-Tracking] Content IDs finais:', contentIds);
+      console.log('[Meta-Tracking] Content Names finais:', cartData.itemNames);
+      console.log('[Meta-Tracking] Content Category final:', cartData.categories);
       
       return {
         type: 'cart',
