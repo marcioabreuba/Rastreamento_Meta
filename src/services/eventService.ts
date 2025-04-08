@@ -20,24 +20,40 @@ export const saveEvent = async (event: NormalizedEvent): Promise<number> => {
   try {
     const { eventName, userData, customData, serverData } = event;
     
-    // Salvar no banco de dados
-    const savedEvent = await prisma.event.create({
-      data: {
-        eventName,
-        // Converter objetos para JSON antes de salvar
-        userData: userData as unknown as any,
-        customData: customData as unknown as any,
-        serverData: serverData as unknown as any,
-        status: 'pending'
-      },
-    });
-    
-    logger.info(`Evento salvo no banco de dados: ${eventName}`, { 
-      eventId: savedEvent.id,
-      eventName: savedEvent.eventName
-    });
-    
-    return savedEvent.id;
+    try {
+      // Salvar no banco de dados
+      const savedEvent = await prisma.event.create({
+        data: {
+          eventName,
+          // Converter objetos para JSON antes de salvar
+          userData: userData as unknown as any,
+          customData: customData as unknown as any,
+          serverData: serverData as unknown as any,
+          status: 'pending'
+        },
+      });
+      
+      logger.info(`Evento salvo no banco de dados: ${eventName}`, { 
+        eventId: savedEvent.id,
+        eventName: savedEvent.eventName
+      });
+      
+      return savedEvent.id;
+    } catch (dbError: any) {
+      // Se houver um erro de violação de restrição única, apenas registrar e retornar ID genérico
+      if (dbError.code === 'P2002' || dbError.message.includes('Unique constraint failed')) {
+        logger.info(`Evento possivelmente duplicado, ignorando erro: ${eventName}`, {
+          eventName: eventName,
+          fbEventId: serverData.event_id
+        });
+        
+        // Retornar um ID genérico para permitir que o processamento continue
+        return -1;
+      }
+      
+      // Se for outro tipo de erro, repassar
+      throw dbError;
+    }
   } catch (error: any) {
     logger.error(`Erro ao salvar evento no banco de dados: ${error.message}`, {
       error: error.message,

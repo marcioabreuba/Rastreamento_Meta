@@ -144,15 +144,33 @@ export const setupEventQueue = () => {
 // Adicionar evento à fila
 export const addEventToQueue = async (event: NormalizedEvent): Promise<string> => {
   try {
+    // Usar o ID do evento como ID do job
+    const jobId = event.serverData.event_id;
+    
+    // Tentar adicionar o evento à fila
     const job = await eventQueue.add(event, {
-      jobId: event.serverData.event_id, // Usar o ID do evento como ID do job
+      jobId: jobId,
       attempts: 3
     });
     
-    logger.info(`Evento adicionado à fila: ${event.eventName} (ID: ${event.serverData.event_id})`);
+    logger.info(`Evento adicionado à fila: ${event.eventName} (ID: ${jobId})`);
     return job.id.toString();
   } catch (error: any) {
-    logger.error(`Erro ao adicionar evento à fila: ${error.message}`, { error: error.message });
+    // Se for um erro de duplicação (job com mesmo ID já existe)
+    if (error.message && (
+        error.message.includes('duplicate job') || 
+        error.message.includes('already exists') || 
+        error.message.includes('duplicated'))) {
+      logger.info(`Evento já está na fila, ignorando duplicata: ${event.eventName} (ID: ${event.serverData.event_id})`);
+      return event.serverData.event_id;
+    }
+    
+    // Para outros tipos de erro, registrar e processar imediatamente
+    logger.error(`Erro ao adicionar evento à fila: ${error.message}`, { 
+      error: error.message,
+      eventName: event.eventName,
+      eventId: event.serverData.event_id
+    });
     
     // Em caso de erro, processar imediatamente
     logger.info(`Processando evento imediatamente devido a erro na fila: ${event.eventName}`);
