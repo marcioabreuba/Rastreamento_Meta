@@ -643,38 +643,13 @@
           const productDataMatches = [];
           
           // Procurar por IDs e títulos de produtos
-          // Priorizar formatos padrão do Shopify (IDs com 9-10 dígitos)
           const productIdRegexes = [
-            // 1. Padrões específicos do Shopify para IDs de produto (10 dígitos geralmente)
-            /"product_id"\s*:\s*"?(\d{8,12})"?/g,
-            /"id"\s*:\s*"?(\d{8,12})"?/g,
-            /"variant_id"\s*:\s*"?(\d{8,12})"?/g,
-            /"sku"\s*:\s*"([\d\w-]{5,})"?/g,
-            
-            // 2. Buscar em data attributes
-            /data-product-id=["']?(\d{8,12})["']?/g,
-            /data-variant-id=["']?(\d{8,12})["']?/g,
-            
-            // 3. Padrões de URL do Shopify
-            /\/products\/([^\/\?]+)\/(\d{8,12})/g,
-            /\?variant=(\d{8,12})/g,
-            
-            // 4. Padrões para carrinho e checkout
-            /\/cart\/(\d{8,12}):/g,
-            /\/cart\/update\/(\d{8,12}):/g,
-            
-            // 5. Padrões mais genéricos como último recurso
+            /"product_id":\s*"?(\d+)"?/g,
+            /"variant_id":\s*"?(\d+)"?/g,
             /"product":\s*\{"id":\s*"?(\d+)"?,\s*"title":\s*"([^"]+)"/g,
             /"handle":\s*"([^"]+)"[\s\S]*?"id":\s*(\d+)/g
           ];
           
-          // Função para verificar se um ID parece ser um ID Shopify válido
-          function isValidShopifyId(id) {
-            // IDs do Shopify geralmente têm entre 8-12 dígitos
-            return /^\d{8,12}$/.test(id);
-          }
-          
-          // Buscar todos os matches
           for (const regex of productIdRegexes) {
             let match;
             while ((match = regex.exec(bodyHTML)) !== null) {
@@ -682,80 +657,42 @@
               
               if (match.length >= 3) {
                 // Se temos ID e título
-                id = match[1] || match[2];
-                title = match[2] || match[1] || '';
-                
-                // Verificar se o ID parece ser um título e vice-versa
-                if (id && id.length > 20 && /[a-z]/i.test(id)) {
-                  // Este provavelmente é um título, não um ID
-                  title = id;
-                  id = match[2] || '';
-                }
+                id = match[2] || match[1];
+                title = match[1] || '';
               } else {
                 // Se temos apenas ID
                 id = match[1];
                 title = '';
               }
               
-              // Se o ID parece ser um ID Shopify válido
-              if (id && isValidShopifyId(id)) {
-                // Verificar se o ID já existe na lista
-                const existingIndex = productDataMatches.findIndex(item => item.id === id);
-                if (existingIndex === -1) {
-                  productDataMatches.push({ id, title, quantity: 1 });
-                }
+              // Verificar se o ID já existe na lista
+              const existingIndex = productDataMatches.findIndex(item => item.id === id);
+              if (existingIndex === -1) {
+                productDataMatches.push({ id, title, quantity: 1 });
               }
             }
           }
           
-          // Se não encontramos IDs válidos, fazer uma busca mais ampla 
-          // especificamente por padrões de ID do Shopify
-          if (productDataMatches.length === 0) {
-            // Padrão específico para Shopify: encontrar qualquer número com 8-12 dígitos 
-            // que provavelmente é um ID de produto
-            const shopifyIdPattern = /[\[{,"']id[\[{,"':]+"?(\d{8,12})"?/g;
-            let idMatch;
-            const shopifyIds = new Set();
-            
-            while ((idMatch = shopifyIdPattern.exec(bodyHTML)) !== null) {
-              if (idMatch[1] && isValidShopifyId(idMatch[1])) {
-                shopifyIds.add(idMatch[1]);
-              }
-            }
-            
-            // Se encontramos IDs do Shopify
-            if (shopifyIds.size > 0) {
-              cartItems = Array.from(shopifyIds).map(id => ({ id, quantity: 1 }));
-            } else {
-              // 4.5 Como último recurso, procurar IDs numéricos no URL
-              const productIdMatches = Array.from(new Set(
-                (bodyHTML.match(/product_id[=:"']+(\d+)/ig) || [])
-                  .concat(bodyHTML.match(/variant_id[=:"']+(\d+)/ig) || [])
-                  .concat(bodyHTML.match(/productId[=:"']+(\d+)/ig) || [])
-                  .concat(bodyHTML.match(/item_id[=:"']+(\d+)/ig) || [])
-              ));
-              
-              if (productIdMatches.length > 0) {
-                const uniqueIds = new Set();
-                let hasShopifyId = false;
-                
-                productIdMatches.forEach(match => {
-                  const id = match.match(/\d+/)[0];
-                  // Priorizar IDs que parecem ser do Shopify
-                  if (isValidShopifyId(id)) {
-                    uniqueIds.add(id);
-                    hasShopifyId = true;
-                  } else if (!hasShopifyId) {
-                    // Só adicionar IDs não-Shopify se não tivermos nenhum ID Shopify
-                    uniqueIds.add(id);
-                  }
-                });
-                
-                cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
-              }
-            }
-          } else {
+          if (productDataMatches.length > 0) {
             cartItems = productDataMatches;
+          } else {
+            // 4.5 Como último recurso, procurar IDs numéricos no URL
+            const productIdMatches = Array.from(new Set(
+              (bodyHTML.match(/product_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/variant_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/productId[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/item_id[=:"']+(\d+)/ig) || [])
+            ));
+            
+            if (productIdMatches.length > 0) {
+              const uniqueIds = new Set();
+              productIdMatches.forEach(match => {
+                const id = match.match(/\d+/)[0];
+                uniqueIds.add(id);
+              });
+              
+              cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
+            }
           }
           
           // 4.6 Verificar categorias frequentes no HTML
@@ -788,73 +725,18 @@
           const categories = new Set();
           const itemNames = [];
           
-          // Verificar se estamos no site da Soleterra
-          const isSoleterra = window.location.hostname.includes('soleterra.com.br');
-          
-          // Se estivermos na Soleterra e o URL incluir parâmetros de carrinho, tentar extrair IDs
-          if (isSoleterra) {
-            try {
-              // Produtos conhecidos da Soleterra e seus IDs
-              const soleterraProducts = {
-                'penha': '9049684377843',
-                'croche': '9049684377843', // Bolsa de crochê Penha duo
-                'arpoador': '9025426129139', // Bolsa de palha Arpoador
-                'copacabana': '8912458727731', // Bolsa de palha Copacabana
-                'trama': '9068696764659', // Bolsa de palha trama
-                'palha': '9025426129139' // Id genérico para bolsas de palha
-              };
-              
-              // Se os itens não têm IDs válidos do Shopify, tentar mapear pelos nomes
-              const needsIdMapping = items.some(item => {
-                const id = item.id || item.product_id || item.variant_id || '';
-                return !id || !isValidShopifyId(id);
-              });
-              
-              if (needsIdMapping) {
-                // Mapear IDs baseado nos nomes dos produtos
-                items.forEach(item => {
-                  const title = item.title || item.product_title || '';
-                  if (title) {
-                    const titleLower = title.toLowerCase();
-                    
-                    // Tentar encontrar um match entre palavras-chave e produtos conhecidos
-                    for (const [keyword, productId] of Object.entries(soleterraProducts)) {
-                      if (titleLower.includes(keyword)) {
-                        item.mapped_id = productId;
-                        break;
-                      }
-                    }
-                  }
-                });
-              }
-            } catch (e) {
-              console.error('Erro ao mapear produtos específicos da Soleterra:', e);
-            }
-          }
-          
           items.forEach(item => {
             // Extrair ID no formato correto do Shopify
             let id = '';
-            
-            // 1. Priorizar ID mapeado para Soleterra
-            if (item.mapped_id) {
-              id = item.mapped_id;
-            }
-            // 2. Se for do Shopify, priorizar product_id ou variant_id
-            else if (isShopify) {
+            if (isShopify) {
+              // Se for do Shopify, priorizar product_id ou variant_id
               id = item.product_id || item.variant_id || item.id || '';
               // Se ainda não tiver ID e tiver handle, tentar extrair ID do handle
-              if (!id && item.handle && item.handle.match(/\d{8,12}$/)) {
-                id = item.handle.match(/\d{8,12}$/)[0];
+              if (!id && item.handle && item.handle.match(/\d+$/)) {
+                id = item.handle.match(/\d+$/)[0];
               }
             } else {
               id = item.id || item.product_id || item.variant_id || item.sku || '';
-            }
-            
-            // Verificar se temos um ID válido do Shopify
-            if (id && !isValidShopifyId(id) && isSoleterra) {
-              // Para Soleterra, usar um ID padrão de produto conhecido se não temos um ID válido
-              id = '9049684377843'; // ID padrão para Bolsa de crochê Penha duo
             }
             
             // Extrair quantidade
