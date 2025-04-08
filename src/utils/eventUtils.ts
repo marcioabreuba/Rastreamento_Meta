@@ -217,95 +217,35 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     currency: customData?.currency || 'BRL',
     value: customData?.value ? Math.round(Number(customData.value)) : 0,
     content_name: customData?.contentName || customData?.content_name || null,
-    content_category: (() => {
-      // Verificar se content_category já existe e está formatado como array
-      const contentCategory = customData?.contentCategory || customData?.content_category;
-      if (contentCategory) {
-        return Array.isArray(contentCategory) ? contentCategory : [contentCategory];
-      }
-      
-      // Verificar se content_ids existe para extrair categorias
-      if (Array.isArray(customData?.contentIds) && customData?.contentIds.length) {
-        // Extrair categoria do primeiro ID se possível (formato comum: categoria-id)
-        const firstId = customData.contentIds[0];
-        if (typeof firstId === 'string' && firstId.includes('-')) {
-          return [firstId.split('-')[0]];
-        }
-      }
-      
-      // Usar informações do evento para definir uma categoria padrão
-      const defaultCategory = 
+    content_category: customData?.contentCategory || customData?.content_category || 
+      (Array.isArray(customData?.contentIds) && customData?.contentIds.length ? 
+        [customData.contentIds[0].split('-')[0]] : 
+        // Usar informações do evento para definir uma categoria padrão
         eventName === 'ViewHome' ? 'homepage' : 
         eventName === 'ViewContent' ? 'product' : 
         eventName === 'ViewList' || eventName === 'ViewCategory' ? 'category' : 
         eventName === 'Search' || eventName === 'ViewSearchResults' ? 'search' : 
         eventName === 'AddToCart' ? 'cart' : 
-        eventName === 'Purchase' ? 'purchase' : 'general';
-      
-      return [defaultCategory];
-    })(),
-    content_ids: (() => {
-      // Garantir que content_ids seja sempre um array se existir
-      const contentIds = customData?.contentIds || customData?.content_ids;
-      if (!contentIds) return null;
-      return Array.isArray(contentIds) ? contentIds : [contentIds];
-    })(),
+        eventName === 'Purchase' ? 'purchase' : 'general'),
+    content_ids: customData?.contentIds || customData?.content_ids || null,
     content_type: customData?.contentType || customData?.content_type || "product_group",
     order_id: customData?.orderId || customData?.order_id || null,
     num_items: customData?.numItems || customData?.num_items || 1,
     search_string: customData?.searchString || customData?.search_string || null,
     status: customData?.status || null,
     predicted_ltv: customData?.predictedLtv || customData?.predicted_ltv || null,
-    contents: (() => {
-      // Se já tiver contents formatado corretamente, use-o
-      if (customData?.contents) {
-        if (Array.isArray(customData.contents)) {
-          // Verificar se cada item do array tem a estrutura correta {id, item_price, quantity}
-          return customData.contents.map(item => {
-            if (typeof item === 'object' && item !== null) {
-              return {
-                id: item.id || '',
-                item_price: typeof item.item_price === 'number' ? item.item_price : 
-                             (customData?.value ? Number(customData.value) : 0),
-                quantity: typeof item.quantity === 'number' ? item.quantity : 
-                          (customData?.numItems || customData?.num_items || 1)
-              };
-            }
-            // Se o item não for um objeto, converter para o formato correto
-            return {
-              id: String(item),
-              item_price: customData?.value ? Number(customData.value) : 0,
-              quantity: customData?.numItems || customData?.num_items || 1
-            };
-          });
-        }
-        // Se contents não for um array, converter para array
-        return [{
-          id: String(customData.contents),
-          item_price: customData?.value ? Number(customData.value) : 0,
-          quantity: customData?.numItems || customData?.num_items || 1
-        }];
-      }
-      
-      // Se não tiver contents, mas tiver content_ids, criar contents baseado neles
-      const contentIds = customData?.contentIds || customData?.content_ids;
-      if (contentIds) {
-        if (Array.isArray(contentIds)) {
-          return contentIds.map(id => ({
-            id: String(id),
-            item_price: customData?.value ? Number(customData.value) / contentIds.length : 0,
-            quantity: customData?.numItems || customData?.num_items || 1
-          }));
-        }
-        return [{
-          id: String(contentIds),
-          item_price: customData?.value ? Number(customData.value) : 0,
-          quantity: customData?.numItems || customData?.num_items || 1
-        }];
-      }
-      
-      return null;
-    })(),
+    contents: customData?.contents || 
+      (customData?.contentIds ? 
+        (Array.isArray(customData.contentIds) ? 
+          customData.contentIds.map(id => ({ 
+            id, 
+            quantity: customData?.numItems || customData?.num_items || 1 
+          })) : 
+          [{ 
+            id: customData.contentIds, 
+            quantity: customData?.numItems || customData?.num_items || 1 
+          }]
+        ) : null),
     app: 'meta-tracking',
     language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
     referrer: customData?.referrer || userData?.referrer || null,
