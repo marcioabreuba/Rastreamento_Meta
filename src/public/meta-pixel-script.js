@@ -495,12 +495,31 @@
             // 1.1 Verificar scripts do Shopify que contêm dados do carrinho
             if (content.includes('cart') && (content.includes('items') || content.includes('line_items'))) {
               try {
+                // Procurar padrões específicos do Shopify
+                // window.ShopifyAnalytics.meta.product
+                if (content.includes('ShopifyAnalytics')) {
+                  // Tentar extrair produtos pelo padrão ShopifyAnalytics
+                  const shopifyMetaMatch = content.match(/ShopifyAnalytics[\s\S]*?meta\s*=\s*(\{[\s\S]*?\});/);
+                  if (shopifyMetaMatch && shopifyMetaMatch[1]) {
+                    try {
+                      const shopifyMeta = JSON.parse(shopifyMetaMatch[1]);
+                      if (shopifyMeta.cart && shopifyMeta.cart.items && Array.isArray(shopifyMeta.cart.items)) {
+                        console.log('Encontrado dados do carrinho em ShopifyAnalytics');
+                        return processCartItems(shopifyMeta.cart.items, true);
+                      }
+                    } catch (e) {
+                      console.error('Erro ao processar meta do ShopifyAnalytics:', e);
+                    }
+                  }
+                }
+                
                 // Tentar encontrar e extrair objeto de carrinho JSON
                 const cartMatch = content.match(/\{[^{]*"items"[\s\S]*?\}/);
                 if (cartMatch) {
                   const cartData = JSON.parse(cartMatch[0]);
                   if (cartData.items && Array.isArray(cartData.items)) {
-                    return processCartItems(cartData.items);
+                    console.log('Encontrado dados do carrinho em script JSON');
+                    return processCartItems(cartData.items, true);
                   }
                 }
                 
@@ -509,7 +528,18 @@
                 if (windowCartMatch) {
                   const cartData = JSON.parse(windowCartMatch[1]);
                   if (cartData.items && Array.isArray(cartData.items)) {
-                    return processCartItems(cartData.items);
+                    console.log('Encontrado dados do carrinho em window.cart');
+                    return processCartItems(cartData.items, true);
+                  }
+                }
+                
+                // Padrão específico para Shopify
+                const shopifyCartMatch = content.match(/window\.__INITIAL_STATE__[\s\S]*?items":\s*(\[[\s\S]*?\])/);
+                if (shopifyCartMatch) {
+                  const cartItems = JSON.parse(shopifyCartMatch[1]);
+                  if (Array.isArray(cartItems) && cartItems.length > 0) {
+                    console.log('Encontrado dados do carrinho em __INITIAL_STATE__');
+                    return processCartItems(cartItems, true);
                   }
                 }
               } catch (e) {
@@ -518,7 +548,15 @@
             }
           }
           
-          // 2. Se ainda não encontrou, procurar elementos DOM de carrinho
+          // 2. Verificar se há objetos Shopify globais disponíveis
+          if (window.Shopify && window.Shopify.theme && window.Shopify.theme.cart) {
+            if (window.Shopify.theme.cart.items && Array.isArray(window.Shopify.theme.cart.items)) {
+              console.log('Encontrado dados do carrinho em window.Shopify.theme.cart');
+              return processCartItems(window.Shopify.theme.cart.items, true);
+            }
+          }
+          
+          // 3. Se ainda não encontrou, procurar elementos DOM de carrinho
           const cartItemElements = document.querySelectorAll('.cart-item, .cart__item, [data-cart-item], [id*="CartItem"], .line-item, [data-line-item]');
           if (cartItemElements.length > 0) {
             const items = [];
@@ -528,7 +566,11 @@
                               item.getAttribute('data-variant-id') || 
                               item.getAttribute('data-item-id') || 
                               item.getAttribute('id')?.match(/\d+/)?.[0];
-                              
+                
+                // Tentar obter o título do produto              
+                const titleEl = item.querySelector('.cart-item__name, .cart-item__title, .product-title, [data-cart-item-title], .item-title');
+                const productTitle = titleEl ? titleEl.textContent.trim() : '';
+                
                 const quantityEl = item.querySelector('[data-quantity], [name*="quantity"], .quantity-selector, .cart-item__quantity');
                 const quantity = quantityEl ? 
                   parseInt(quantityEl.value || quantityEl.textContent.trim()) : 1;
@@ -544,7 +586,8 @@
                   items.push({
                     id: itemId,
                     quantity: quantity || 1,
-                    price: price || 0
+                    price: price || 0,
+                    title: productTitle // Adicionar título do produto
                   });
                 }
               } catch (e) {
@@ -553,14 +596,32 @@
             });
             
             if (items.length > 0) {
+              console.log('Encontrado dados do carrinho nos elementos DOM');
               return processCartItems(items);
             }
           }
           
-          // 3. Se ainda não encontrou, tentar obter do HTML total da página
+          // 4. Se ainda não encontrou, tentar obter do HTML total da página
           const bodyHTML = document.body.innerHTML;
           
-          // 3.1 Procurar padrões comuns que indicam valores de carrinho
+          // 4.1 Tentar extrair JSON do carrinho incorporado na página
+          // Procurar por padrões como {"cart": {"items": [...]}}
+          const jsonMatches = bodyHTML.match(/\{[\s\S]*?"cart"[\s\S]*?"items"[\s\S]*?\}/g);
+          if (jsonMatches && jsonMatches.length > 0) {
+            for (const match of jsonMatches) {
+              try {
+                const cartData = JSON.parse(match);
+                if (cartData.cart && cartData.cart.items && Array.isArray(cartData.cart.items)) {
+                  console.log('Encontrado dados do carrinho em JSON embutido na página');
+                  return processCartItems(cartData.cart.items, true);
+                }
+              } catch (e) {
+                // Ignorar erros de parse
+              }
+            }
+          }
+          
+          // 4.2 Procurar padrões comuns que indicam valores de carrinho
           // Para Shopify e outros sistemas de carrinho populares
           const totalMatch = bodyHTML.match(/total[\s:"']*R?\$?\s*([\d.,]+)/i) || 
                             bodyHTML.match(/cart[\s-]*total[\s:"']*R?\$?\s*([\d.,]+)/i) ||
@@ -570,7 +631,7 @@
             cartValue = parseFloat(totalMatch[1].replace(',', '.'));
           }
           
-          // 3.2 Procurar padrões que indiquem quantidades
+          // 4.3 Procurar padrões que indiquem quantidades
           const itemCountMatch = bodyHTML.match(/(\d+)\s*ite(?:m|ns)/i) || 
                                bodyHTML.match(/cart[\s-]*count[^\d]*(\d+)/i);
           
@@ -578,21 +639,63 @@
             numItems = parseInt(itemCountMatch[1]);
           }
           
-          // 3.3 Procurar IDs de produtos no HTML (último recurso)
-          const productIdMatches = bodyHTML.match(/product_id[=:"']+(\d+)/ig) || 
-                                  bodyHTML.match(/variant_id[=:"']+(\d+)/ig);
+          // 4.4 Procurar IDs de produtos no HTML
+          const productDataMatches = [];
           
-          if (productIdMatches) {
-            const uniqueIds = new Set();
-            productIdMatches.forEach(match => {
-              const id = match.match(/\d+/)[0];
-              uniqueIds.add(id);
-            });
-            
-            cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
+          // Procurar por IDs e títulos de produtos
+          const productIdRegexes = [
+            /"product_id":\s*"?(\d+)"?/g,
+            /"variant_id":\s*"?(\d+)"?/g,
+            /"product":\s*\{"id":\s*"?(\d+)"?,\s*"title":\s*"([^"]+)"/g,
+            /"handle":\s*"([^"]+)"[\s\S]*?"id":\s*(\d+)/g
+          ];
+          
+          for (const regex of productIdRegexes) {
+            let match;
+            while ((match = regex.exec(bodyHTML)) !== null) {
+              let id, title;
+              
+              if (match.length >= 3) {
+                // Se temos ID e título
+                id = match[2] || match[1];
+                title = match[1] || '';
+              } else {
+                // Se temos apenas ID
+                id = match[1];
+                title = '';
+              }
+              
+              // Verificar se o ID já existe na lista
+              const existingIndex = productDataMatches.findIndex(item => item.id === id);
+              if (existingIndex === -1) {
+                productDataMatches.push({ id, title, quantity: 1 });
+              }
+            }
           }
           
-          // 3.4 Verificar categorias frequentes no HTML
+          if (productDataMatches.length > 0) {
+            cartItems = productDataMatches;
+          } else {
+            // 4.5 Como último recurso, procurar IDs numéricos no URL
+            const productIdMatches = Array.from(new Set(
+              (bodyHTML.match(/product_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/variant_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/productId[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/item_id[=:"']+(\d+)/ig) || [])
+            ));
+            
+            if (productIdMatches.length > 0) {
+              const uniqueIds = new Set();
+              productIdMatches.forEach(match => {
+                const id = match.match(/\d+/)[0];
+                uniqueIds.add(id);
+              });
+              
+              cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
+            }
+          }
+          
+          // 4.6 Verificar categorias frequentes no HTML
           const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
           knownCategories.forEach(category => {
             if (bodyHTML.toLowerCase().includes(category)) {
@@ -604,30 +707,60 @@
             items: cartItems,
             total: cartValue,
             quantity: numItems || cartItems.length,
-            categories: cartCategories.length > 0 ? cartCategories : ['cart']
+            categories: cartCategories.length > 0 ? cartCategories : ['bolsa'], // Categoria padrão melhorada
+            itemNames: cartItems.map(item => item.title).filter(title => title)
           };
         } catch (e) {
           console.error('Erro ao extrair dados do carrinho:', e);
-          return { items: [], total: 0, quantity: 0, categories: ['cart'] };
+          return { items: [], total: 0, quantity: 0, categories: ['cart'], itemNames: [] };
         }
       }
       
       // Função para processar os itens do carrinho
-      function processCartItems(items) {
+      function processCartItems(items, isShopify = false) {
         try {
           const processedItems = [];
           let total = 0;
           let quantity = 0;
           const categories = new Set();
+          const itemNames = [];
           
           items.forEach(item => {
-            const id = item.id || item.product_id || item.variant_id || item.sku || '';
+            // Extrair ID no formato correto do Shopify
+            let id = '';
+            if (isShopify) {
+              // Se for do Shopify, priorizar product_id ou variant_id
+              id = item.product_id || item.variant_id || item.id || '';
+              // Se ainda não tiver ID e tiver handle, tentar extrair ID do handle
+              if (!id && item.handle && item.handle.match(/\d+$/)) {
+                id = item.handle.match(/\d+$/)[0];
+              }
+            } else {
+              id = item.id || item.product_id || item.variant_id || item.sku || '';
+            }
+            
+            // Extrair quantidade
             const qty = item.quantity || 1;
+            
+            // Extrair preço
             let price = item.price || item.line_price || 0;
             
             // Se o preço for em centavos (comum em APIs), converter para reais
             if (price > 1000 && !item.price_includes_taxes) {
               price = price / 100;
+            }
+            
+            // Extrair título do produto
+            let productTitle = '';
+            if (item.title || item.product_title) {
+              productTitle = item.title || item.product_title;
+            } else if (item.product_title || item.name) {
+              productTitle = item.product_title || item.name;
+            }
+            
+            // Adicionar o título à lista se existir
+            if (productTitle) {
+              itemNames.push(productTitle);
             }
             
             // Extrair categoria do produto, se disponível
@@ -645,12 +778,12 @@
             }
             
             // Se o título do produto contiver uma categoria conhecida, adicioná-la
-            if (item.title || item.product_title) {
-              const title = (item.title || item.product_title).toLowerCase();
-              const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+            if (productTitle) {
+              const titleLower = productTitle.toLowerCase();
+              const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa', 'bag', 'cesto'];
               for (const cat of knownCategories) {
-                if (title.includes(cat)) {
-                  categories.add(cat);
+                if (titleLower.includes(cat)) {
+                  categories.add(cat === 'bag' ? 'bolsa' : cat);
                   break;
                 }
               }
@@ -668,15 +801,25 @@
             }
           });
           
-          if (categories.size === 0) {
-            categories.add('cart');
+          // Determinar a categoria mais apropriada
+          // Preferência: bolsa > palha > crochê > couro > festa > cart
+          let primaryCategory = 'bolsa'; // Usar 'bolsa' como padrão para a Soleterra
+          if (categories.size > 0) {
+            const categoryPriority = ['bolsa', 'palha', 'croche', 'crochê', 'couro', 'festa', 'cart'];
+            for (const cat of categoryPriority) {
+              if (categories.has(cat)) {
+                primaryCategory = cat;
+                break;
+              }
+            }
           }
           
           return {
             items: processedItems,
             total,
             quantity,
-            categories: Array.from(categories)
+            categories: [primaryCategory], // Usar apenas a categoria principal
+            itemNames: itemNames.length > 0 ? itemNames : null
           };
         } catch (e) {
           console.error('Erro ao processar itens do carrinho:', e);
@@ -684,7 +827,8 @@
             items: [],
             total: 0,
             quantity: 0,
-            categories: ['cart']
+            categories: ['bolsa'], // Manter bolsa como padrão
+            itemNames: []
           };
         }
       }
@@ -716,7 +860,7 @@
         type: 'cart',
         eventName: 'ViewCart',
         data: {
-          contentName: 'Shopping Cart',
+          contentName: cartData.itemNames || 'Shopping Cart',
           contentType: 'cart',
           contentCategory: cartData.categories,
           contentIds: contentIds,
