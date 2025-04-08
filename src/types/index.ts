@@ -98,6 +98,15 @@ export interface CustomData {
   contents?: any[];
   sourceUrl?: string;
   referrer?: string;
+  // Também permitir versões com underscore
+  content_name?: string;
+  content_category?: string;
+  content_ids?: string[] | string;
+  content_type?: string;
+  order_id?: string;
+  num_items?: number;
+  search_string?: string;
+  predicted_ltv?: number;
   // Novos campos para dados de aplicativo
   advertiserTrackingEnabled?: boolean;
   applicationTrackingEnabled?: boolean;
@@ -114,7 +123,7 @@ export interface NormalizedCustomData {
   currency: string;
   value: number;
   content_name: string | null;
-  content_category: string | null;
+  content_category: string | string[] | null;
   content_ids: string | string[] | null;
   content_type: string | null;
   order_id: string | null;

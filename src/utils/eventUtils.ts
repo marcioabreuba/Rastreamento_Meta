@@ -85,8 +85,8 @@ export const hashData = (data: string | undefined | null): string | null => {
  * @returns {NormalizedEvent} Evento normalizado
  */
 export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
-  const { eventName, userData, customData, isAppEvent } = eventData;
-  
+  const { eventName, userData = {}, customData = {} } = eventData;
+
   // Verificar se o evento é válido
   if (!eventName || !EVENT_MAPPING[eventName]) {
     throw new Error(`Evento inválido: ${eventName}`);
@@ -94,6 +94,9 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   
   // Mapear para o evento do Facebook
   const fbEventName = EVENT_MAPPING[eventName];
+  
+  // Determinar se é um evento de aplicativo
+  const isAppEvent = eventData.isAppEvent || false;
   
   // Obter IP do cliente
   const clientIP = userData?.ip || null;
@@ -104,12 +107,28 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     ipToUse = convertIPv4ToIPv6(ipToUse);
   }
   
-  // Obter informações de geolocalização se o IP estiver disponível
+  // Tentar obter informações de geolocalização baseadas no IP
   let geoData: GeoData | null = null;
   if (ipToUse) {
-    geoData = getGeoIPInfo(ipToUse);
+    try {
+      geoData = getGeoIPInfo(ipToUse);
+    } catch (error) {
+      console.error('Erro ao obter informações de geolocalização:', error);
+    }
   }
-  
+
+  // Mapeamento para transformar nomes camelCase em nomes com underscore
+  const paramMapping: Record<string, string> = {
+    'contentCategory': 'content_category',
+    'contentIds': 'content_ids',
+    'contentName': 'content_name',
+    'contentType': 'content_type',
+    'numItems': 'num_items',
+    'orderId': 'order_id',
+    'searchString': 'search_string',
+    'predictedLtv': 'predicted_ltv'
+  };
+
   // Normalizar dados do usuário
   const normalizedUserData: NormalizedUserData = {
     em: userData?.email ? hashData(userData.email.toLowerCase().trim()) : null,
@@ -160,16 +179,25 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const normalizedCustomData: NormalizedCustomData = {
     currency: customData?.currency || 'BRL',
     value: customData?.value || 0,
-    content_name: customData?.contentName || null,
-    content_category: customData?.contentCategory || null,
-    content_ids: customData?.contentIds || null,
-    content_type: customData?.contentType || null,
-    order_id: customData?.orderId || null,
-    num_items: customData?.numItems || null,
-    search_string: customData?.searchString || null,
+    content_name: customData?.contentName || customData?.content_name || null,
+    content_category: customData?.contentCategory || customData?.content_category || 
+      (Array.isArray(customData?.contentIds) && customData?.contentIds.length ? 
+        [customData.contentIds[0].split('-')[0]] : null),
+    content_ids: customData?.contentIds || customData?.content_ids || null,
+    content_type: customData?.contentType || customData?.content_type || "product_group",
+    order_id: customData?.orderId || customData?.order_id || null,
+    num_items: customData?.numItems || customData?.num_items || 1,
+    search_string: customData?.searchString || customData?.search_string || null,
     status: customData?.status || null,
-    predicted_ltv: customData?.predictedLtv || null,
-    contents: customData?.contents || null,
+    predicted_ltv: customData?.predictedLtv || customData?.predicted_ltv || null,
+    contents: customData?.contents || (customData?.contentIds ? 
+      [{ 
+        id: typeof customData.contentIds === 'string' ? 
+          customData.contentIds : 
+          (Array.isArray(customData.contentIds) && customData.contentIds.length > 0 ? 
+            customData.contentIds[0] : ''),
+        quantity: customData?.numItems || customData?.num_items || 1 
+      }] : null),
     app: 'meta-tracking',
     language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
     referrer: customData?.referrer || userData?.referrer || null,

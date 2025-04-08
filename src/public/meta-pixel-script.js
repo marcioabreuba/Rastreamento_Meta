@@ -397,10 +397,23 @@
         referrer: document.referrer
       };
       
-      // Combinar com os dados personalizados
+      // Garantir que todos os parâmetros obrigatórios estão presentes
+      const standardizedCustomData = {
+        content_category: customData.contentCategory || customData.content_category || (Array.isArray(customData.contentIds) && customData.contentIds.length ? [customData.contentIds[0].split('-')[0]] : null),
+        content_ids: customData.contentIds || customData.content_ids || null,
+        content_name: customData.contentName || customData.content_name || null,
+        content_type: customData.contentType || customData.content_type || "product_group",
+        contents: customData.contents || (customData.contentIds ? [{ id: Array.isArray(customData.contentIds) ? customData.contentIds[0] : customData.contentIds, quantity: customData.numItems || customData.num_items || 1 }] : null),
+        currency: customData.currency || 'BRL',
+        num_items: customData.numItems || customData.num_items || 1,
+        value: customData.value || 0,
+        ...extraParams
+      };
+      
+      // Combinar com outros dados personalizados
       const enhancedCustomData = {
         ...customData,
-        ...extraParams
+        ...standardizedCustomData
       };
       
       // Gerar event ID único para este evento
@@ -488,13 +501,41 @@
         baseParams.append('ud[zp]', userData.zip);
       }
       
-      // Adicionar os custom data params
+      // Definir mapeamento de nomes para garantir formato correto (camelCase para snake_case)
+      const paramMapping = {
+        'contentCategory': 'content_category',
+        'contentIds': 'content_ids',
+        'contentName': 'content_name',
+        'contentType': 'content_type',
+        'numItems': 'num_items',
+        // Manter também os nomes com underscore para não duplicar
+        'content_category': 'content_category',
+        'content_ids': 'content_ids',
+        'content_name': 'content_name',
+        'content_type': 'content_type',
+        'contents': 'contents',
+        'num_items': 'num_items'
+      };
+      
+      // Adicionar os custom data params com nomes padronizados
       Object.entries(enhancedCustomData).forEach(([key, value]) => {
         // Não adicionar dados geográficos do usuário como custom data params
         // para evitar duplicidade, pois já foram adicionados como ud[] acima
         if (key !== 'user_city' && key !== 'user_state' && 
             key !== 'user_country' && key !== 'user_zip') {
-          baseParams.append(`cd[${key}]`, value);
+          
+          // Usar o nome mapeado se existir, senão usar o nome original
+          const mappedKey = paramMapping[key] || key;
+          
+          // Não adicionar parâmetros nulos
+          if (value !== null && value !== undefined) {
+            // Para arrays e objetos, converter para JSON
+            if (typeof value === 'object') {
+              baseParams.append(`cd[${mappedKey}]`, JSON.stringify(value));
+            } else {
+              baseParams.append(`cd[${mappedKey}]`, value);
+            }
+          }
         }
       });
       
@@ -614,6 +655,32 @@
   function init() {
     // Inicializar o pixel do Facebook
     initFacebookPixel();
+    
+    // Função para testar o envio completo de todos os parâmetros
+    function testCompleteEvent() {
+      // Apenas executar em desenvolvimento
+      if (window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')) {
+        console.log('Enviando evento de teste com todos os parâmetros para verificar consistência');
+        
+        // Exemplo de produto completo com todos os parâmetros necessários
+        const completeProductData = {
+          contentName: 'Bolsa de palha trama',
+          contentType: 'product_group',
+          contentCategory: ['bolsa'],
+          contentIds: ['9068696764659'],
+          contents: [{ id: '9068696764659', quantity: 1 }],
+          numItems: 1, 
+          currency: 'BRL',
+          value: 289
+        };
+        
+        // Enviar evento completo para testar
+        sendEvent('ViewContent', completeProductData);
+      }
+    }
+    
+    // Descomentar a linha abaixo apenas para teste
+    // testCompleteEvent();
     
     // Verificar se precisamos passar parâmetros para links externos de checkout
     function addCheckoutParams(e) {
