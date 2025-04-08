@@ -228,12 +228,71 @@
     }
     
     if (path.includes('/collection') || path.includes('/colecao') || path.includes('/categoria')) {
+      // Extrair o nome da coleção da URL
+      let categoryName = 'category';
+      
+      // Tentar obter o nome da coleção da URL
+      const pathParts = path.split('/');
+      const lastSegment = pathParts[pathParts.length - 1];
+      
+      if (lastSegment && lastSegment !== 'collection' && lastSegment !== 'colecao' && lastSegment !== 'categoria') {
+        // Converter formato da URL para um nome legível (ex: "mens-shoes" -> "Mens Shoes")
+        categoryName = lastSegment
+          .replace(/-/g, ' ')
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+      } else if (document.querySelector('h1')) {
+        // Se não conseguir extrair da URL, tentar pegar do título da página
+        const h1Text = document.querySelector('h1').textContent.trim();
+        
+        // Padrão comum em lojas: "Coleção: Nome da Coleção"
+        if (h1Text.includes('Coleção:')) {
+          categoryName = h1Text.split('Coleção:')[1].trim();
+        } else if (h1Text.includes('Coleção')) {
+          categoryName = h1Text.split('Coleção')[1].trim();
+        } else if (h1Text.includes(':')) {
+          categoryName = h1Text.split(':')[1].trim();
+        } else {
+          categoryName = h1Text;
+        }
+      } else if (document.title) {
+        // Ou do título do documento
+        categoryName = document.title.split('|')[0].trim();
+        
+        // Remover prefixos comuns: "Coleção: ", "Categoria: ", etc.
+        if (categoryName.includes('Coleção:')) {
+          categoryName = categoryName.split('Coleção:')[1].trim();
+        } else if (categoryName.includes('Coleção')) {
+          categoryName = categoryName.split('Coleção')[1].trim();
+        }
+      }
+      
+      // Se estamos na página específica da loja Soleterra, verificar se é uma das coleções conhecidas
+      if (hostname.includes('soleterra.com.br')) {
+        // Coleções conhecidas da Soleterra
+        const knownCollections = ['Palha', 'Crochê', 'Couro', 'Festa'];
+        
+        // Verificar se o último segmento do path corresponde a uma coleção conhecida
+        if (knownCollections.includes(lastSegment)) {
+          categoryName = lastSegment;
+        }
+        
+        // Verificar se há um H1 ou título que contenha uma das coleções conhecidas
+        for (const collection of knownCollections) {
+          if (document.body.innerHTML.includes(`Coleção: ${collection}`)) {
+            categoryName = collection;
+            break;
+          }
+        }
+      }
+      
       return {
         type: 'collection',
         eventName: 'ViewCategory',
         data: {
           contentName: 'Category Page',
-          contentType: 'category'
+          contentType: 'category',
+          contentCategory: categoryName
         }
       };
     }

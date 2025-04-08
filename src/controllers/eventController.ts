@@ -59,11 +59,42 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       userDataWithIP.fbp = validateFbp(userDataWithIP.fbp);
     }
     
+    // Melhorar a detecção de categoria para eventos de visualização de categoria
+    const customDataFinal = { ...customData };
+    
+    // Para eventos de categoria, verificar se há URL que contenha o nome da categoria
+    if (eventName === 'ViewCategory' && customDataFinal.sourceUrl) {
+      try {
+        const url = new URL(customDataFinal.sourceUrl.toString());
+        // Extrair o último segmento do caminho da URL
+        const pathParts = url.pathname.split('/');
+        const lastSegment = pathParts[pathParts.length - 1];
+        
+        // Se o segmento não for vazio e não for genérico
+        if (lastSegment && !['collection', 'colecao', 'categoria', 'collections'].includes(lastSegment)) {
+          // Formatar o nome da categoria para ser mais legível
+          const categoryName = lastSegment
+            .replace(/-/g, ' ')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, l => l.toUpperCase());
+          
+          // Definir como content_category apenas se não existir
+          if (!customDataFinal.contentCategory && !customDataFinal.content_category) {
+            customDataFinal.content_category = categoryName;
+            logger.debug(`Categoria detectada da URL: ${categoryName}`);
+          }
+        }
+      } catch (urlError) {
+        // Ignorar erros de parsing de URL
+        logger.debug(`Erro ao processar URL para detecção de categoria: ${urlError.message}`);
+      }
+    }
+    
     // Normalizar o evento com todos os parâmetros
     const normalizedEvent = normalizeEvent({
       eventName,
       userData: userDataWithIP,
-      customData,
+      customData: customDataFinal,
       dataProcessingOptions,
       dataProcessingOptionsCountry,
       dataProcessingOptionsState,
