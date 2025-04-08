@@ -208,11 +208,157 @@
       };
     }
     
-    if (path.includes('/product') || path.includes('/produtos')) {
+    if (path.includes('/product') || path.includes('/produto')) {
+      // Extrair informações do produto
+      let productId = null;
+      let productTitle = '';
+      let productCategories = [];
+      
+      // 1. Tentar extrair ID do produto da URL
+      // URLs típicas: /products/product-name-123456789
+      const pathParts = path.split('/');
+      const lastSegment = pathParts[pathParts.length - 1];
+      const idMatch = lastSegment.match(/\d+$/);
+      if (idMatch) {
+        productId = idMatch[0];
+      }
+      
+      // 2. Tentar obter o ID do produto via metatags ou JSON-LD
+      const jsonLDElements = document.querySelectorAll('script[type="application/ld+json"]');
+      jsonLDElements.forEach(script => {
+        try {
+          const data = JSON.parse(script.textContent);
+          
+          // Para JSON-LD do tipo Product
+          if (data['@type'] === 'Product' || (Array.isArray(data) && data.some(item => item['@type'] === 'Product'))) {
+            const product = data['@type'] === 'Product' ? data : data.find(item => item['@type'] === 'Product');
+            
+            if (product) {
+              // Obter ID do produto
+              if (product.productID) {
+                productId = product.productID;
+              } else if (product.sku) {
+                productId = product.sku;
+              }
+              
+              // Obter título do produto
+              if (product.name) {
+                productTitle = product.name;
+              }
+              
+              // Obter categorias do produto
+              if (product.category) {
+                if (typeof product.category === 'string') {
+                  productCategories = product.category.split('/').filter(c => c.trim() !== '');
+                } else if (Array.isArray(product.category)) {
+                  productCategories = product.category;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao processar JSON-LD:', e);
+        }
+      });
+      
+      // 3. Tentar obter ID e categoria de elementos DOM comuns
+      if (!productId) {
+        // Procurar por input hidden ou data attributes com ID do produto
+        const idElement = document.querySelector('input[name="product_id"], [data-product-id]');
+        if (idElement) {
+          productId = idElement.value || idElement.getAttribute('data-product-id');
+        }
+      }
+      
+      // 4. Tentar obter título do produto do H1 ou título da página
+      if (!productTitle) {
+        const h1 = document.querySelector('h1');
+        if (h1) {
+          productTitle = h1.textContent.trim();
+        } else if (document.title) {
+          productTitle = document.title.split('|')[0].trim();
+        }
+      }
+      
+      // 5. Tentar obter categorias do breadcrumb
+      if (productCategories.length === 0) {
+        const breadcrumbs = document.querySelectorAll('.breadcrumb a, .breadcrumbs a, .breadcrumb-item a, nav[aria-label="breadcrumb"] a');
+        if (breadcrumbs.length > 0) {
+          // Geralmente o último item é o produto atual, então pegamos os anteriores
+          for (let i = 0; i < breadcrumbs.length - 1; i++) {
+            const category = breadcrumbs[i].textContent.trim();
+            if (category && !['Home', 'Início', 'Principal'].includes(category)) {
+              productCategories.push(category.toLowerCase());
+            }
+          }
+        }
+      }
+      
+      // 6. Tentar obter categoria a partir do último caminho da URL referenciadora
+      if (productCategories.length === 0 && document.referrer) {
+        try {
+          const referrerUrl = new URL(document.referrer);
+          const referrerPath = referrerUrl.pathname;
+          if (referrerPath.includes('/collection') || referrerPath.includes('/categoria') || referrerPath.includes('/collections')) {
+            const referrerParts = referrerPath.split('/');
+            const lastReferrerSegment = referrerParts[referrerParts.length - 1];
+            if (lastReferrerSegment && !['collection', 'collections', 'categoria'].includes(lastReferrerSegment)) {
+              const categoryName = lastReferrerSegment
+                .replace(/-/g, ' ')
+                .replace(/_/g, ' ')
+                .toLowerCase();
+              productCategories.push(categoryName);
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao processar URL de referência:', e);
+        }
+      }
+      
+      // 7. Solução específica para site Soleterra
+      if (hostname.includes('soleterra.com.br')) {
+        // Coleções conhecidas da Soleterra
+        const knownCollections = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+        
+        // Verificar se o produto está em uma categoria conhecida
+        if (productTitle) {
+          const productTitleLower = productTitle.toLowerCase();
+          for (const collection of knownCollections) {
+            if (productTitleLower.includes(collection)) {
+              // Adicionar a categoria, mas apenas se ainda não existir
+              if (!productCategories.includes(collection)) {
+                productCategories.push(collection);
+              }
+              break;
+            }
+          }
+        }
+        
+        // Tentar extrair o ID do produto usando a convenção da Soleterra
+        if (!productId && lastSegment) {
+          // Verificar se há algum número no final do último segmento
+          const matches = lastSegment.match(/\d+/g);
+          if (matches && matches.length > 0) {
+            productId = matches[matches.length - 1];
+          }
+        }
+      }
+      
+      // Garantir que temos pelo menos uma categoria padrão
+      if (productCategories.length === 0) {
+        productCategories.push('product');
+      }
+      
       return {
         type: 'product',
         eventName: 'ViewContent',
-        data: getProductDetails()
+        data: {
+          contentName: productTitle || document.title.split('|')[0].trim(),
+          contentType: 'product',
+          contentCategory: productCategories,
+          contentIds: productId ? [productId] : null,
+          value: extractPrice() || 0
+        }
       };
     }
     
@@ -847,5 +993,62 @@
     init();
   } else {
     window.addEventListener('load', init);
+  }
+
+  /**
+   * Extrai o preço do produto da página
+   * @returns {number} Preço do produto ou 0 se não encontrado
+   */
+  function extractPrice() {
+    try {
+      // 1. Tentar obter do JSON-LD
+      const jsonLDElements = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of jsonLDElements) {
+        try {
+          const data = JSON.parse(script.textContent);
+          
+          // Para JSON-LD do tipo Product
+          if (data['@type'] === 'Product' || (Array.isArray(data) && data.some(item => item['@type'] === 'Product'))) {
+            const product = data['@type'] === 'Product' ? data : data.find(item => item['@type'] === 'Product');
+            
+            if (product && product.offers) {
+              const offers = Array.isArray(product.offers) ? product.offers[0] : product.offers;
+              if (offers && offers.price) {
+                return parseFloat(offers.price);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao processar JSON-LD para preço:', e);
+        }
+      }
+      
+      // 2. Procurar elementos com atributos microdata
+      const priceElements = document.querySelectorAll('[itemprop="price"], [data-product-price], .product-price, .price, .product__price');
+      for (const element of priceElements) {
+        const priceText = element.getAttribute('content') || element.textContent;
+        if (priceText) {
+          // Extrair apenas os números e ponto decimal do texto
+          const priceMatch = priceText.replace(/[^\d.,]/g, '').replace(',', '.');
+          const price = parseFloat(priceMatch);
+          if (!isNaN(price) && price > 0) {
+            return price;
+          }
+        }
+      }
+      
+      // 3. Buscar padrões comuns de preço no HTML
+      const priceRegex = /R\$\s*([\d.,]+)/;
+      const bodyHTML = document.body.innerHTML;
+      const priceMatch = bodyHTML.match(priceRegex);
+      if (priceMatch && priceMatch[1]) {
+        return parseFloat(priceMatch[1].replace(',', '.'));
+      }
+      
+      return 0;
+    } catch (error) {
+      console.error('Erro ao extrair preço:', error);
+      return 0;
+    }
   }
 })(); 

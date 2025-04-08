@@ -128,6 +128,25 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
     };
 
+    // Garantir formatação correta para campos específicos no custom_data
+    // O Facebook espera certos campos em formatos específicos
+    
+    // Preservar arrays para campos que aceitam arrays
+    const arrayFields = ['content_ids', 'content_category', 'contents'];
+    arrayFields.forEach(field => {
+      if (field in customDataCopy && customDataCopy[field] !== null) {
+        // Se já for um array, manter como está
+        if (Array.isArray(customDataCopy[field])) {
+          // Ok, já é um array
+        } 
+        // Se for uma string única que deve ser um array
+        else if (typeof customDataCopy[field] === 'string' && 
+                 (field === 'content_ids' || field === 'content_category')) {
+          customDataCopy[field] = [customDataCopy[field]];
+        }
+      }
+    });
+
     // Adicionando o nome do evento original como um campo personalizado
     customDataCopy.original_event_name = eventName;
     

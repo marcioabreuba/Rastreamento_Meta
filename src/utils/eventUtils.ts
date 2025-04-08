@@ -234,14 +234,18 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     search_string: customData?.searchString || customData?.search_string || null,
     status: customData?.status || null,
     predicted_ltv: customData?.predictedLtv || customData?.predicted_ltv || null,
-    contents: customData?.contents || (customData?.contentIds ? 
-      [{ 
-        id: typeof customData.contentIds === 'string' ? 
-          customData.contentIds : 
-          (Array.isArray(customData.contentIds) && customData.contentIds.length > 0 ? 
-            customData.contentIds[0] : ''),
-        quantity: customData?.numItems || customData?.num_items || 1 
-      }] : null),
+    contents: customData?.contents || 
+      (customData?.contentIds ? 
+        (Array.isArray(customData.contentIds) ? 
+          customData.contentIds.map(id => ({ 
+            id, 
+            quantity: customData?.numItems || customData?.num_items || 1 
+          })) : 
+          [{ 
+            id: customData.contentIds, 
+            quantity: customData?.numItems || customData?.num_items || 1 
+          }]
+        ) : null),
     app: 'meta-tracking',
     language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
     referrer: customData?.referrer || userData?.referrer || null,
