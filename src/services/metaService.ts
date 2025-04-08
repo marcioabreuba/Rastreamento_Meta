@@ -132,7 +132,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     // O Facebook espera certos campos em formatos específicos
     
     // Preservar arrays para campos que aceitam arrays
-    const arrayFields = ['content_ids', 'content_category', 'contents'];
+    const arrayFields = ['content_ids', 'contents'];
     arrayFields.forEach(field => {
       if (field in customDataCopy && customDataCopy[field] !== null) {
         // Se já for um array, manter como está
@@ -140,12 +140,17 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
           // Ok, já é um array
         } 
         // Se for uma string única que deve ser um array
-        else if (typeof customDataCopy[field] === 'string' && 
-                 (field === 'content_ids' || field === 'content_category')) {
+        else if (typeof customDataCopy[field] === 'string' && field === 'content_ids') {
           customDataCopy[field] = [customDataCopy[field]];
         }
       }
     });
+
+    // Converter content_category de array para string para a API do Facebook Conversions
+    if (customDataCopy.content_category && Array.isArray(customDataCopy.content_category)) {
+      // Se for um array, juntar os elementos com vírgula
+      customDataCopy.content_category = customDataCopy.content_category.join(',');
+    }
 
     // Adicionando o nome do evento original como um campo personalizado
     customDataCopy.original_event_name = eventName;
