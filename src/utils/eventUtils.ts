@@ -178,7 +178,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   // Normalizar dados personalizados
   const normalizedCustomData: NormalizedCustomData = {
     currency: customData?.currency || 'BRL',
-    value: customData?.value || 0,
+    value: customData?.value ? Math.round(Number(customData.value)) : 0,
     content_name: customData?.contentName || customData?.content_name || null,
     content_category: customData?.contentCategory || customData?.content_category || 
       (Array.isArray(customData?.contentIds) && customData?.contentIds.length ? 

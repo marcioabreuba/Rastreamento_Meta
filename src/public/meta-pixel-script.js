@@ -406,7 +406,7 @@
         contents: customData.contents || (customData.contentIds ? [{ id: Array.isArray(customData.contentIds) ? customData.contentIds[0] : customData.contentIds, quantity: customData.numItems || customData.num_items || 1 }] : null),
         currency: customData.currency || 'BRL',
         num_items: customData.numItems || customData.num_items || 1,
-        value: customData.value || 0,
+        value: customData.value ? Math.round(Number(customData.value)) : 0,
         ...extraParams
       };
       
