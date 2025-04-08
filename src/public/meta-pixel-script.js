@@ -239,6 +239,16 @@
                 productId = product.productID;
               } else if (product.sku) {
                 productId = product.sku;
+              } else if (product.mpn) {
+                productId = product.mpn;
+              } else if (product.gtin13) {
+                productId = product.gtin13;
+              } else if (product.gtin14) {
+                productId = product.gtin14;
+              } else if (product.gtin8) {
+                productId = product.gtin8;
+              } else if (product.gtin) {
+                productId = product.gtin;
               }
               
               // Obter título do produto
@@ -264,9 +274,38 @@
       // 3. Tentar obter ID e categoria de elementos DOM comuns
       if (!productId) {
         // Procurar por input hidden ou data attributes com ID do produto
-        const idElement = document.querySelector('input[name="product_id"], [data-product-id]');
+        const idElement = document.querySelector('input[name="product_id"], [data-product-id], #product-id, [data-product-handle], [data-variant-id], .product-single__variants option[selected]');
         if (idElement) {
-          productId = idElement.value || idElement.getAttribute('data-product-id');
+          productId = idElement.value || idElement.getAttribute('data-product-id') || 
+                    idElement.getAttribute('data-variant-id') || idElement.getAttribute('data-product-handle') ||
+                    idElement.id === 'product-id' ? idElement.textContent.trim() : null;
+        }
+
+        // Procurar por variantes do Shopify que frequentemente contêm o ID do produto
+        const variantElement = document.querySelector('[name="id"], [data-variant-id], [data-product-variant-id], [data-product-id], select.product-form__variants option[selected]');
+        if (variantElement) {
+          const variantId = variantElement.value || variantElement.getAttribute('data-variant-id') || 
+                          variantElement.getAttribute('data-product-variant-id') || 
+                          variantElement.getAttribute('data-product-id');
+          if (variantId) {
+            productId = variantId;
+          }
+        }
+
+        // Verificar IDs específicos de Shopify em URLs
+        const shopifyProductRegex = /\/products\/[^\/]+\/(\d+)/;
+        const shopifyMatch = window.location.href.match(shopifyProductRegex);
+        if (shopifyMatch && shopifyMatch[1]) {
+          productId = shopifyMatch[1];
+        }
+        
+        // Verificar elementos de formulário de adição ao carrinho que geralmente têm o ID do produto
+        const addToCartForm = document.querySelector('form[action*="/cart/add"]');
+        if (addToCartForm) {
+          const idInput = addToCartForm.querySelector('input[name="id"]');
+          if (idInput && idInput.value) {
+            productId = idInput.value;
+          }
         }
       }
       
@@ -342,22 +381,110 @@
             productId = matches[matches.length - 1];
           }
         }
+
+        // Para Soleterra, procurar ID especificamente nas meta tags
+        if (!productId) {
+          const metaTags = document.querySelectorAll('meta');
+          metaTags.forEach(tag => {
+            const property = tag.getAttribute('property') || tag.getAttribute('name');
+            const content = tag.getAttribute('content');
+            
+            if ((property === 'product:retailer_item_id' || 
+                property === 'og:sku' || 
+                property === 'product:sku') && content) {
+              productId = content;
+            }
+          });
+        }
+        
+        // Verificar dados específicos da Soleterra inseridos no HTML
+        if (!productId) {
+          const soleId = document.querySelector('[data-soleterra-product-id]');
+          if (soleId) {
+            productId = soleId.getAttribute('data-soleterra-product-id');
+          }
+        }
+      }
+      
+      // 8. Procurar nas tags meta do OpenGraph (og:)
+      if (!productId) {
+        const ogProductIdMeta = document.querySelector('meta[property="og:product_id"], meta[property="product:id"], meta[property="product:sku"], meta[property="og:sku"]');
+        if (ogProductIdMeta) {
+          productId = ogProductIdMeta.getAttribute('content');
+        }
+      }
+      
+      // 9. Procurar tags HTML específicas que contêm identificadores de produtos
+      if (!productId) {
+        // Verificar data-product-id em vários elementos
+        const productElements = document.querySelectorAll('[data-product-id], [data-product], #product-id, [data-item-id], [data-pid]');
+        for (const element of productElements) {
+          const id = element.getAttribute('data-product-id') || 
+                    element.getAttribute('data-product') || 
+                    element.getAttribute('data-item-id') || 
+                    element.getAttribute('data-pid') || 
+                    element.id === 'product-id' ? element.textContent.trim() : null;
+          if (id && /^\d+$/.test(id)) {
+            productId = id;
+            break;
+          }
+        }
+      }
+      
+      // 10. Extrair ID de links de compartilhamento ou canônicos
+      if (!productId) {
+        const shareLinks = document.querySelectorAll('a[href*="share"], link[rel="canonical"]');
+        for (const link of shareLinks) {
+          const href = link.getAttribute('href');
+          if (href) {
+            const matches = href.match(/\d{5,}/); // IDs geralmente têm pelo menos 5 dígitos
+            if (matches && matches[0]) {
+              productId = matches[0];
+              break;
+            }
+          }
+        }
+      }
+      
+      // 11. Como último recurso, usar o último segmento da URL como ID se for numérico
+      if (!productId && /^\d+$/.test(lastSegment)) {
+        productId = lastSegment;
       }
       
       // Garantir que temos pelo menos uma categoria padrão
       if (productCategories.length === 0) {
-        productCategories.push('product');
+        // Verificar pelo nome do produto
+        if (productTitle) {
+          const productTitleLower = productTitle.toLowerCase();
+          if (productTitleLower.includes('bolsa')) {
+            productCategories.push('bolsa');
+          } else if (productTitleLower.includes('colar')) {
+            productCategories.push('acessório');
+          } else {
+            productCategories.push('product');
+          }
+        } else {
+          productCategories.push('product');
+        }
       }
+
+      // Extrair o preço do produto
+      const price = extractPrice() || 0;
       
       return {
         type: 'product',
         eventName: 'ViewContent',
         data: {
           contentName: productTitle || document.title.split('|')[0].trim(),
-          contentType: 'product',
+          contentType: 'product_group',
           contentCategory: productCategories,
           contentIds: productId ? [productId] : null,
-          value: extractPrice() || 0
+          contents: productId ? [{ 
+            id: productId, 
+            item_price: price,
+            quantity: 1 
+          }] : null,
+          value: price
         }
       };
     }
@@ -895,104 +1022,188 @@
     // Inicializar o pixel do Facebook
     initFacebookPixel();
     
-    // Função para testar o envio completo de todos os parâmetros
-    function testCompleteEvent() {
-      // Apenas executar em desenvolvimento
-      if (window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')) {
-        console.log('Enviando evento de teste com todos os parâmetros para verificar consistência');
-        
-        // Exemplo de produto completo com todos os parâmetros necessários
-        const completeProductData = {
-          contentName: 'Bolsa de palha trama',
-          contentType: 'product_group',
-          contentCategory: ['bolsa'],
-          contentIds: ['9068696764659'],
-          contents: [{ id: '9068696764659', quantity: 1 }],
-          numItems: 1, 
-          currency: 'BRL',
-          value: 289
-        };
-        
-        // Enviar evento completo para testar
-        sendEvent('ViewContent', completeProductData);
-      }
-    }
-    
-    // Descomentar a linha abaixo apenas para teste
-    // testCompleteEvent();
-    
-    // Verificar se precisamos passar parâmetros para links externos de checkout
-    function addCheckoutParams(e) {
-      const link = e.currentTarget;
-      if (!link) return;
-      
-      const href = link.getAttribute('href');
-      if (!href) return;
-      
-      // Verificar se o link é para o domínio de checkout
-      if (href.includes('seguro.soleterra.com.br') || 
-          href.includes('checkout.') || 
-          href.includes('/checkout')) {
-        
-        // Obter os parâmetros que vamos passar
-        const external_id = getExternalId();
-        const fbp = getCookie('_fbp');
-        const fbc = getCookie('_fbc');
-        
-        // Criar a URL com os parâmetros
-        let newHref = href;
-        const hasParams = href.includes('?');
-        const paramPrefix = hasParams ? '&' : '?';
-        
-        // Adicionar external_id
-        newHref += `${paramPrefix}external_id=${encodeURIComponent(external_id)}`;
-        
-        // Adicionar fbp se disponível
-        if (fbp) {
-          newHref += `&fbp=${encodeURIComponent(fbp)}`;
-        }
-        
-        // Adicionar fbc se disponível
-        if (fbc) {
-          newHref += `&fbc=${encodeURIComponent(fbc)}`;
-        }
-        
-        // Atualizar o link
-        link.setAttribute('href', newHref);
-      }
-    }
-    
-    // Adicionar listener para links de checkout
-    document.querySelectorAll('a[href*="seguro."], a[href*="checkout."], a[href*="/checkout"]')
-      .forEach(link => {
-        link.addEventListener('click', addCheckoutParams);
-        link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
-      });
-    
-    // Configurar rastreamento de rolagem
-    setupScrollTracking();
-    
-    // Configurar timer de 1 minuto
-    setupTimerTracking();
-    
-    // Sempre enviar PageView
-    sendEvent('PageView');
-
-    // Detectar o tipo de página e enviar evento específico
+    // Detectar o tipo de página e enviar eventos baseados no tipo de página
     const pageInfo = detectPageType();
-    if (pageInfo.type !== 'other') {
-      // Aguardar um pouco para enviar o segundo evento
-      setTimeout(() => {
-        sendEvent(pageInfo.eventName, pageInfo.data);
-      }, 500);
+    
+    if (pageInfo) {
+      // Garantir que contentIds seja sempre um array
+      if (!pageInfo.data.contentIds) {
+        pageInfo.data.contentIds = [];
+      } else if (!Array.isArray(pageInfo.data.contentIds)) {
+        pageInfo.data.contentIds = [pageInfo.data.contentIds];
+      }
+      
+      // Garantir que contentCategory seja sempre um array
+      if (!pageInfo.data.contentCategory) {
+        pageInfo.data.contentCategory = [];
+      } else if (!Array.isArray(pageInfo.data.contentCategory)) {
+        pageInfo.data.contentCategory = [pageInfo.data.contentCategory];
+      }
+      
+      // Garantir que contents seja sempre um array com objetos válidos
+      if (pageInfo.data.contentIds && pageInfo.data.contentIds.length > 0 && 
+          (!pageInfo.data.contents || !Array.isArray(pageInfo.data.contents))) {
+        // Criar contents a partir de contentIds
+        const price = pageInfo.data.value || extractPrice() || 0;
+        pageInfo.data.contents = pageInfo.data.contentIds.map(id => ({
+          id: id,
+          quantity: 1,
+          item_price: price
+        }));
+      }
+      
+      // Verificar preço se for uma página de produto
+      if (pageInfo.type === 'product' && !pageInfo.data.value) {
+        pageInfo.data.value = extractPrice() || 0;
+      }
+      
+      // Adicionar rastreamento específico para o Soleterra
+      if (window.location.hostname.includes('soleterra.com.br')) {
+        // Meta tags específicas do Soleterra para rastreamento
+        const soleMetaTags = document.querySelectorAll('meta[property^="product:"]');
+        soleMetaTags.forEach(tag => {
+          const property = tag.getAttribute('property');
+          const content = tag.getAttribute('content');
+          
+          if (property === 'product:price:amount' && content) {
+            pageInfo.data.value = parseFloat(content);
+            
+            // Atualizar o preço em contents também
+            if (pageInfo.data.contents && pageInfo.data.contents.length > 0) {
+              pageInfo.data.contents.forEach(item => {
+                item.item_price = parseFloat(content);
+              });
+            }
+          }
+        });
+      }
+      
+      // Verificar dados necessários para produtos
+      if (pageInfo.type === 'product' && (!pageInfo.data.contentIds || pageInfo.data.contentIds.length === 0)) {
+        console.warn('Produto sem ID detectado, tentando métodos alternativos de detecção');
+        
+        // Último recurso: usar o URL como ID
+        const pathSegments = window.location.pathname.split('/');
+        const lastSegment = pathSegments[pathSegments.length - 1];
+        
+        if (lastSegment && lastSegment !== '') {
+          pageInfo.data.contentIds = [lastSegment];
+          
+          const price = pageInfo.data.value || extractPrice() || 0;
+          pageInfo.data.contents = [{ 
+            id: lastSegment, 
+            quantity: 1,
+            item_price: price
+          }];
+        }
+      }
+      
+      // Enviar evento para o Pixel e API apenas se tivermos dados válidos
+      if (pageInfo.eventName) {
+        // Para eventos de produto, garantir que temos pelo menos um ID
+        if (pageInfo.type === 'product' && 
+            (!pageInfo.data.contentIds || pageInfo.data.contentIds.length === 0)) {
+          console.warn('Não foi possível determinar o ID do produto. Enviando evento PageView genérico.');
+          sendEvent('PageView', {
+            contentName: document.title,
+            contentType: 'page'
+          });
+        } else {
+          sendEvent(pageInfo.eventName, pageInfo.data);
+          console.log(`Meta Pixel Tracker: Evento ${pageInfo.eventName} enviado para página do tipo ${pageInfo.type}`);
+        }
+      } else {
+        // Fallback para PageView se não conseguir determinar o evento
+        sendEvent('PageView', {
+          contentName: document.title,
+          contentType: 'page'
+        });
+        console.log('Meta Pixel Tracker: Evento PageView genérico enviado (fallback)');
+      }
+      
+      // Configurar rastreamento adicional para todas as páginas
+      setupScrollTracking();
+      setupTimerTracking();
+    } else {
+      // Se não detectou um tipo específico, enviar PageView genérico
+      sendEvent('PageView', {
+        contentName: document.title,
+        contentType: 'page'
+      });
+      
+      console.log('Meta Pixel Tracker: Evento PageView genérico enviado');
     }
+    
+    // Configurar rastreamento de produtos em listas/coleções
+    setupProductListTracking();
   }
 
-  // Iniciar após o carregamento da página
-  if (document.readyState === 'complete') {
-    init();
+  // Rastreamento de cliques em produtos em listas/coleções
+  function setupProductListTracking() {
+    // Encontrar elementos de produtos em listas
+    const productLinks = document.querySelectorAll('a[href*="/product/"], a[href*="/produto/"], [data-product-id] a, .product-card a, .product-item a');
+    
+    productLinks.forEach(link => {
+      link.addEventListener('click', function(e) {
+        // Buscar ID e informações do produto
+        let productId = this.getAttribute('data-product-id') || 
+                       this.closest('[data-product-id]')?.getAttribute('data-product-id');
+        
+        if (!productId) {
+          // Tentar extrair da URL
+          const href = this.getAttribute('href');
+          if (href) {
+            const pathParts = href.split('/');
+            const lastSegment = pathParts[pathParts.length - 1];
+            const idMatch = lastSegment.match(/\d+$/);
+            if (idMatch) {
+              productId = idMatch[0];
+            } else if (lastSegment && lastSegment !== '') {
+              productId = lastSegment;
+            }
+          }
+        }
+        
+        if (productId) {
+          // Encontrar nome e preço, se disponíveis
+          let productName = '';
+          let productPrice = 0;
+          
+          // Procurar texto ou elementos próximos para o nome
+          const nameEl = this.querySelector('.product-title, .product-name, h3, h4') || 
+                        this.closest('.product-card, .product-item')?.querySelector('.product-title, .product-name, h3, h4');
+          
+          if (nameEl) {
+            productName = nameEl.textContent.trim();
+          }
+          
+          // Procurar elemento de preço
+          const priceEl = this.querySelector('.price, [data-product-price]') || 
+                         this.closest('.product-card, .product-item')?.querySelector('.price, [data-product-price]');
+          
+          if (priceEl) {
+            const priceText = priceEl.textContent.trim().replace(/[^0-9,.]/g, '');
+            productPrice = parseFloat(priceText.replace(',', '.'));
+          }
+          
+          // Enviar evento de clique em produto
+          sendEvent('ViewContent', {
+            contentIds: [productId],
+            contentName: productName || 'Produto',
+            contentType: 'product',
+            value: productPrice,
+            contents: [{ id: productId, quantity: 1, item_price: productPrice }]
+          });
+        }
+      });
+    });
+  }
+
+  // Inicializar quando o DOM estiver carregado
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    window.addEventListener('load', init);
+    init();
   }
 
   /**
@@ -1001,54 +1212,266 @@
    */
   function extractPrice() {
     try {
-      // 1. Tentar obter do JSON-LD
-      const jsonLDElements = document.querySelectorAll('script[type="application/ld+json"]');
-      for (const script of jsonLDElements) {
+      // Método 1: Tentar obter do JSON-LD (Schema.org)
+      const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of jsonLdScripts) {
         try {
           const data = JSON.parse(script.textContent);
           
-          // Para JSON-LD do tipo Product
-          if (data['@type'] === 'Product' || (Array.isArray(data) && data.some(item => item['@type'] === 'Product'))) {
-            const product = data['@type'] === 'Product' ? data : data.find(item => item['@type'] === 'Product');
-            
-            if (product && product.offers) {
-              const offers = Array.isArray(product.offers) ? product.offers[0] : product.offers;
-              if (offers && offers.price) {
-                return parseFloat(offers.price);
+          // Verificar diferentes estruturas de JSON-LD
+          if (data) {
+            // Caso 1: Array de objetos JSON-LD
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                // Verificar produto com ofertas
+                if ((item['@type'] === 'Product' || item.type === 'Product') && item.offers) {
+                  if (typeof item.offers.price === 'number' || typeof item.offers.price === 'string') {
+                    return parseFloat(item.offers.price);
+                  }
+                  // Verificar array de ofertas
+                  if (Array.isArray(item.offers) && item.offers.length > 0) {
+                    if (typeof item.offers[0].price === 'number' || typeof item.offers[0].price === 'string') {
+                      return parseFloat(item.offers[0].price);
+                    }
+                    if (item.offers[0].lowPrice) {
+                      return parseFloat(item.offers[0].lowPrice);
+                    }
+                  }
+                  // Verificar preço formatado em priceSpecification
+                  if (item.offers.priceSpecification && 
+                     (typeof item.offers.priceSpecification.price === 'number' || 
+                      typeof item.offers.priceSpecification.price === 'string')) {
+                    return parseFloat(item.offers.priceSpecification.price);
+                  }
+                }
+                
+                // Verificar apenas ofertas
+                if ((item['@type'] === 'Offer' || item.type === 'Offer') && 
+                    (typeof item.price === 'number' || typeof item.price === 'string')) {
+                  return parseFloat(item.price);
+                }
+              }
+            } 
+            // Caso 2: Objeto único com produto
+            else if (data['@type'] === 'Product' || data.type === 'Product') {
+              // Verificar offer direta
+              if (data.offers) {
+                if (typeof data.offers.price === 'number' || typeof data.offers.price === 'string') {
+                  return parseFloat(data.offers.price);
+                }
+                // Verificar array de ofertas
+                if (Array.isArray(data.offers) && data.offers.length > 0) {
+                  if (typeof data.offers[0].price === 'number' || typeof data.offers[0].price === 'string') {
+                    return parseFloat(data.offers[0].price);
+                  }
+                  if (data.offers[0].lowPrice) {
+                    return parseFloat(data.offers[0].lowPrice);
+                  }
+                }
+                // Verificar priceSpecification
+                if (data.offers.priceSpecification && 
+                   (typeof data.offers.priceSpecification.price === 'number' || 
+                    typeof data.offers.priceSpecification.price === 'string')) {
+                  return parseFloat(data.offers.priceSpecification.price);
+                }
+              }
+            }
+            // Caso 3: Objeto único com oferta
+            else if (data['@type'] === 'Offer' || data.type === 'Offer') {
+              if (typeof data.price === 'number' || typeof data.price === 'string') {
+                return parseFloat(data.price);
+              }
+              // Verificar priceSpecification
+              if (data.priceSpecification && 
+                 (typeof data.priceSpecification.price === 'number' || 
+                  typeof data.priceSpecification.price === 'string')) {
+                return parseFloat(data.priceSpecification.price);
+              }
+            }
+            // Caso 4: Verificar propriedade graph para AggregateOffer
+            else if (data['@graph']) {
+              for (const item of data['@graph']) {
+                if ((item['@type'] === 'Product' || item.type === 'Product') && item.offers) {
+                  if (typeof item.offers.price === 'number' || typeof item.offers.price === 'string') {
+                    return parseFloat(item.offers.price);
+                  }
+                  // Verificar array de ofertas
+                  if (Array.isArray(item.offers) && item.offers.length > 0) {
+                    if (typeof item.offers[0].price === 'number' || typeof item.offers[0].price === 'string') {
+                      return parseFloat(item.offers[0].price);
+                    }
+                    if (item.offers[0].lowPrice) {
+                      return parseFloat(item.offers[0].lowPrice);
+                    }
+                  }
+                }
               }
             }
           }
         } catch (e) {
-          console.error('Erro ao processar JSON-LD para preço:', e);
+          console.warn('Erro ao analisar JSON-LD:', e);
         }
       }
-      
-      // 2. Procurar elementos com atributos microdata
-      const priceElements = document.querySelectorAll('[itemprop="price"], [data-product-price], .product-price, .price, .product__price');
-      for (const element of priceElements) {
-        const priceText = element.getAttribute('content') || element.textContent;
-        if (priceText) {
-          // Extrair apenas os números e ponto decimal do texto
-          const priceMatch = priceText.replace(/[^\d.,]/g, '').replace(',', '.');
-          const price = parseFloat(priceMatch);
-          if (!isNaN(price) && price > 0) {
-            return price;
+
+      // Método 2: Procurar por atributos de microdata (itemprop="price")
+      const priceElements = document.querySelectorAll('[itemprop="price"], [property="product:price:amount"], [property="og:price:amount"], [data-price], [data-product-price]');
+      if (priceElements.length > 0) {
+        for (const element of priceElements) {
+          const price = element.getAttribute('content') || element.getAttribute('value') || element.textContent;
+          if (price) {
+            // Limpar e converter para número
+            const cleanPrice = price.replace(/[^\d,.]/g, '').replace(',', '.');
+            const numericPrice = parseFloat(cleanPrice);
+            if (!isNaN(numericPrice) && numericPrice > 0) {
+              return numericPrice;
+            }
           }
         }
       }
+
+      // Método 3: Procurar meta tags específicas
+      const metaTags = [
+        'meta[property="product:price:amount"]',
+        'meta[property="og:price:amount"]',
+        'meta[name="twitter:data1"]',
+        'meta[property="product:sale_price:amount"]',
+        'meta[property="og:price"]',
+        'meta[name="product:price"]',
+        'meta[name="price"]'
+      ];
       
-      // 3. Buscar padrões comuns de preço no HTML
-      const priceRegex = /R\$\s*([\d.,]+)/;
-      const bodyHTML = document.body.innerHTML;
-      const priceMatch = bodyHTML.match(priceRegex);
-      if (priceMatch && priceMatch[1]) {
-        return parseFloat(priceMatch[1].replace(',', '.'));
+      for (const selector of metaTags) {
+        const metaTag = document.querySelector(selector);
+        if (metaTag) {
+          const price = metaTag.getAttribute('content');
+          if (price) {
+            const cleanPrice = price.replace(/[^\d,.]/g, '').replace(',', '.');
+            const numericPrice = parseFloat(cleanPrice);
+            if (!isNaN(numericPrice) && numericPrice > 0) {
+              return numericPrice;
+            }
+          }
+        }
+      }
+
+      // Método 4: Procurar por seletores comuns em diferentes plataformas de e-commerce
+      const commonSelectors = [
+        // Shopify
+        '.price .money', '.price__current', '[data-price]', '.product__price', '.product-single__price',
+        // WooCommerce
+        '.woocommerce-Price-amount', '.price .amount', 'p.price', '.summary .price', 'div.product span.price',
+        // Magento
+        '.price-box .price', '.product-info-price .price', '.special-price .price', '.normal-price .price',
+        // OpenCart
+        '#product .price', '.product-price', '#content .price',
+        // PrestaShop
+        '.current-price', '.product-price', '#our_price_display', '.content_price .price',
+        // VTEX
+        '.skuBestPrice', '.productPrice', '.valor-por', '.precoPor', '.price-best-price',
+        // Seletores genéricos
+        '.product-price', '.price-current', '.sale-price', '.actual-price',
+        '.current_price', '.price-item--regular', '.product-info__price', '.product_price',
+        // Soleterra e outros sites específicos
+        '.product-price .price', '.productPrice', '.product-detail-price', '.valor-producto',
+        '.price-item', '.regular-price', '.special-price', '.price-now', '.price-new',
+        // Mercado Livre e outros marketplaces
+        '.ui-pdp-price__second-line .andes-money-amount', 
+        '.ui-pdp-price__part .andes-money-amount__fraction',
+        '.productInfo-price', '.prd-price-new'
+      ];
+      
+      for (const selector of commonSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          for (const element of elements) {
+            // Evitar preços riscados/antigos verificando se não tem linha em cima
+            const style = window.getComputedStyle(element);
+            if (style.textDecoration.includes('line-through')) {
+              continue;
+            }
+            
+            const priceText = element.textContent.trim();
+            if (priceText) {
+              // Limpar e converter para número
+              const cleanPrice = priceText.replace(/[^\d,.]/g, '').replace(',', '.');
+              const numericPrice = parseFloat(cleanPrice);
+              if (!isNaN(numericPrice) && numericPrice > 0) {
+                return numericPrice;
+              }
+            }
+          }
+        }
+      }
+
+      // Método 5: Verificar inputs escondidos (comum em formulários de carrinho)
+      const priceInputs = document.querySelectorAll('input[name*="price"], input[id*="price"], input[data-price], input[class*="price"], [name="product-price"], [data-product-price]');
+      for (const input of priceInputs) {
+        const price = input.value;
+        if (price) {
+          const cleanPrice = price.replace(/[^\d,.]/g, '').replace(',', '.');
+          const numericPrice = parseFloat(cleanPrice);
+          if (!isNaN(numericPrice) && numericPrice > 0) {
+            return numericPrice;
+          }
+        }
+      }
+
+      // Método 6: Verificar variáveis globais (comum em Shopify e outras plataformas)
+      if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
+        const shopifyPrice = window.ShopifyAnalytics.meta.product.price / 100; // Shopify armazena em centavos
+        return shopifyPrice;
       }
       
-      return 0;
+      // Verificar variável do WooCommerce
+      if (window.wc_product_price) {
+        return parseFloat(window.wc_product_price);
+      }
+      
+      // Verificar dados do VTEX
+      if (window.__PRELOADED_STATE__ && window.__PRELOADED_STATE__.product) {
+        const vtexProduct = window.__PRELOADED_STATE__.product;
+        if (vtexProduct.items && vtexProduct.items[0] && vtexProduct.items[0].sellers) {
+          const seller = vtexProduct.items[0].sellers[0];
+          if (seller.commertialOffer && seller.commertialOffer.Price) {
+            return seller.commertialOffer.Price;
+          }
+        }
+      }
+
+      // Método 7: Buscar no texto da página padrões de preço
+      // Procurar por padrões como "R$ 99,90" na página
+      const allText = document.body.innerText;
+      const priceMatches = allText.match(/R\$\s?(\d{1,3}(?:\.\d{3})*|\d+),\d{2}/g);
+      if (priceMatches && priceMatches.length > 0) {
+        // Pegar o primeiro preço encontrado
+        const firstPriceMatch = priceMatches[0];
+        const cleanPrice = firstPriceMatch.replace(/[^\d,.]/g, '').replace(',', '.');
+        const numericPrice = parseFloat(cleanPrice);
+        if (!isNaN(numericPrice) && numericPrice > 0) {
+          return numericPrice;
+        }
+      }
+
+      // Método 8: Procurar atributos de data específicos
+      const dataAttrs = ['data-price', 'data-product-price', 'data-regular-price', 'data-sale-price', 'data-value'];
+      for (const attr of dataAttrs) {
+        const elements = document.querySelectorAll(`[${attr}]`);
+        for (const el of elements) {
+          const price = el.getAttribute(attr);
+          if (price) {
+            const cleanPrice = price.replace(/[^\d,.]/g, '').replace(',', '.');
+            const numericPrice = parseFloat(cleanPrice);
+            if (!isNaN(numericPrice) && numericPrice > 0) {
+              return numericPrice;
+            }
+          }
+        }
+      }
+
+      return null;
     } catch (error) {
-      console.error('Erro ao extrair preço:', error);
-      return 0;
+      console.warn('Erro ao extrair preço:', error);
+      return null;
     }
   }
 })(); 
