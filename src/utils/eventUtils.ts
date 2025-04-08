@@ -165,6 +165,18 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     'searchString': 'search_string',
     'predictedLtv': 'predicted_ltv'
   };
+  console.log(customData);
+  console.log(userData);
+  console.log(eventData);
+  console.log(eventName);
+  console.log(isAppEvent);
+  console.log(geoData);
+  console.log(ipToUse);
+  console.log(fbEventName);
+  console.log(isAppEvent);
+  console.log(clientIP);
+  console.log(geoData);
+  console.log(ipToUse);
 
   // Normalizar dados do usuário
   const normalizedUserData: NormalizedUserData = {
