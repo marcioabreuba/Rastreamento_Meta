@@ -239,6 +239,20 @@
                 productId = product.productID;
               } else if (product.sku) {
                 productId = product.sku;
+              } else if (product.offers && product.offers.sku) {
+                productId = product.offers.sku;
+              } else if (product.offers && Array.isArray(product.offers) && product.offers[0] && product.offers[0].sku) {
+                productId = product.offers[0].sku;
+              } else if (product.mpn) {
+                productId = product.mpn;
+              } else if (product.gtin13) {
+                productId = product.gtin13;
+              } else if (product.gtin14) {
+                productId = product.gtin14;
+              } else if (product.gtin8) {
+                productId = product.gtin8;
+              } else if (product.gtin) {
+                productId = product.gtin;
               }
               
               // Obter título do produto
@@ -263,10 +277,52 @@
       
       // 3. Tentar obter ID e categoria de elementos DOM comuns
       if (!productId) {
+        // Tentar extrair do URL para Shopify (formato típico: /products/nome-do-produto?variant=123456789)
+        const variantParam = new URLSearchParams(window.location.search).get('variant');
+        if (variantParam) {
+          productId = variantParam;
+        }
+        
         // Procurar por input hidden ou data attributes com ID do produto
-        const idElement = document.querySelector('input[name="product_id"], [data-product-id]');
+        const idElement = document.querySelector('input[name="product_id"], [data-product-id], [id*="ProductJson-"], [data-section-id], [data-variant-id], form[action*="/cart/add"] [name="id"]');
         if (idElement) {
-          productId = idElement.value || idElement.getAttribute('data-product-id');
+          productId = idElement.value || idElement.getAttribute('data-product-id') || idElement.getAttribute('data-variant-id') || idElement.getAttribute('data-section-id');
+        }
+        
+        // Procurar em meta tags específicas
+        const metaTags = document.querySelectorAll('meta');
+        metaTags.forEach(tag => {
+          const property = tag.getAttribute('property') || tag.getAttribute('name');
+          if (property === 'product:id' || property === 'product:retailer_item_id' || property === 'og:product:id') {
+            productId = tag.getAttribute('content');
+          }
+        });
+        
+        // Tentar encontrar scripts Shopify com dados do produto
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+          const content = script.textContent || '';
+          if (content.includes('var meta') && content.includes('product')) {
+            try {
+              // Extrair ID do produto de scripts Shopify
+              const idMatch = content.match(/\"id\":(\d+)/);
+              if (idMatch && idMatch[1]) {
+                productId = idMatch[1];
+                break;
+              }
+            } catch (e) { /* Ignorar erros */ }
+          }
+          
+          if (content.includes('product_') && content.includes('variant_')) {
+            try {
+              // Extrair ID do produto de scripts de produtos
+              const idMatch = content.match(/product_(\d+)/);
+              if (idMatch && idMatch[1]) {
+                productId = idMatch[1];
+                break;
+              }
+            } catch (e) { /* Ignorar erros */ }
+          }
         }
       }
       
@@ -342,12 +398,71 @@
             productId = matches[matches.length - 1];
           }
         }
+        
+        // Verificações específicas para o site Soleterra
+        if (!productId) {
+          // Método 1: Procurar botões de adição ao carrinho que contêm IDs de produtos
+          const addToCartButtons = document.querySelectorAll('button[name="add"], [data-product-id], .add-to-cart, [data-button-action="add-to-cart"]');
+          for (const button of addToCartButtons) {
+            const btnProductId = button.getAttribute('data-product-id') || button.getAttribute('data-id') || button.getAttribute('id');
+            if (btnProductId && /^\d+$/.test(btnProductId)) {
+              productId = btnProductId;
+              break;
+            }
+          }
+          
+          // Método 2: Procurar nos formulários de produto
+          const productForms = document.querySelectorAll('form[action*="/cart/add"]');
+          for (const form of productForms) {
+            const idInput = form.querySelector('input[name="id"]');
+            if (idInput && idInput.value) {
+              productId = idInput.value;
+              break;
+            }
+          }
+          
+          // Método 3: Procurar no HTML completo da página (último recurso)
+          if (!productId) {
+            const bodyHTML = document.body.innerHTML;
+            // Procurar padrões como product_id=12345 ou variant_id=12345
+            const idMatches = bodyHTML.match(/product_id[=:"']+(\d+)/i) || 
+                             bodyHTML.match(/variant_id[=:"']+(\d+)/i) ||
+                             bodyHTML.match(/productId[=:"']+(\d+)/i) ||
+                             bodyHTML.match(/variantId[=:"']+(\d+)/i);
+            
+            if (idMatches && idMatches[1]) {
+              productId = idMatches[1];
+            }
+          }
+        }
       }
       
-      // Garantir que temos pelo menos uma categoria padrão
-      if (productCategories.length === 0) {
-        productCategories.push('product');
+      // Se ainda não temos um ID de produto, tentar extrair qualquer número da URL como último recurso
+      if (!productId && window.location.pathname.includes('/products/')) {
+        const anyNumberMatch = window.location.pathname.match(/\d+/);
+        if (anyNumberMatch) {
+          productId = anyNumberMatch[0];
+        }
       }
+      
+      // Se ainda não encontramos o ID, verificar um padrão específico na URL do Shopify
+      if (!productId && window.location.pathname.includes('/products/')) {
+        // Extrair nome do produto da URL e usá-lo para buscar no HTML
+        const productSlug = window.location.pathname.split('/products/')[1].split('?')[0];
+        const cleanSlug = productSlug.replace(/[^\w\s]/gi, '');
+        
+        // Buscar no HTML da página por correspondências com o slug
+        const bodyHTML = document.body.innerHTML;
+        const slugMatches = bodyHTML.match(new RegExp(`product[_\\s\\-]*id[^\\d]*(\\d+)[^\\d]*${cleanSlug}`, 'i')) ||
+                           bodyHTML.match(new RegExp(`${cleanSlug}[^\\d]*(\\d+)`, 'i'));
+                           
+        if (slugMatches && slugMatches[1]) {
+          productId = slugMatches[1];
+        }
+      }
+      
+      console.log('Product ID detectado:', productId);
+      console.log('Categorias detectadas:', productCategories);
       
       return {
         type: 'product',
