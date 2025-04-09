@@ -3,8 +3,9 @@
  * Com fallback para implementação em memória quando o Redis não estiver disponível
  */
 
-import Queue from 'bull';
+import { Queue, Worker, Job } from 'bullmq';
 import { NormalizedEvent } from '../types';
+import { processQueuedEvent } from '../services/eventService';
 import logger from './logger';
 import config from '../config';
 
@@ -69,112 +70,152 @@ class InMemoryQueue {
   }
 }
 
-// Criar a fila com tratamento de erros
-let eventQueue: Queue.Queue<NormalizedEvent> | any;
+// Configurações da conexão Redis
+const redisOptions = {
+  host: config.redis.host,
+  port: config.redis.port,
+  password: config.redis.password,
+  username: config.redis.username
+};
 
-try {
-  // Tentar conectar ao Redis
-  const redisConfig = {
-    redis: {
-      port: config.redis.port,
-      host: config.redis.host,
-      password: config.redis.password || undefined,
-      username: config.redis.username || undefined,
-      db: 0, // Índice do banco de dados Redis (geralmente 0)
-      enableReadyCheck: false, // Desabilitar verificação de prontidão para evitar problemas com conexões remotas
-      maxRetriesPerRequest: 3 // Número máximo de tentativas por requisição
-    }
-  };
+// Nome da fila
+const queueName = 'events';
 
-  // Criar a fila usando Bull
-  eventQueue = new Queue<NormalizedEvent>('meta-events', redisConfig);
-  
-  logger.info('Fila de eventos inicializada com sucesso', {
-    redisHost: config.redis.host,
-    redisPort: config.redis.port,
-    queueName: 'meta-events'
-  });
-  
-  // Adiciona um handler de erro global para capturar falhas de conexão
-  eventQueue.on('error', (err: Error) => {
-    logger.error(`Erro na fila de eventos: ${err.message}`, { error: err.message, stack: err.stack });
-    // Se o erro for fatal de conexão, podemos trocar para a implementação em memória
-    if (err.message.includes('WRONGPASS') || err.message.includes('NOAUTH')) {
-      logger.warn('Erro de autenticação no Redis. Mudando para implementação em memória...');
-      // Não fazemos nada aqui, o sistema continuará funcionando mesmo com erro do Redis
-    }
-  });
-} catch (error: any) {
-  logger.error(`Erro ao inicializar a fila de eventos: ${error.message}`, {
-    error: error.message,
-    stack: error.stack
-  });
-  
-  // Criar uma implementação em memória
-  logger.info('Usando fila em memória devido a erro na conexão com Redis');
-  eventQueue = new InMemoryQueue();
-}
+// Instância da fila
+let eventQueue: Queue;
+let worker: Worker;
 
-// Configurar processamento de eventos na fila
-export const setupEventQueue = () => {
+/**
+ * Inicializa a fila de eventos
+ */
+export const initQueue = async (): Promise<void> => {
   try {
-    // Configurar handlers para eventos da fila
-    eventQueue.on('completed', (job: any) => {
-      logger.info(`Job ${job.id} concluído: Evento ${job.data.eventName} processado com sucesso`);
+    // Criar a fila
+    eventQueue = new Queue(queueName, {
+      connection: redisOptions,
+      defaultJobOptions: {
+        attempts: 2, // Limitar a 2 tentativas para evitar loops infinitos
+        backoff: {
+          type: 'exponential',
+          delay: 5000
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      }
     });
-
-    eventQueue.on('failed', (job: any, err: Error) => {
-      logger.error(`Job ${job?.id} falhou: ${err.message}`, { 
-        jobId: job?.id,
-        eventName: job?.data?.eventName,
-        error: err.message,
-        stack: err.stack
+    
+    // Criar o worker para processar a fila
+    worker = new Worker(queueName, async (job: Job) => {
+      const event = job.data as NormalizedEvent;
+      
+      logger.info(`Processando evento da fila: ${event.eventName}`, {
+        eventId: event.serverData.event_id,
+        jobId: job.id,
+        attempt: job.attemptsMade
+      });
+      
+      try {
+        // Processar o evento
+        const result = await processQueuedEvent(event);
+        
+        if (!result) {
+          throw new Error(`Falha ao processar evento: ${event.eventName}`);
+        }
+        
+        return result;
+      } catch (error: any) {
+        logger.error(`Falha ao processar evento: ${event.eventName}`, {
+          error: error.message,
+          eventId: event.serverData.event_id,
+          jobId: job.id,
+          attempt: job.attemptsMade,
+          totalAttempts: job.opts.attempts
+        });
+        
+        // Registrar detalhes do evento que falhou para diagnóstico
+        logger.debug(`Detalhes do evento que falhou:`, {
+          eventName: event.eventName,
+          eventId: event.serverData.event_id,
+          userData: JSON.stringify({
+            client_ip_address: event.userData.client_ip_address,
+            client_user_agent: event.userData.client_user_agent?.substring(0, 50), // Truncar UA
+            external_id: event.userData.external_id,
+            hasEmail: !!event.userData.em,
+            hasPhone: !!event.userData.ph,
+            hasFbp: !!event.userData.fbp
+          }),
+          customData: JSON.stringify({
+            currency: event.customData.currency,
+            value: event.customData.value,
+            content_name: event.customData.content_name
+          })
+        });
+        
+        throw error;
+      }
+    }, {
+      connection: redisOptions,
+      concurrency: 1,
+      lockDuration: 30000
+    });
+    
+    // Configurar tratamento de erros para o worker
+    worker.on('failed', (job: Job, error: Error) => {
+      logger.error(`Job ${job.id} falhou: ${error.message}`, {
+        jobId: job.id,
+        error: error.message,
+        eventName: job.data.eventName,
+        eventId: job.data.serverData?.event_id,
+        attempts: job.attemptsMade
       });
     });
-
-    logger.info('Sistema de filas inicializado com sucesso');
-  } catch (error: any) {
-    logger.error(`Erro ao configurar sistema de filas: ${error.message}`, {
-      error: error.message,
-      stack: error.stack
+    
+    worker.on('completed', (job: Job) => {
+      logger.debug(`Job ${job.id} concluído com sucesso`, {
+        jobId: job.id,
+        eventName: job.data.eventName,
+        eventId: job.data.serverData?.event_id
+      });
     });
+    
+    logger.info('Fila de eventos inicializada com sucesso');
+  } catch (error: any) {
+    logger.error(`Erro ao inicializar fila de eventos: ${error.message}`, { error: error.message });
+    throw error;
   }
 };
 
-// Adicionar evento à fila
-export const addEventToQueue = async (event: NormalizedEvent): Promise<string> => {
+/**
+ * Adiciona um evento à fila para processamento assíncrono
+ * @param {NormalizedEvent} event - Evento normalizado
+ * @returns {Promise<void>}
+ */
+export const addEventToQueue = async (event: NormalizedEvent): Promise<void> => {
   try {
-    // Usar o ID do evento como ID do job
-    const jobId = event.serverData.event_id;
-    
-    // Tentar adicionar o evento à fila
-    const job = await eventQueue.add(event, {
-      jobId: jobId,
-      attempts: 3
-    });
-    
-    logger.info(`Evento adicionado à fila: ${event.eventName} (ID: ${jobId})`);
-    return job.id.toString();
-  } catch (error: any) {
-    // Se for um erro de duplicação (job com mesmo ID já existe)
-    if (error.message && (
-        error.message.includes('duplicate job') || 
-        error.message.includes('already exists') || 
-        error.message.includes('duplicated'))) {
-      logger.info(`Evento já está na fila, ignorando duplicata: ${event.eventName} (ID: ${event.serverData.event_id})`);
-      return event.serverData.event_id;
+    if (!eventQueue) {
+      throw new Error('Fila não inicializada');
     }
     
-    // Para outros tipos de erro, registrar e processar imediatamente
-    logger.error(`Erro ao adicionar evento à fila: ${error.message}`, { 
+    // Adicionar evento à fila
+    const job = await eventQueue.add('processEvent', event, {
+      jobId: event.serverData.event_id // Usar event_id como job_id para evitar duplicações
+    });
+    
+    logger.info(`Evento adicionado à fila: ${event.eventName} (ID: ${job.id})`);
+  } catch (error: any) {
+    // Se o erro for de duplicação, não é um problema crítico
+    if (error.message.includes('duplicate')) {
+      logger.info(`Evento já existe na fila: ${event.eventName} (ID: ${event.serverData.event_id})`);
+      return;
+    }
+    
+    logger.error(`Erro ao adicionar evento à fila: ${error.message}`, {
       error: error.message,
       eventName: event.eventName,
       eventId: event.serverData.event_id
     });
     
-    // Em caso de erro, processar imediatamente
-    logger.info(`Processando evento imediatamente devido a erro na fila: ${event.eventName}`);
-    return `local-${Date.now()}`;
+    throw error;
   }
 };
 
