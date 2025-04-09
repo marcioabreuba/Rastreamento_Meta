@@ -74,92 +74,107 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
   try {
     const { eventName, userData, customData, serverData } = event;
     
-    // Obter o nome do evento para a Conversions API (mapeado)
-    const fbApiEventName = EVENT_MAPPING[eventName] || eventName;
-    
-    // Criar uma cópia dos dados do usuário e dos dados personalizados
-    const userDataCopy = { ...userData };
-    const customDataCopy = { ...customData };
-    
-    // Garantir que o FBP esteja no formato correto
-    if (userDataCopy.fbp) {
-      userDataCopy.fbp = validateFbp(userDataCopy.fbp);
+    // Verificar se temos os tokens necessários
+    if (!config.fbAccessToken) {
+      logger.error('Token de acesso do Facebook não configurado. Evento não enviado para Conversions API.');
+      return false;
     }
     
-    // Lista de campos geográficos que não são aceitos diretamente na API do Facebook em user_data
-    const geoFields = ['state', 'city', 'country', 'zip'];
+    // Construir a URL para o endpoint da API
+    const apiUrl = `https://graph.facebook.com/v16.0/${config.fbPixelId}/events`;
     
-    // Transferir campos geográficos de user_data para custom_data
-    geoFields.forEach(field => {
-      if (field in userDataCopy && userDataCopy[field] !== null) {
-        // Adicionar prefixo "user_" para diferenciar de outros campos personalizados
-        customDataCopy[`user_${field}`] = userDataCopy[field];
-        // Remover do user_data para evitar erro na API
-        delete userDataCopy[field];
-      }
-    });
-
-    // Remover campos específicos de app quando não for um evento de app
-    // Isso evita o erro "Unexpected key" na API
-    const isAppEvent = serverData.action_source === 'app';
-    if (!isAppEvent) {
-      // Esses campos são válidos apenas para eventos de app
-      const appOnlyFields = ['vendor_id', 'anon_id', 'madid'];
-      appOnlyFields.forEach(field => {
-        if (field in userDataCopy) {
-          delete userDataCopy[field];
-        }
-      });
-    }
-
-    // Adicionar dados de geolocalização completos como um objeto separado se disponível
-    if (serverData.geo_data) {
-      customDataCopy.geo_data = serverData.geo_data;
+    // Definir o tipo para o payload do evento para evitar erros de linter
+    interface EventPayload {
+      event_name: string;
+      event_time: number;
+      event_source_url: string;
+      event_id: string;
+      action_source: string;
+      user_data: Record<string, string | null>;
+      custom_data: Record<string, any>;
+      data_processing_options?: string[];
+      data_processing_options_country?: number | null;
+      data_processing_options_state?: number | null;
+      referrer_url?: string | null;
+      customer_segmentation?: any;
     }
     
-    // Preparar o evento principal
-    const eventPayload: any = {
-      event_name: fbApiEventName, // Usar o nome mapeado para o Facebook
+    // Construir o payload do evento
+    const eventPayload: EventPayload = {
+      event_name: EVENT_MAPPING[eventName] || eventName,
       event_time: serverData.event_time,
       event_source_url: serverData.event_source_url,
-      action_source: serverData.action_source,
       event_id: serverData.event_id,
-      user_data: userDataCopy,
-      custom_data: customDataCopy // Usando a cópia com os campos geográficos incluídos
-    };
-
-    // Garantir formatação correta para campos específicos no custom_data
-    // O Facebook espera certos campos em formatos específicos
-    
-    // Preservar arrays para campos que aceitam arrays
-    const arrayFields = ['content_ids', 'contents'];
-    arrayFields.forEach(field => {
-      if (field in customDataCopy && customDataCopy[field] !== null) {
-        // Se já for um array, manter como está
-        if (Array.isArray(customDataCopy[field])) {
-          // Ok, já é um array
-        } 
-        // Se for uma string única que deve ser um array
-        else if (typeof customDataCopy[field] === 'string' && field === 'content_ids') {
-          customDataCopy[field] = [customDataCopy[field]];
-        }
+      action_source: serverData.action_source,
+      user_data: {
+        client_ip_address: userData.client_ip_address,
+        client_user_agent: userData.client_user_agent,
+        em: userData.em,
+        ph: userData.ph,
+        fn: userData.fn,
+        ln: userData.ln,
+        ge: userData.ge,
+        db: userData.db,
+        external_id: userData.external_id,
+        fbc: userData.fbc,
+        fbp: userData.fbp,
+        subscription_id: userData.subscription_id,
+        fb_login_id: userData.fb_login_id,
+        lead_id: userData.lead_id,
+        country: userData.country,
+        ct: userData.city,
+        st: userData.state,
+        zp: userData.zip,
+        // Novos parâmetros
+        ctwa_clid: userData.ctwa_clid,
+        ig_account_id: userData.ig_account_id,
+        ig_sid: userData.ig_sid,
+        page_id: userData.page_id,
+        page_scoped_user_id: userData.page_scoped_user_id,
+        // Parâmetros específicos de app
+        anon_id: userData.anon_id,
+        madid: userData.madid,
+        vendor_id: userData.vendor_id
+      },
+      custom_data: {
+        currency: customData.currency,
+        value: customData.value,
+        // Processar arrays corretamente para a API
+        content_category: Array.isArray(customData.content_category) 
+          ? customData.content_category.join(',') 
+          : customData.content_category,
+        content_ids: Array.isArray(customData.content_ids) 
+          ? customData.content_ids 
+          : customData.content_ids ? [customData.content_ids] : undefined,
+        content_name: customData.content_name,
+        content_type: customData.content_type,
+        order_id: customData.order_id,
+        contents: customData.contents,
+        status: customData.status,
+        // Incluir os campos específicos do evento somente quando relevantes
+        ...(eventName === 'Search' || eventName === 'ViewSearchResults' 
+            ? { search_string: customData.search_string } 
+            : {}),
+        ...(eventName.includes('Video') 
+            ? { 
+                video_position: customData.video_position,
+                video_duration: customData.video_duration,
+                video_title: customData.video_title
+              } 
+            : {})
       }
-    });
-
-    // Converter content_category de array para string para a API do Facebook Conversions
-    if (customDataCopy.content_category && Array.isArray(customDataCopy.content_category)) {
-      // Se for um array, juntar os elementos com vírgula
-      customDataCopy.content_category = customDataCopy.content_category.join(',');
-    }
-
-    // Converter content_name de array para string para a API do Facebook Conversions
-    if (customDataCopy.content_name && Array.isArray(customDataCopy.content_name)) {
-      // Se for um array, juntar os elementos com vírgula
-      customDataCopy.content_name = customDataCopy.content_name.join(', ');
-    }
-
-    // Adicionando o nome do evento original como um campo personalizado
-    customDataCopy.original_event_name = eventName;
+    };
+    
+    // Remover campos indefinidos ou nulos
+    eventPayload.user_data = Object.fromEntries(
+      Object.entries(eventPayload.user_data)
+        .filter(([_, value]) => value !== null && value !== undefined)
+    ) as Record<string, string>;
+    
+    eventPayload.custom_data = Object.fromEntries(
+      Object.entries(eventPayload.custom_data)
+        .filter(([_, value]) => value !== null && value !== undefined)
+    );
     
     // Adicionar opções de processamento de dados (para conformidade com LGPD, CCPA, etc.)
     if (serverData.data_processing_options && serverData.data_processing_options.length > 0) {
@@ -198,154 +213,52 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 🔵 META PIXEL EVENTO RASTREADO: ${eventName.padEnd(28)} │`);
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log(`│ 📆 Data/Hora: ${eventTime.padEnd(42)} │`);
-    console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
-    console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
-    console.log(`│ 🔄 Action Source: ${serverData.action_source.padEnd(42)} │`);
-    console.log(`│ 📊 Evento Facebook: ${fbApiEventName.padEnd(42)} │`);
-    // Determinar a origem do evento para logging
-    let eventSource = 'web';
-    if (isAppEvent) {
-      eventSource = 'app';
-    } else if (serverData.action_source === 'site') {
-      eventSource = 'api';
-    }
-    
-    console.log(`│ 🔍 Fonte: ${eventSource.padEnd(42)} │`); // Novo log mostrando a fonte real do evento
-    console.log('├──────────────────────────────────────────────────────────┤');
-    console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
-    console.log('├──────────────────────────────────────────────────────────┤');
-    Object.entries(userDataCopy).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        // Limitar a exibição de hashes
-        const displayValue = typeof value === 'string' && value.length > 20 
-          ? value.substring(0, 17) + '...' 
-          : value;
-        console.log(`│ ${key.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
-      }
-    });
-    console.log('├──────────────────────────────────────────────────────────┤');
-    console.log('│ 📊 DADOS PERSONALIZADOS:                                 │');
-    console.log('├──────────────────────────────────────────────────────────┤');
-    
-    // Destacar os parâmetros do TracLead que foram adicionados
-    const priorityParams = ['app', 'language', 'referrer', 'event_time', 'original_event_name'];
-    
-    // Primeiro exibir os parâmetros prioritários
-    priorityParams.forEach(param => {
-      if (customDataCopy[param] !== null && customDataCopy[param] !== undefined) {
-        let displayValue = customDataCopy[param];
-        if (param === 'event_time') {
-          // Formatar timestamp para data legível
-          displayValue = new Date(customDataCopy[param] * 1000).toISOString();
-        }
-        console.log(`│ ${param.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
-      }
-    });
-    
-    // Depois exibir os demais parâmetros
-    Object.entries(customDataCopy).forEach(([key, value]) => {
-      if (
-        value !== null && 
-        value !== undefined && 
-        key !== 'geo_data' && 
-        !priorityParams.includes(key)
-      ) {
-        const displayValue = typeof value === 'object' 
-          ? JSON.stringify(value).substring(0, 37) + '...' 
-          : String(value).substring(0, 40);
-        console.log(`│ ${key.padEnd(15)}: ${displayValue.padEnd(40)} │`);
-      }
-    });
-    
-    // Exibir dados geográficos de forma mais organizada se existirem
-    if (customDataCopy.geo_data) {
-      console.log('├──────────────────────────────────────────────────────────┤');
-      console.log('│ 🌎 DADOS GEOGRÁFICOS:                                    │');
-      console.log('├──────────────────────────────────────────────────────────┤');
-      const geo = customDataCopy.geo_data;
-      if (geo.country && geo.country.name) {
-        console.log(`│ País:          ${String(geo.country.name + ' (' + geo.country.code + ')').padEnd(40)} │`);
-      }
-      if (geo.region && geo.region.name) {
-        console.log(`│ Estado:        ${String(geo.region.name + ' (' + geo.region.code + ')').padEnd(40)} │`);
-      }
-      if (geo.city) {
-        console.log(`│ Cidade:        ${String(geo.city).padEnd(40)} │`);
-      }
-      if (geo.postal) {
-        console.log(`│ CEP:           ${String(geo.postal).padEnd(40)} │`);
-      }
-      if (geo.location) {
-        console.log(`│ Coordenadas:   ${String(`${geo.location.latitude}, ${geo.location.longitude}`).padEnd(40)} │`);
-      }
-    }
-    
-    // Exibir opções de processamento de dados se existirem
-    if (eventPayload.data_processing_options) {
-      console.log('├──────────────────────────────────────────────────────────┤');
-      console.log('│ 🛡️ OPÇÕES DE PROCESSAMENTO DE DADOS:                     │');
-      console.log('├──────────────────────────────────────────────────────────┤');
-      console.log(`│ Opções:        ${String(eventPayload.data_processing_options.join(', ')).padEnd(40)} │`);
-      if (eventPayload.data_processing_options_country !== undefined) {
-        console.log(`│ País:          ${String(eventPayload.data_processing_options_country).padEnd(40)} │`);
-      }
-      if (eventPayload.data_processing_options_state !== undefined) {
-        console.log(`│ Estado:        ${String(eventPayload.data_processing_options_state).padEnd(40)} │`);
-      }
-    }
-    
-    // Exibir segmentação de cliente se existir
-    if (eventPayload.customer_segmentation) {
-      console.log('├──────────────────────────────────────────────────────────┤');
-      console.log('│ 👥 SEGMENTAÇÃO DE CLIENTE:                               │');
-      console.log('├──────────────────────────────────────────────────────────┤');
-      const cs = eventPayload.customer_segmentation;
-      if (cs.priority_segment) {
-        console.log(`│ Segmento:      ${String(cs.priority_segment).padEnd(40)} │`);
-      }
-      if (cs.lifecycle_stage) {
-        console.log(`│ Ciclo de Vida: ${String(cs.lifecycle_stage).padEnd(40)} │`);
-      }
-      if (cs.predicted_ltv_range) {
-        console.log(`│ Faixa LTV:     ${String(cs.predicted_ltv_range).padEnd(40)} │`);
-      }
-    }
-    
+    console.log(`│ 🔑 Evento ID: ${serverData.event_id.padEnd(42)} │`);
+    console.log(`│ 🌐 URL: ${(serverData.event_source_url || '').substring(0, 42).padEnd(42)} │`);
     console.log('└──────────────────────────────────────────────────────────┘');
-    console.log('\n');
     
-    // Enviar para a API do Facebook
-    const url = `${config.fbApiUrl}/${config.fbPixelId}/events`;
-    
-    logger.debug(`Enviando evento para Conversions API: ${eventName}`, { eventId: serverData.event_id });
-    
-    const response = await fetch(url, {
+    // Enviar para a API
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(requestData),
+      body: JSON.stringify(requestData)
     });
     
-    const responseData = await response.json();
-    
-    if (!response.ok || responseData.error) {
-      throw new Error(`Erro na Conversions API: ${JSON.stringify(responseData)}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(`Erro ao enviar evento para Conversions API: ${response.status} ${response.statusText}`, {
+        eventName,
+        eventId: serverData.event_id,
+        error: errorText
+      });
+      return false;
     }
     
-    logger.info(`Evento enviado com sucesso para Conversions API: ${eventName}`, {
-      eventId: serverData.event_id,
-      response: responseData
-    });
+    const result = await response.json();
     
-    return true;
+    if (result.events_received && result.events_received > 0) {
+      logger.info(`Evento enviado com sucesso para Conversions API: ${eventName}`, {
+        eventName,
+        eventId: serverData.event_id,
+        response: result
+      });
+      return true;
+    } else {
+      logger.warn(`Evento processado, mas nenhum evento recebido: ${eventName}`, {
+        eventName,
+        eventId: serverData.event_id,
+        response: result
+      });
+      return false;
+    }
   } catch (error: any) {
     logger.error(`Erro ao enviar evento para Conversions API: ${error.message}`, {
-      error: error.message,
       eventName: event.eventName,
-      eventId: event.serverData.event_id
+      eventId: event.serverData.event_id,
+      error: error.message
     });
-    
     return false;
   }
 }; 

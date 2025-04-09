@@ -2,9 +2,9 @@
  * Meta Pixel Tracker - Similar ao TracLead mas com API própria
  * 
  * Este script detecta automaticamente o tipo de página e envia eventos equivalentes aos da TracLead
- * Incluindo Advanced Matching e parâmetros adicionais
+ * Incluindo Advanced Matching completo e parâmetros adicionais
  * 
- * Versão 1.3 - Suporte a domínios cruzados para checkout e eventos adicionais
+ * Versão 1.4 - Suporte a Advanced Matching completo e geolocalização
  */
 
 (function() {
@@ -46,7 +46,10 @@
   const sentEvents = {
     timer_1min: false,
     scroll_25: false,
-    scroll_50: false
+    scroll_50: false,
+    scroll_75: false,
+    scroll_90: false,
+    video_started: {}  // Objeto para armazenar os vídeos já rastreados por ID
   };
   
   // Função para obter parâmetros da URL
@@ -981,99 +984,90 @@
     return hashString;
   }
   
-  // Função para hash de dados sensíveis (SHA-256) para o Facebook
-  function hashData(data) {
-    // Se não tivermos o dado ou estiver vazio, retornar null
+  // Função para hash SHA-256 usando SubtleCrypto API
+  async function hashSHA256(data) {
     if (!data) return null;
     
-    // Se o browser tiver suporte para crypto.subtle
-    if (window.crypto && window.crypto.subtle) {
-      try {
-        // Converter string para ArrayBuffer
-        const encoder = new TextEncoder();
-        const dataBuffer = encoder.encode(data);
-        
-        // Criar um hash SHA-256
-        const hashBuffer = crypto.subtle.digest('SHA-256', dataBuffer);
-        
-        // Converter o hash para string hexadecimal
-        return hashBuffer.then(hash => {
-          const hashArray = Array.from(new Uint8Array(hash));
-          const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-          return hashHex;
-        });
-      } catch (e) {
-        console.error('Erro ao calcular hash:', e);
-        return hashString(data); // Fallback para hashString
-      }
+    try {
+      // Converter string para ArrayBuffer
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data);
+      
+      // Calcular hash SHA-256
+      const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+      
+      // Converter ArrayBuffer para string hexadecimal
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      return hashHex;
+    } catch (e) {
+      console.error('Erro ao gerar hash SHA-256:', e);
+      return hashString(data); // Fallback para a função hashString
     }
-    
-    // Fallback se crypto.subtle não estiver disponível
-    return hashString(data);
   }
   
-  // Tenta obter dados do usuário de várias fontes
-  function getUserData() {
-    // Objeto para armazenar os dados do usuário
-    const userData = {};
-    
-    // Tentar obter dados de scripts globais ou objetos de dados
+  // Função para obter dados de geolocalização
+  async function getGeoLocation() {
     try {
-      // 1. Verificar se há variáveis globais com dados do usuário (comum em e-commerces)
-      if (window.userEmail) userData.email = window.userEmail;
-      if (window.userName) userData.firstName = window.userName;
-      if (window.userPhone) userData.phone = window.userPhone;
+      // Tentar obter a localização do usuário através de API de geolocalização
+      const geoData = await fetch('https://api.ipify.org?format=json')
+        .then(response => response.json())
+        .then(data => {
+          return fetch(`https://ipapi.co/${data.ip}/json/`)
+            .then(response => response.json());
+        });
       
-      // 2. Buscar em meta tags específicas
-      const metaTags = document.querySelectorAll('meta');
-      metaTags.forEach(tag => {
-        const name = tag.getAttribute('name');
-        const content = tag.getAttribute('content');
-        
-        if (name === 'user:email') userData.email = content;
-        if (name === 'user:phone') userData.phone = content;
-        if (name === 'user:first_name') userData.firstName = content;
-        if (name === 'user:last_name') userData.lastName = content;
-        if (name === 'user:city') userData.city = content;
-        if (name === 'user:state') userData.state = content;
-        if (name === 'user:country') userData.country = content;
-      });
-      
-      // 3. Verificar dados em elementos com data attributes
-      const userDataElement = document.querySelector('[data-user]');
-      if (userDataElement) {
-        try {
-          const dataUser = JSON.parse(userDataElement.dataset.user);
-          if (dataUser.email) userData.email = dataUser.email;
-          if (dataUser.phone) userData.phone = dataUser.phone;
-          if (dataUser.firstName) userData.firstName = dataUser.firstName;
-          if (dataUser.lastName) userData.lastName = dataUser.lastName;
-          if (dataUser.city) userData.city = dataUser.city;
-          if (dataUser.state) userData.state = dataUser.state;
-          if (dataUser.country) userData.country = dataUser.country;
-        } catch (e) {
-          console.error('Erro ao processar dados do usuário:', e);
-        }
-      }
-      
-      // 4. Shopify específico (se for uma loja Shopify)
-      if (window.Shopify && window.Shopify.customer) {
-        const customer = window.Shopify.customer;
-        if (customer.email) userData.email = customer.email;
-        if (customer.firstName) userData.firstName = customer.firstName;
-        if (customer.lastName) userData.lastName = customer.lastName;
-        if (customer.phone) userData.phone = customer.phone;
-        
-        // Dados de endereço
-        if (customer.defaultAddress) {
-          if (customer.defaultAddress.city) userData.city = customer.defaultAddress.city;
-          if (customer.defaultAddress.province) userData.state = customer.defaultAddress.province;
-          if (customer.defaultAddress.country) userData.country = customer.defaultAddress.country;
-          if (customer.defaultAddress.zip) userData.zip = customer.defaultAddress.zip;
-        }
+      if (geoData) {
+        return {
+          country: geoData.country_code || null,
+          state: geoData.region_code || null,
+          city: geoData.city || null,
+          zip: geoData.postal || null
+        };
       }
     } catch (e) {
-      console.error('Erro ao obter dados do usuário:', e);
+      console.log('Erro ao obter dados de geolocalização:', e);
+    }
+    
+    return {
+      country: null,
+      state: null,
+      city: null,
+      zip: null
+    };
+  }
+
+  // Função para obter dados do usuário com hash
+  async function getUserData() {
+    // Tentar buscar dados de endereço/geolocalização salvos
+    let userData = {
+      // Campos já existentes...
+    };
+    
+    try {
+      // Verificar se temos informações salvas no localStorage
+      const savedUserData = localStorage.getItem('meta_tracking_user_data');
+      if (savedUserData) {
+        const parsed = JSON.parse(savedUserData);
+        userData = { ...userData, ...parsed };
+      }
+      
+      // Se não temos dados geográficos, tentar obtê-los
+      if (!userData.country || !userData.state || !userData.city || !userData.zip) {
+        const geoData = await getGeoLocation();
+        userData = { ...userData, ...geoData };
+        
+        // Salvar para uso futuro
+        localStorage.setItem('meta_tracking_user_data', JSON.stringify({
+          country: userData.country,
+          state: userData.state,
+          city: userData.city,
+          zip: userData.zip
+        }));
+      }
+    } catch (e) {
+      console.log('Erro ao recuperar dados do usuário:', e);
     }
     
     return userData;
@@ -1108,15 +1102,15 @@
     try {
       // Preparar Advanced Matching nos mesmos formatos que o Pixel Helper reconhece
       const external_id = getExternalId();
-      const client_user_agent = hashString(navigator.userAgent);
+      const client_user_agent = await hashSHA256(navigator.userAgent);
       
       // Obter cookies do Facebook com suporte a parâmetros de URL
-      const fbp_raw = getCookie('_fbp') || getUrlParameter('fbp') || hashString('no_fbp_' + Date.now());
+      const fbp_raw = getCookie('_fbp') || getUrlParameter('fbp') || 'no_fbp_' + Date.now();
       const fbp = validateFbp(fbp_raw);
-      const fbc = getCookie('_fbc') || getUrlParameter('fbc') || null;
+      const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
       
-      // Obter informações adicionais do usuário, se disponíveis
-      const userData = getUserData();
+      // Obter informações adicionais do usuário, incluindo geolocalização
+      const userData = await getUserData();
       
       // Adicionar parâmetros extras
       const extraParams = {
@@ -1187,23 +1181,34 @@
         baseParams.append('ud[fbc]', fbc);
       }
       
-      // Funções para processar e adicionar dados com hash
+      // Função para hash e adição de parâmetros avançados
       const addHashedData = async (name, value) => {
         if (value) {
           try {
-            // Se o valor já for uma promessa (de hashData), aguardar
-            if (value instanceof Promise) {
-              const hashedValue = await value;
-              baseParams.append(`ud[${name}]`, hashedValue);
-            } else {
-              const hashedValue = await hashData(value);
-              baseParams.append(`ud[${name}]`, hashedValue);
-            }
+            const hashedValue = await hashSHA256(value);
+            baseParams.append(`ud[${name}]`, hashedValue);
           } catch (e) {
             console.error(`Erro ao processar ${name}:`, e);
           }
         }
       };
+      
+      // Adicionar parâmetros de geolocalização
+      if (userData.country) {
+        await addHashedData('country', userData.country);
+      }
+      
+      if (userData.state) {
+        await addHashedData('st', userData.state);
+      }
+      
+      if (userData.city) {
+        await addHashedData('ct', userData.city);
+      }
+      
+      if (userData.zip) {
+        await addHashedData('zp', userData.zip);
+      }
       
       // Adicionar outros parâmetros de Advanced Matching se disponíveis
       if (userData.email) {
@@ -1222,21 +1227,12 @@
         await addHashedData('ln', userData.lastName.toLowerCase().trim());
       }
       
-      // Adicionar dados geográficos sem hash
-      if (userData.city) {
-        baseParams.append('ud[ct]', userData.city);
+      if (userData.gender) {
+        await addHashedData('ge', userData.gender.toLowerCase().trim());
       }
       
-      if (userData.state) {
-        baseParams.append('ud[st]', userData.state);
-      }
-      
-      if (userData.country) {
-        baseParams.append('ud[country]', userData.country);
-      }
-      
-      if (userData.zip) {
-        baseParams.append('ud[zp]', userData.zip);
+      if (userData.dateOfBirth) {
+        await addHashedData('db', userData.dateOfBirth);
       }
       
       // Definir mapeamento de nomes para garantir formato correto (camelCase para snake_case)
@@ -1348,31 +1344,44 @@
       return Math.round((scrollTop / (documentHeight - windowHeight)) * 100);
     }
     
-    // Event listener para rolagem
-    window.addEventListener('scroll', function() {
+    // Função para verificar e registrar eventos de rolagem
+    function checkScrollDepth() {
       const scrollPercentage = getScrollPercentage();
-      maxScrollPercentage = Math.max(maxScrollPercentage, scrollPercentage);
       
-      // Verificar se atingiu 25% e não foi enviado ainda
-      if (maxScrollPercentage >= 25 && !sentEvents.scroll_25) {
-        sentEvents.scroll_25 = true;
-        sendEvent('Scroll_25', {
-          scrollPercentage: 25,
-          pageUrl: window.location.href,
-          contentName: document.title
-        });
+      if (scrollPercentage > maxScrollPercentage) {
+        maxScrollPercentage = scrollPercentage;
+        
+        // Verificar limites de rolagem e enviar eventos
+        if (scrollPercentage >= 25 && !sentEvents.scroll_25) {
+          sentEvents.scroll_25 = true;
+          sendEvent('Scroll_25');
+        }
+        
+        if (scrollPercentage >= 50 && !sentEvents.scroll_50) {
+          sentEvents.scroll_50 = true;
+          sendEvent('Scroll_50');
+        }
+        
+        // Adicionar rastreamento de rolagem para 75%
+        if (scrollPercentage >= 75 && !sentEvents.scroll_75) {
+          sentEvents.scroll_75 = true;
+          sendEvent('Scroll_75');
+        }
+        
+        // Adicionar rastreamento de rolagem para 90%
+        if (scrollPercentage >= 90 && !sentEvents.scroll_90) {
+          sentEvents.scroll_90 = true;
+          sendEvent('Scroll_90');
+        }
       }
-      
-      // Verificar se atingiu 50% e não foi enviado ainda
-      if (maxScrollPercentage >= 50 && !sentEvents.scroll_50) {
-        sentEvents.scroll_50 = true;
-        sendEvent('Scroll_50', {
-          scrollPercentage: 50,
-          pageUrl: window.location.href,
-          contentName: document.title
-        });
-      }
-    }, { passive: true });
+    }
+    
+    // Configurar ouvintes de eventos
+    window.addEventListener('scroll', throttle(checkScrollDepth, 500));
+    window.addEventListener('resize', throttle(checkScrollDepth, 500));
+    
+    // Verificar após o carregamento da página
+    window.addEventListener('load', checkScrollDepth);
   }
   
   // Função para iniciar timer de 1 minuto
@@ -1389,10 +1398,197 @@
     }, 60000); // 60 segundos = 1 minuto
   }
 
+  // Configurar rastreamento de vídeo
+  function setupVideoTracking() {
+    // Aguardar carregamento da página
+    document.addEventListener('DOMContentLoaded', function() {
+      // Procurar todos os vídeos na página
+      const videos = document.querySelectorAll('video');
+      
+      videos.forEach(function(video, index) {
+        // Identificador único para o vídeo
+        const videoId = video.id || video.getAttribute('data-video-id') || `video_${index}`;
+        
+        // Dados do vídeo para enviar nos eventos
+        let videoData = {
+          contentIds: [videoId],
+          contentName: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
+          contentType: 'video'
+        };
+        
+        // Armazenar pontos de progresso já rastreados
+        let trackedProgressPoints = {
+          start: false,
+          '25': false,
+          '50': false,
+          '75': false,
+          '90': false
+        };
+        
+        // Evento de início de reprodução
+        video.addEventListener('play', function() {
+          if (!trackedProgressPoints.start) {
+            trackedProgressPoints.start = true;
+            
+            // Adicionar duração do vídeo aos dados
+            videoData.videoDuration = video.duration;
+            
+            // Enviar evento de início de vídeo
+            sendEvent('PlayVideo', videoData);
+          }
+        });
+        
+        // Evento de progresso
+        video.addEventListener('timeupdate', function() {
+          // Calcular porcentagem de progresso
+          const percentage = (video.currentTime / video.duration) * 100;
+          
+          // Verificar pontos de progresso
+          if (percentage >= 25 && !trackedProgressPoints['25']) {
+            trackedProgressPoints['25'] = true;
+            sendEvent('ViewVideo_25', {
+              ...videoData,
+              videoPosition: 25,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
+            });
+          }
+          
+          if (percentage >= 50 && !trackedProgressPoints['50']) {
+            trackedProgressPoints['50'] = true;
+            sendEvent('ViewVideo_50', {
+              ...videoData,
+              videoPosition: 50,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
+            });
+          }
+          
+          if (percentage >= 75 && !trackedProgressPoints['75']) {
+            trackedProgressPoints['75'] = true;
+            sendEvent('ViewVideo_75', {
+              ...videoData,
+              videoPosition: 75,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
+            });
+          }
+          
+          if (percentage >= 90 && !trackedProgressPoints['90']) {
+            trackedProgressPoints['90'] = true;
+            sendEvent('ViewVideo_90', {
+              ...videoData,
+              videoPosition: 90,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
+            });
+          }
+        });
+        
+        // Resetar pontos de rastreamento quando o vídeo é reiniciado
+        video.addEventListener('seeking', function() {
+          if (video.currentTime < 1) {
+            // Resetar apenas se estiver voltando para o início
+            trackedProgressPoints = {
+              start: trackedProgressPoints.start, // Manter o início rastreado
+              '25': false,
+              '50': false,
+              '75': false,
+              '90': false
+            };
+          }
+        });
+      });
+    });
+  }
+  
+  // Configurar rastreamento de leads e wishlist
+  function setupLeadTracking() {
+    document.addEventListener('DOMContentLoaded', function() {
+      // Procurar formulários que podem ser de lead
+      const forms = document.querySelectorAll('form');
+      
+      forms.forEach(function(form) {
+        // Verificar se o formulário tem campos de contato
+        const hasEmailField = form.querySelector('input[type="email"], input[name*="email"], input[id*="email"]');
+        const hasNameField = form.querySelector('input[name*="name"], input[id*="name"], input[placeholder*="nome"]');
+        
+        if (hasEmailField || hasNameField) {
+          // Provavelmente é um formulário de lead
+          form.addEventListener('submit', function(event) {
+            // Coletar dados do formulário
+            const formData = new FormData(form);
+            const leadData = {};
+            
+            // Processar dados do formulário
+            for (const [key, value] of formData.entries()) {
+              if (key.includes('email') || key.includes('mail')) {
+                leadData.email = value;
+              }
+              if (key.includes('name') || key.includes('nome')) {
+                // Tentar identificar primeiro e último nome
+                const nameParts = value.split(' ');
+                if (nameParts.length > 1) {
+                  leadData.firstName = nameParts[0];
+                  leadData.lastName = nameParts.slice(1).join(' ');
+                } else {
+                  leadData.firstName = value;
+                }
+              }
+              if (key.includes('phone') || key.includes('tel') || key.includes('fone')) {
+                leadData.phone = value;
+              }
+            }
+            
+            // Enviar evento Lead
+            sendEvent('Lead', {
+              contentName: form.getAttribute('name') || form.id || 'form_lead',
+              contentCategory: 'lead',
+              value: 0
+            }, leadData);
+          });
+        }
+      });
+      
+      // Rastrear botões de wishlist
+      const wishlistButtons = document.querySelectorAll(
+        '.wishlist, .add-to-wishlist, [data-action="wishlist"], ' +
+        '[class*="wishlist"], [id*="wishlist"], ' +
+        'button[title*="desejo"], a[title*="desejo"], ' +
+        'button[aria-label*="desejo"], a[aria-label*="desejo"]'
+      );
+      
+      wishlistButtons.forEach(function(button) {
+        button.addEventListener('click', function(event) {
+          // Tentar identificar o produto
+          const productId = button.getAttribute('data-product-id') || 
+                          button.getAttribute('data-id') || 
+                          getProductIdFromURL();
+          
+          const productName = button.getAttribute('data-product-name') || 
+                            button.getAttribute('aria-label') || 
+                            button.getAttribute('title');
+          
+          sendEvent('AddToWishlist', {
+            contentIds: productId ? [productId] : null,
+            contentName: productName || 'Product',
+            contentCategory: 'wishlist'
+          });
+        });
+      });
+    });
+  }
+
   // Função principal - detecta a página e envia os eventos
   function init() {
     // Inicializar o pixel do Facebook
     initFacebookPixel();
+    
+    // Configurar rastreamentos
+    setupScrollTracking();
+    setupTimerTracking();
+    setupVideoTracking();
+    setupLeadTracking();
     
     // Função para testar o envio completo de todos os parâmetros
     function testCompleteEvent() {
@@ -1468,12 +1664,6 @@
         link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
       });
     
-    // Configurar rastreamento de rolagem
-    setupScrollTracking();
-    
-    // Configurar timer de 1 minuto
-    setupTimerTracking();
-    
     // Sempre enviar PageView
     sendEvent('PageView');
 
@@ -1487,11 +1677,11 @@
     }
   }
 
-  // Iniciar após o carregamento da página
-  if (document.readyState === 'complete') {
-    init();
+  // Inicializar quando o DOM estiver pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    window.addEventListener('load', init);
+    init();
   }
 
   /**
@@ -1548,6 +1738,43 @@
     } catch (error) {
       console.error('Erro ao extrair preço:', error);
       return 0;
+    }
+  }
+
+  // Função de throttle para limitar a frequência de chamadas
+  function throttle(func, limit) {
+    let inThrottle;
+    return function() {
+      const args = arguments;
+      const context = this;
+      if (!inThrottle) {
+        func.apply(context, args);
+        inThrottle = true;
+        setTimeout(() => inThrottle = false, limit);
+      }
+    };
+  }
+  
+  // Função auxiliar para extrair ID do produto da URL
+  function getProductIdFromURL() {
+    try {
+      const url = new URL(window.location.href);
+      const pathParts = url.pathname.split('/');
+      
+      // Tenta encontrar um ID no formato numérico ou alfanumérico no final da URL
+      for (let i = pathParts.length - 1; i >= 0; i--) {
+        if (pathParts[i] && /^[a-zA-Z0-9_-]+$/.test(pathParts[i])) {
+          return pathParts[i];
+        }
+      }
+      
+      // Se não encontrar, tenta encontrar no query string
+      return url.searchParams.get('product_id') || 
+             url.searchParams.get('id') || 
+             url.searchParams.get('productId') || 
+             null;
+    } catch (e) {
+      return null;
     }
   }
 })(); 

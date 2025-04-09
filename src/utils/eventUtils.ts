@@ -35,13 +35,21 @@ export const EVENT_MAPPING: Record<string, string> = {
   'Refused - credit_card': 'CustomEvent',
   'Pesquisar': 'Search',
   'Search': 'Search',
-  // Novos eventos
+  // Eventos existentes
   'ViewSearchResults': 'Search',
   'Timer_1min': 'CustomEvent',
   'Scroll_25': 'CustomEvent',
   'Scroll_50': 'CustomEvent',
   'Scroll_75': 'CustomEvent',
-  'Scroll_100': 'CustomEvent'
+  'Scroll_100': 'CustomEvent',
+  // Novos eventos adicionados (baseados no projeto de referência)
+  'Lead': 'Lead',
+  'AddToWishlist': 'AddToWishlist',
+  'PlayVideo': 'CustomEvent',
+  'ViewVideo_25': 'CustomEvent',
+  'ViewVideo_50': 'CustomEvent',
+  'ViewVideo_75': 'CustomEvent',
+  'ViewVideo_90': 'CustomEvent'
 };
 
 /**
@@ -166,20 +174,12 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     'numItems': 'num_items',
     'orderId': 'order_id',
     'searchString': 'search_string',
-    'predictedLtv': 'predicted_ltv'
+    'predictedLtv': 'predicted_ltv',
+    // Novos campos para eventos de vídeo
+    'videoPosition': 'video_position',
+    'videoDuration': 'video_duration',
+    'videoTitle': 'video_title'
   };
-  console.log(customData);
-  console.log(userData);
-  console.log(eventData);
-  console.log(eventName);
-  console.log(isAppEvent);
-  console.log(geoData);
-  console.log(ipToUse);
-  console.log(fbEventName);
-  console.log(isAppEvent);
-  console.log(clientIP);
-  console.log(geoData);
-  console.log(ipToUse);
 
   // Normalizar dados do usuário
   const normalizedUserData: NormalizedUserData = {
@@ -241,7 +241,10 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
         eventName === 'ViewList' || eventName === 'ViewCategory' ? 'category' : 
         eventName === 'Search' || eventName === 'ViewSearchResults' ? 'search' : 
         eventName === 'AddToCart' ? 'cart' : 
-        eventName === 'Purchase' ? 'purchase' : 'general'),
+        eventName === 'Purchase' ? 'purchase' : 
+        eventName === 'Lead' ? 'lead' :
+        eventName === 'AddToWishlist' ? 'wishlist' :
+        eventName.includes('Video') ? 'video' : 'general'),
     content_ids: customData?.contentIds || customData?.content_ids || null,
     content_type: customData?.contentType || customData?.content_type || "product_group",
     order_id: customData?.orderId || customData?.order_id || null,
@@ -266,6 +269,21 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     referrer: customData?.referrer || userData?.referrer || null,
     event_time: Math.floor(Date.now() / 1000),
   };
+  
+  // Processar campos específicos para eventos de vídeo
+  if (eventName.includes('Video')) {
+    normalizedCustomData.video_position = customData?.videoPosition || customData?.video_position || null;
+    normalizedCustomData.video_duration = customData?.videoDuration || customData?.video_duration || null;
+    normalizedCustomData.video_title = customData?.videoTitle || customData?.video_title || normalizedCustomData.content_name || null;
+  }
+  
+  // Verificações específicas para eventos Lead
+  if (eventName === 'Lead') {
+    // Para eventos de lead, alertar se não tiver dados de contato suficientes
+    if (!normalizedUserData.em && !normalizedUserData.ph && !normalizedUserData.fn) {
+      console.warn('Evento Lead sem dados de contato suficientes');
+    }
+  }
   
   // Adicionar dados de app se for um evento de app
   if (isAppEvent) {

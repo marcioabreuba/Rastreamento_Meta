@@ -107,6 +107,13 @@ export interface CustomData {
   num_items?: number;
   search_string?: string;
   predicted_ltv?: number;
+  // Campos para eventos de vídeo
+  videoPosition?: number;
+  videoDuration?: number;
+  videoTitle?: string;
+  video_position?: number;
+  video_duration?: number;
+  video_title?: string;
   // Novos campos para dados de aplicativo
   advertiserTrackingEnabled?: boolean;
   applicationTrackingEnabled?: boolean;
@@ -137,6 +144,10 @@ export interface NormalizedCustomData {
   user_country?: string | null;
   user_zip?: string | null;
   geo_data?: GeoData | null;
+  // Campos para eventos de vídeo
+  video_position?: number | null;
+  video_duration?: number | null;
+  video_title?: string | null;
   // Parâmetros de app
   advertiser_tracking_enabled?: boolean | null;
   application_tracking_enabled?: boolean | null;
