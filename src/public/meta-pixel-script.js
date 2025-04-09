@@ -14,6 +14,10 @@
   // ID do seu pixel do Facebook
   const PIXEL_ID = '1163339595278098';
   
+  // Nome do cookie first-party para ID de visitante
+  const VISITOR_COOKIE_NAME = '_mtVisitorId';
+  const VISITOR_COOKIE_EXPIRATION_DAYS = 730; // 2 anos
+  
   // Mapeamento de eventos para o Facebook
   const EVENT_MAPPING = {
     'PageView': 'PageView',
@@ -58,6 +62,65 @@
     return urlParams.get(name);
   }
   
+  // Função para obter cookies
+  function getCookie(name) {
+    // Primeiro verificar se o cookie existe como parâmetro na URL (para domínios cruzados)
+    // IMPORTANTE: Manter esta lógica se você precisa passar o ID entre domínios via URL
+    const urlValue = getUrlParameter(name);
+    if (urlValue) return urlValue;
+
+    // Caso contrário, buscar no cookie
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for(var i=0; i < ca.length; i++) {
+      var c = ca[i];
+      while (c.charAt(0)==' ') c = c.substring(1,c.length);
+      if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+    }
+    return null;
+  }
+
+  // Função para definir o cookie first-party
+  function setCookie(name, value, days) {
+    var expires = "";
+    if (days) {
+      var date = new Date();
+      date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+      expires = "; expires=" + date.toUTCString();
+    }
+    // Assume HTTPS, ajusta SameSite para Lax. Obtém o domínio principal + 1 TLD.
+    let domain = window.location.hostname;
+    // Tenta obter o domínio .domain.tld (ex: .soleterra.com.br)
+    const domainParts = domain.split('.');
+    if (domainParts.length >= 2) {
+      domain = '.' + domainParts.slice(-2).join('.');
+    } else {
+      domain = ''; // Para localhost ou IPs
+    }
+    const cookieString = name + "=" + (value || "") + expires + "; path=/;" + (domain ? " domain=" + domain + ";" : "") + " SameSite=Lax; Secure";
+    document.cookie = cookieString;
+    // Log para debug do cookie sendo setado
+    // console.log('Setting cookie:', cookieString);
+  }
+
+  // Função para gerar um UUID v4
+  function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  // Cria ou recupera o ID de Visitante First-Party
+  function getOrCreateVisitorId() {
+    let visitorId = getCookie(VISITOR_COOKIE_NAME);
+    if (!visitorId) {
+      visitorId = generateUUID();
+      setCookie(VISITOR_COOKIE_NAME, visitorId, VISITOR_COOKIE_EXPIRATION_DAYS);
+    }
+    return visitorId;
+  }
+
   // Função para obter cookies
   function getCookie(name) {
     // Primeiro verificar se o cookie existe como parâmetro na URL (para domínios cruzados)
@@ -1099,223 +1162,149 @@
 
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
+    // Definir variável para armazenar o eventId do backend
+    let backendEventId = null;
     try {
-      // Preparar Advanced Matching nos mesmos formatos que o Pixel Helper reconhece
-      const external_id = getExternalId();
-      const client_user_agent = await hashSHA256(navigator.userAgent);
-      
-      // Obter cookies do Facebook com suporte a parâmetros de URL
+      // Preparar Advanced Matching
+      const visitorId = getOrCreateVisitorId(); // <-- Usar o novo ID first-party
+      const client_user_agent_raw = navigator.userAgent;
+      const client_user_agent_hashed = await hashSHA256(client_user_agent_raw);
+
+      // Obter cookies do Facebook
       const fbp_raw = getCookie('_fbp') || getUrlParameter('fbp') || 'no_fbp_' + Date.now();
       const fbp = validateFbp(fbp_raw);
       const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
-      
-      // Obter informações adicionais do usuário, incluindo geolocalização
+
+      // Obter informações adicionais do usuário
       const userData = await getUserData();
-      
-      // Adicionar parâmetros extras
-      const extraParams = {
-        app: 'meta-tracking',
-        event_time: Math.floor(Date.now() / 1000),
-        language: navigator.language || 'pt-BR',
-        referrer: document.referrer
-      };
-      
-      // Garantir que todos os parâmetros obrigatórios estão presentes
-      const standardizedCustomData = {
-        content_category: customData.contentCategory || customData.content_category || 
-          (Array.isArray(customData.contentIds) && customData.contentIds.length ? 
-            [customData.contentIds[0].split('-')[0]] : 
-            // Usar informações do evento para definir uma categoria padrão
-            eventName === 'ViewHome' ? 'homepage' : 
-            eventName === 'ViewContent' ? 'product' : 
-            eventName === 'ViewList' || eventName === 'ViewCategory' ? 'category' : 
-            eventName === 'Search' || eventName === 'ViewSearchResults' ? 'search' : 
-            eventName === 'AddToCart' ? 'cart' : 
-            eventName === 'Purchase' ? 'purchase' : 'general'),
-        content_ids: customData.contentIds || customData.content_ids || null,
-        content_name: customData.contentName || customData.content_name || null,
-        content_type: customData.contentType || customData.content_type || "product_group",
-        contents: customData.contents || (customData.contentIds ? [{ id: Array.isArray(customData.contentIds) ? customData.contentIds[0] : customData.contentIds, quantity: customData.numItems || customData.num_items || 1 }] : null),
-        currency: customData.currency || 'BRL',
-        num_items: customData.numItems || customData.num_items || 1,
-        value: customData.value ? Math.round(Number(customData.value)) : 0,
-        ...extraParams
-      };
-      
-      // Combinar com outros dados personalizados
-      const enhancedCustomData = {
-        ...customData,
-        ...standardizedCustomData
-      };
-      
-      // Gerar event ID único para este evento
-      const eventID = 'meta_tracking_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-      
-      // Inicializar o pixel com Advanced Matching a cada evento
-      // Isso garante que o Pixel Helper capture corretamente os parâmetros
-      fbq('init', PIXEL_ID);
-      
-      // Formato explícito de ud[] que o TracLead usa
-      // Isso força o Pixel Helper a exibir os parâmetros corretamente
-      const pixelUrl = 'https://www.facebook.com/tr/';
-      const baseParams = new URLSearchParams({
-        id: PIXEL_ID,
-        ev: eventName === 'ViewHome' ? 'ViewHome' : eventName,
-        dl: document.location.href,
-        rl: document.referrer,
-        if: false,
-        ts: Date.now(),
-        v: '2.9.194',
-        r: 'stable',
-        eid: eventID
-      });
-      
-      // Adicionar Advanced Matching no formato ud[campo]=valor
-      // Parâmetros básicos
-      baseParams.append('ud[external_id]', external_id);
-      baseParams.append('ud[client_user_agent]', client_user_agent);
-      baseParams.append('ud[fbp]', fbp);
-      
-      // Adicionar FBC se disponível
-      if (fbc) {
-        baseParams.append('ud[fbc]', fbc);
-      }
-      
-      // Função para hash e adição de parâmetros avançados
-      const addHashedData = async (name, value) => {
-        if (value) {
-          try {
-            const hashedValue = await hashSHA256(value);
-            baseParams.append(`ud[${name}]`, hashedValue);
-          } catch (e) {
-            console.error(`Erro ao processar ${name}:`, e);
-          }
-        }
-      };
-      
-      // Adicionar parâmetros de geolocalização
-      if (userData.country) {
-        await addHashedData('country', userData.country);
-      }
-      
-      if (userData.state) {
-        await addHashedData('st', userData.state);
-      }
-      
-      if (userData.city) {
-        await addHashedData('ct', userData.city);
-      }
-      
-      if (userData.zip) {
-        await addHashedData('zp', userData.zip);
-      }
-      
-      // Adicionar outros parâmetros de Advanced Matching se disponíveis
-      if (userData.email) {
-        await addHashedData('em', userData.email.toLowerCase().trim());
-      }
-      
-      if (userData.phone) {
-        await addHashedData('ph', userData.phone.replace(/\D/g, ''));
-      }
-      
-      if (userData.firstName) {
-        await addHashedData('fn', userData.firstName.toLowerCase().trim());
-      }
-      
-      if (userData.lastName) {
-        await addHashedData('ln', userData.lastName.toLowerCase().trim());
-      }
-      
-      if (userData.gender) {
-        await addHashedData('ge', userData.gender.toLowerCase().trim());
-      }
-      
-      if (userData.dateOfBirth) {
-        await addHashedData('db', userData.dateOfBirth);
-      }
-      
-      // Definir mapeamento de nomes para garantir formato correto (camelCase para snake_case)
-      const paramMapping = {
-        'contentCategory': 'content_category',
-        'contentIds': 'content_ids',
-        'contentName': 'content_name',
-        'contentType': 'content_type',
-        'numItems': 'num_items',
-        // Manter também os nomes com underscore para não duplicar
-        'content_category': 'content_category',
-        'content_ids': 'content_ids',
-        'content_name': 'content_name',
-        'content_type': 'content_type',
-        'contents': 'contents',
-        'num_items': 'num_items'
-      };
-      
-      // Adicionar os custom data params com nomes padronizados
-      Object.entries(enhancedCustomData).forEach(([key, value]) => {
-        // Não adicionar dados geográficos do usuário como custom data params
-        // para evitar duplicidade, pois já foram adicionados como ud[] acima
-        if (key !== 'user_city' && key !== 'user_state' && 
-            key !== 'user_country' && key !== 'user_zip') {
-          
-          // Usar o nome mapeado se existir, senão usar o nome original
-          const mappedKey = paramMapping[key] || key;
-          
-          // Não adicionar parâmetros nulos
-          if (value !== null && value !== undefined) {
-            // Para arrays e objetos, converter para JSON
-            if (typeof value === 'object') {
-              baseParams.append(`cd[${mappedKey}]`, JSON.stringify(value));
-            } else {
-              baseParams.append(`cd[${mappedKey}]`, value);
-            }
-          }
-        }
-      });
-      
-      // Criar e enviar o pixel manualmente usando um image request
-      const pixelImg = new Image();
-      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
-      
-      // 2. Dados para nossa API
-      const eventData = {
+
+      // --- Envio para o Backend /track PRIMEIRO para obter eventId ---
+      const eventDataForBackend = {
         eventName: eventName,
         userData: {
-          userAgent: navigator.userAgent,
+          userAgent: client_user_agent_raw, // Enviar não hasheado para o backend
           language: navigator.language || 'pt-BR',
-          // Obter cookies do Facebook se disponíveis
           fbp: fbp,
           fbc: fbc,
-          // Usar ID externo persistente para o usuário
-          userId: external_id,
+          visitorId: visitorId, // <-- Enviar o ID do cookie first-party
+          userId: window.metaTrackingUserId || null, // Enviar ID de usuário logado se existir
           referrer: document.referrer,
-          // Adicionar dados adicionais do usuário, se disponíveis
-          ...userData
+          ...userData // Adiciona geo (country, state, city, zip) e outros se coletados
         },
         customData: {
-          ...enhancedCustomData,
-          // Adicionar a URL atual
+          ...customData, // Adiciona dados específicos do evento (conteúdo, valor, etc.)
           sourceUrl: window.location.href
         }
       };
 
-      // Também enviar para a API backend
-      const response = await fetch(API_URL, {
+      // Enviar para a API backend e obter resposta (incluindo eventId)
+      const backendResponse = await fetch(API_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(eventData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventDataForBackend)
       });
 
-      if (!response.ok) {
-        throw new Error(`Erro na resposta: ${response.status}`);
+      if (!backendResponse.ok) {
+        console.error(`Erro na resposta do backend /track: ${backendResponse.status}`);
+        // Considerar se deve continuar com o envio do pixel mesmo com erro no backend
+      } else {
+        const backendResult = await backendResponse.json();
+        if (backendResult && backendResult.eventId) {
+          backendEventId = backendResult.eventId; // <-- Capturar o eventId do backend
+          console.log(`Backend respondeu com eventId: ${backendEventId}`);
+        } else {
+          console.warn('Backend não retornou eventId');
+        }
       }
 
-      console.log(`Evento ${eventName} enviado com sucesso (ID: ${eventID})`);
-      return await response.json();
+      // --- Construção e Envio do Pixel Manual (Usando eventId do backend) ---
+
+      // Inicializar o pixel (pode ser redundante se já inicializado, mas garante)
+      fbq('init', PIXEL_ID);
+
+      // Construir URL do Pixel manualmente
+      const pixelUrl = 'https://www.facebook.com/tr/';
+      const baseParams = new URLSearchParams({
+        id: PIXEL_ID,
+        ev: eventName, // Usar nome original do evento
+        dl: document.location.href,
+        rl: document.referrer,
+        if: false,
+        ts: Date.now(),
+        // v: '2.9.194', // Versão pode ser omitida ou atualizada
+        r: 'stable',
+        // Usar o eventId recebido do backend se disponível, senão gerar um fallback
+        eid: backendEventId || ('meta_tracking_fe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
+      });
+
+      // Adicionar Advanced Matching (hasheado) para o Pixel
+      const externalIdHashed = await hashSHA256(visitorId); // <-- Usar hash do visitorId
+      baseParams.append('ud[external_id]', externalIdHashed);
+      baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
+      baseParams.append('ud[fbp]', fbp);
+      if (fbc) {
+        baseParams.append('ud[fbc]', fbc);
+      }
+
+      // Função interna para adicionar dados hasheados ao baseParams
+      const addHashedDataToPixel = async (name, value) => {
+        if (value) {
+          try {
+            // Normalizar e Hashear para o Pixel
+            let normalizedValue = String(value).toLowerCase().trim();
+            if (name === 'ph') normalizedValue = normalizedValue.replace(/\D/g, '');
+            if (name === 'zp') normalizedValue = normalizedValue.replace(/\D/g, '');
+            const hashedValue = await hashSHA256(normalizedValue);
+            baseParams.append(`ud[${name}]`, hashedValue);
+          } catch (e) {
+            console.error(`Erro ao processar ${name} para Pixel:`, e);
+          }
+        }
+      };
+
+      // Adicionar geo e PII hasheados para o Pixel
+      await addHashedDataToPixel('country', userData.country);
+      await addHashedDataToPixel('st', userData.state);
+      await addHashedDataToPixel('ct', userData.city);
+      await addHashedDataToPixel('zp', userData.zip);
+      await addHashedDataToPixel('em', userData.email);
+      await addHashedDataToPixel('ph', userData.phone);
+      await addHashedDataToPixel('fn', userData.firstName);
+      await addHashedDataToPixel('ln', userData.lastName);
+      await addHashedDataToPixel('ge', userData.gender);
+      await addHashedDataToPixel('db', userData.dateOfBirth);
+
+      // Adicionar custom data (não hasheado) para o Pixel
+      const customDataForPixel = {
+          ...customData,
+          app: 'meta-tracking',
+          language: navigator.language || 'pt-BR',
+          referrer: document.referrer
+          // Não precisa adicionar sourceUrl, etc., pois já estão nos parâmetros base (dl, rl)
+      };
+
+      Object.entries(customDataForPixel).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          if (typeof value === 'object') {
+            baseParams.append(`cd[${key}]`, JSON.stringify(value));
+          } else {
+            baseParams.append(`cd[${key}]`, value);
+          }
+        }
+      });
+
+      // Enviar o pixel manualmente usando um image request
+      const pixelImg = new Image();
+      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
+      console.log(`Pixel ${eventName} enviado manualmente (ID: ${baseParams.get('eid')})`);
+
+      // Retornar o resultado do backend
+      if (backendEventId) {
+          return { eventId: backendEventId }; // Retornar o ID do backend se sucesso
+      }
+
     } catch (error) {
-      console.error('Erro ao enviar evento:', error);
+      console.error('Erro geral ao enviar evento:', error);
       return null;
     }
   }
