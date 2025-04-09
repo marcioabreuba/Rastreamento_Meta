@@ -154,11 +154,14 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       const isRealIPv6Address = isRealIPv6(clientIp);
       
       // Preservar IPv6 reais, extrair apenas IPv4 de endereços IPv4-mapped
+      // Comentado para sempre usar o IP original (IPv6 ou mapeado) e deixar a normalização tratar a conversão
+      /*
       if (!isRealIPv6Address && clientIp && clientIp.includes('::ffff:')) {
         const ipv4Part = clientIp.split('::ffff:')[1];
         logger.debug(`Detectado IPv4-mapped, extraindo parte IPv4: ${ipv4Part}`);
         clientIp = ipv4Part;
       }
+      */
       
       userDataWithIP.ip = clientIp;
       
