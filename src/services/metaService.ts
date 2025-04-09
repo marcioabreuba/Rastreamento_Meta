@@ -108,8 +108,8 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       return false;
     }
     
-    // Construir a URL para o endpoint da API
-    const apiUrl = `https://graph.facebook.com/v16.0/${config.fbPixelId}/events`;
+    // Construir a URL para o endpoint da API - Atualizado para v19.0
+    const apiUrl = `https://graph.facebook.com/v19.0/${config.fbPixelId}/events`;
     
     // Obter o nome do evento (usar nome original para eventos personalizados)
     const eventNameToSend = EVENT_MAPPING[eventName] || eventName;

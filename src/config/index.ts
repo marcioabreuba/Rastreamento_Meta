@@ -28,6 +28,8 @@ interface Config {
     username: string | null;
     databaseName: string;
   };
+  shopifyApiSecret: string;
+  shopifyApiKey: string;
 }
 
 const config: Config = {
@@ -35,7 +37,7 @@ const config: Config = {
   logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
   port: parseInt(process.env.PORT || '3001', 10),
   databaseUrl: process.env.DATABASE_URL || 'file:./prisma/dev.db',
-  fbApiUrl: process.env.FB_API_URL || 'https://graph.facebook.com/v18.0',
+  fbApiUrl: process.env.FB_API_URL || 'https://graph.facebook.com/v19.0',
   fbPixelId: process.env.FB_PIXEL_ID || '1163339595278098',
   fbAccessToken: process.env.FB_ACCESS_TOKEN || '',
   fbTestEventCode: process.env.FB_TEST_EVENT_CODE || '',
@@ -50,7 +52,9 @@ const config: Config = {
     password: process.env.REDIS_PASSWORD || 'TGT9TZNhbBTr0mlmpFlCFQMVKqJAXOoB',
     username: process.env.REDIS_USERNAME || 'default',
     databaseName: process.env.REDIS_DATABASE_NAME || 'database-M970R9HC'
-  }
+  },
+  shopifyApiSecret: process.env.SHOPIFY_API_SECRET || '',
+  shopifyApiKey: process.env.SHOPIFY_API_KEY || '',
 };
 
 export default config; 
