@@ -83,125 +83,117 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     // Construir a URL para o endpoint da API
     const apiUrl = `https://graph.facebook.com/v16.0/${config.fbPixelId}/events`;
     
-    // Definir o tipo para o payload do evento para evitar erros de linter
+    // Obter o nome do evento (usar nome original para eventos personalizados)
+    const eventNameToSend = EVENT_MAPPING[eventName] || eventName;
+    
+    // Definir interfaces para os objetos simplificados
+    interface SimplifiedUserData {
+      client_ip_address?: string;
+      client_user_agent?: string;
+      external_id?: string;
+      fbp?: string;
+      fbc?: string;
+      em?: string;
+      ph?: string;
+      fn?: string;
+      ln?: string;
+      country?: string;
+      ct?: string;
+      st?: string;
+      zp?: string;
+      [key: string]: any;
+    }
+    
+    interface SimplifiedCustomData {
+      currency: string;
+      value: number;
+      content_ids?: string[];
+      content_name?: string;
+      content_type?: string;
+      content_category?: string;
+      search_string?: string;
+      [key: string]: any;
+    }
+    
+    // Extrair apenas os campos de usuário essenciais e suportados
+    const userData_simplified: SimplifiedUserData = {
+      client_ip_address: userData.client_ip_address,
+      client_user_agent: userData.client_user_agent,
+      external_id: userData.external_id,
+      fbp: userData.fbp,
+      fbc: userData.fbc,
+      em: userData.em,
+      ph: userData.ph,
+      fn: userData.fn,
+      ln: userData.ln,
+      country: userData.country,
+      ct: userData.city,
+      st: userData.state,
+      zp: userData.zip
+    };
+    
+    // Extrair apenas os campos personalizados essenciais
+    const customData_simplified: SimplifiedCustomData = {
+      currency: customData.currency || 'BRL',
+      value: customData.value || 0
+    };
+    
+    // Adicionar content_ids se disponíveis
+    if (customData.content_ids) {
+      customData_simplified.content_ids = Array.isArray(customData.content_ids) 
+        ? customData.content_ids 
+        : [customData.content_ids];
+    }
+    
+    // Adicionar content_name se disponível
+    if (customData.content_name) {
+      customData_simplified.content_name = customData.content_name;
+    }
+    
+    // Adicionar content_type se disponível
+    if (customData.content_type) {
+      customData_simplified.content_type = customData.content_type;
+    }
+    
+    // Adicionar content_category se disponível
+    if (customData.content_category) {
+      customData_simplified.content_category = Array.isArray(customData.content_category)
+        ? customData.content_category.join(',')
+        : customData.content_category;
+    }
+    
+    // Adicionar search_string apenas para eventos de pesquisa
+    if ((eventName === 'Search' || eventName === 'ViewSearchResults') && customData.search_string) {
+      customData_simplified.search_string = customData.search_string;
+    }
+    
+    // Interface para o payload do evento
     interface EventPayload {
       event_name: string;
       event_time: number;
       event_source_url: string;
       event_id: string;
       action_source: string;
-      user_data: Record<string, string | null>;
+      user_data: Record<string, any>;
       custom_data: Record<string, any>;
-      data_processing_options?: string[];
-      data_processing_options_country?: number | null;
-      data_processing_options_state?: number | null;
-      referrer_url?: string | null;
-      customer_segmentation?: any;
     }
     
-    // Obter o nome mapeado do evento, mas usar o nome original para eventos personalizados
-    // Com base no projeto de referência, usamos os nomes originais como Scroll_90, não CustomEvent
-    const eventNameToSend = EVENT_MAPPING[eventName] || eventName;
-    
-    // Construir o payload do evento
+    // Criar payload simplificado
     const eventPayload: EventPayload = {
       event_name: eventNameToSend,
       event_time: serverData.event_time,
       event_source_url: serverData.event_source_url,
       event_id: serverData.event_id,
       action_source: serverData.action_source,
-      user_data: {
-        client_ip_address: userData.client_ip_address,
-        client_user_agent: userData.client_user_agent,
-        external_id: userData.external_id,
-        fbp: userData.fbp,
-        fbc: userData.fbc,
-        em: userData.em,
-        ph: userData.ph,
-        fn: userData.fn,
-        ln: userData.ln,
-        ge: userData.ge,
-        db: userData.db,
-        country: userData.country,
-        ct: userData.city,
-        st: userData.state,
-        zp: userData.zip,
-        // Outros parâmetros
-        subscription_id: userData.subscription_id,
-        fb_login_id: userData.fb_login_id,
-        lead_id: userData.lead_id,
-        ctwa_clid: userData.ctwa_clid,
-        ig_account_id: userData.ig_account_id,
-        ig_sid: userData.ig_sid,
-        page_id: userData.page_id,
-        page_scoped_user_id: userData.page_scoped_user_id,
-        // Parâmetros específicos de app
-        anon_id: userData.anon_id,
-        madid: userData.madid,
-        vendor_id: userData.vendor_id
-      },
-      custom_data: {
-        currency: customData.currency,
-        value: customData.value,
-        // Processar arrays corretamente para a API
-        content_category: Array.isArray(customData.content_category) 
-          ? customData.content_category.join(',') 
-          : customData.content_category,
-        content_ids: Array.isArray(customData.content_ids) 
-          ? customData.content_ids 
-          : customData.content_ids ? [customData.content_ids] : undefined,
-        content_name: customData.content_name,
-        content_type: customData.content_type,
-        order_id: customData.order_id,
-        contents: customData.contents,
-        status: customData.status,
-        // Incluir os campos específicos do evento somente quando relevantes
-        ...(eventName === 'Search' || eventName === 'ViewSearchResults' 
-            ? { search_string: customData.search_string } 
-            : {}),
-        ...(eventName.includes('Video') 
-            ? { 
-                video_position: customData.video_position,
-                video_duration: customData.video_duration,
-                video_title: customData.video_title
-              } 
-            : {})
-      }
+      user_data: userData_simplified,
+      custom_data: customData_simplified
     };
     
-    // Remover campos indefinidos ou nulos
+    // Remover campos nulos ou indefinidos do user_data
     eventPayload.user_data = Object.fromEntries(
       Object.entries(eventPayload.user_data)
         .filter(([_, value]) => value !== null && value !== undefined)
-    ) as Record<string, string>;
-    
-    eventPayload.custom_data = Object.fromEntries(
-      Object.entries(eventPayload.custom_data)
-        .filter(([_, value]) => value !== null && value !== undefined)
     );
-    
-    // Adicionar opções de processamento de dados (para conformidade com LGPD, CCPA, etc.)
-    if (serverData.data_processing_options && serverData.data_processing_options.length > 0) {
-      eventPayload.data_processing_options = serverData.data_processing_options;
-      
-      if (serverData.data_processing_options_country !== null) {
-        eventPayload.data_processing_options_country = serverData.data_processing_options_country;
-      }
-      
-      if (serverData.data_processing_options_state !== null) {
-        eventPayload.data_processing_options_state = serverData.data_processing_options_state;
-      }
-    }
-    
-    // Adicionar URL de referência se disponível
-    if (serverData.referrer_url) {
-      eventPayload.referrer_url = serverData.referrer_url;
-    }
-    
-    // Adicionar segmentação de cliente se disponível
-    if (serverData.customer_segmentation) {
-      eventPayload.customer_segmentation = serverData.customer_segmentation;
-    }
     
     // Preparar os dados completos para envio
     const requestData = {
@@ -210,9 +202,10 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       test_event_code: config.nodeEnv === 'development' ? config.fbTestEventCode || 'TEST12345' : undefined
     };
     
-    // Log formatado similar ao Pixel Helper para debug
+    // Log formatado
     const eventTime = new Date(serverData.event_time * 1000).toISOString();
-    logger.debug(`Enviando evento para Conversions API: ${eventName} (Nome mapeado: ${eventNameToSend})`);
+    logger.debug(`Enviando evento para Conversions API: ${eventName} (Nome: ${eventNameToSend})`);
+    logger.debug(`Payload: ${JSON.stringify(requestData, null, 2)}`);
     
     console.log('\n');
     console.log('┌──────────────────────────────────────────────────────────┐');
@@ -233,18 +226,21 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       body: JSON.stringify(requestData)
     });
     
+    // Para debug, vamos registrar a resposta completa
+    const responseText = await response.text();
+    logger.debug(`Resposta da API: ${responseText}`);
+    
     if (!response.ok) {
-      const errorText = await response.text();
       logger.error(`Erro ao enviar evento para Conversions API: ${response.status} ${response.statusText}`, {
         eventName,
         eventId: serverData.event_id,
-        error: errorText,
+        error: responseText,
         requestData: JSON.stringify(requestData)
       });
       return false;
     }
     
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     
     if (result.events_received && result.events_received > 0) {
       logger.info(`Evento enviado com sucesso para Conversions API: ${eventName}`, {
