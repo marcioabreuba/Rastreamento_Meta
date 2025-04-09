@@ -108,12 +108,38 @@ export const enrichEventWithUserData = async (event: NormalizedEvent): Promise<N
     const externalId = event.userData.external_id;
     
     if (!externalId) {
-      logger.debug(`Evento sem external_id, não será enriquecido`);
+      logger.debug(`Evento sem external_id, não será enriquecido`, {
+        eventName: event.eventName,
+        eventId: event.serverData.event_id,
+        hasUserData: Object.keys(event.userData).filter(k => event.userData[k] !== null).join(', ')
+      });
       return event;
     }
     
+    // Situação inicial do evento antes de enriquecer
+    logger.debug(`Estado inicial do evento antes de enriquecimento: ${event.eventName}`, {
+      eventId: event.serverData.event_id,
+      externalId,
+      hasFields: {
+        fbp: !!event.userData.fbp,
+        fbc: !!event.userData.fbc,
+        em: !!event.userData.em,
+        ph: !!event.userData.ph,
+        fn: !!event.userData.fn,
+        ln: !!event.userData.ln,
+        geo: !!(event.userData.country || event.userData.city || event.userData.state)
+      }
+    });
+    
     // Buscar dados do usuário
     const userData = await findOrCreateUser(externalId);
+    
+    // Verificar se há dados no cache do usuário
+    logger.debug(`Dados encontrados no cache para usuário: ${externalId}`, {
+      eventId: event.serverData.event_id,
+      userDataExists: !!userData,
+      cachedFields: userData ? Object.keys(userData).filter(k => userData[k] !== undefined && userData[k] !== null).join(', ') : 'none'
+    });
     
     // Adicionar dados faltantes do usuário se disponíveis no cache
     const enrichedUserData = { ...event.userData };
@@ -145,7 +171,15 @@ export const enrichEventWithUserData = async (event: NormalizedEvent): Promise<N
     if (enriched.length > 0) {
       logger.info(`Evento enriquecido com dados do usuário: ${externalId}`, {
         eventName: event.eventName,
-        enrichedFields: enriched.join(', ')
+        eventId: event.serverData.event_id,
+        enrichedFields: enriched.join(', '),
+        totalEnrichedFields: enriched.length
+      });
+    } else {
+      logger.debug(`Nenhum campo enriquecido para o evento: ${event.eventName}`, {
+        eventId: event.serverData.event_id,
+        externalId,
+        reason: "Todos os campos já preenchidos ou dados não disponíveis no cache"
       });
     }
     
@@ -175,16 +209,18 @@ export const saveEvent = async (event: NormalizedEvent): Promise<number> => {
     const { eventName, userData, customData, serverData } = event;
     
     try {
+      // Preparar dados para o banco de dados separando o objeto do evento
+      const eventData = {
+        eventName,
+        userData: userData as unknown as any,
+        customData: customData as unknown as any,
+        serverData: serverData as unknown as any,
+        status: 'pending'
+      };
+      
       // Salvar no banco de dados
       const savedEvent = await prisma.event.create({
-        data: {
-          eventName,
-          // Converter objetos para JSON antes de salvar
-          userData: userData as unknown as any,
-          customData: customData as unknown as any,
-          serverData: serverData as unknown as any,
-          // O status é definido no schema com valor padrão, não precisamos incluí-lo
-        },
+        data: eventData
       });
       
       logger.info(`Evento salvo no banco de dados: ${eventName}`, { 
@@ -290,17 +326,20 @@ export const processQueuedEvent = async (event: NormalizedEvent): Promise<boolea
         const eventId = parseInt(eventIdString);
         
         if (!isNaN(eventId)) {
+          // Definir o status para atualização
+          const newStatus = result ? 'sent' : 'failed';
+          
           // Usando updateMany para atualizar sem precisar do ID exato,
           // e para evitar erros de tipagem com o campo status
           await prisma.$executeRaw`
             UPDATE "Event" 
-            SET status = ${result ? 'sent' : 'failed'} 
+            SET status = ${newStatus} 
             WHERE id = ${eventId};
           `;
           
           logger.debug(`Status do evento atualizado: ${event.eventName}`, {
             eventId,
-            status: result ? 'sent' : 'failed'
+            status: newStatus
           });
         }
       } catch (dbError) {
@@ -340,12 +379,17 @@ export const getPendingEvents = async (limit: number = 100): Promise<NormalizedE
     `;
     
     // Converter para o formato NormalizedEvent
-    return (pendingEvents as any[]).map(event => ({
-      eventName: event.eventName,
-      userData: event.userData as any,
-      customData: event.customData as any,
-      serverData: event.serverData as any,
-    }));
+    return (pendingEvents as any[]).map(event => {
+      // Extrair apenas os campos necessários para o NormalizedEvent
+      const { eventName, userData, customData, serverData } = event;
+      
+      return {
+        eventName,
+        userData: userData as any,
+        customData: customData as any,
+        serverData: serverData as any,
+      };
+    });
   } catch (error: any) {
     logger.error(`Erro ao buscar eventos pendentes: ${error.message}`, { error: error.message });
     return [];

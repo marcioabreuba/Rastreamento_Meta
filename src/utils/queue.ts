@@ -108,10 +108,18 @@ export const initQueue = async (): Promise<void> => {
     worker = new Worker(queueName, async (job: Job) => {
       const event = job.data as NormalizedEvent;
       
-      logger.info(`Processando evento da fila: ${event.eventName}`, {
+      logger.debug(`Iniciando processamento de evento na fila: ${event.eventName}`, { 
         eventId: event.serverData.event_id,
         jobId: job.id,
-        attempt: job.attemptsMade
+        attempt: job.attemptsMade,
+        userData: {
+          has_user_id: !!event.userData.external_id,
+          has_email: !!event.userData.em,
+          has_phone: !!event.userData.ph,
+          has_fbp: !!event.userData.fbp,
+          has_fbc: !!event.userData.fbc,
+          has_geo: !!(event.userData.country || event.userData.city)
+        }
       });
       
       try {
@@ -121,6 +129,11 @@ export const initQueue = async (): Promise<void> => {
         if (!result) {
           throw new Error(`Falha ao processar evento: ${event.eventName}`);
         }
+        
+        logger.debug(`Processamento concluído com sucesso: ${event.eventName}`, {
+          eventId: event.serverData.event_id,
+          jobId: job.id
+        });
         
         return result;
       } catch (error: any) {

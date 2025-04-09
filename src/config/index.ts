@@ -9,6 +9,7 @@ dotenv.config();
 
 interface Config {
   nodeEnv: string;
+  logLevel: string;
   port: number;
   databaseUrl: string;
   fbApiUrl: string;
@@ -31,6 +32,7 @@ interface Config {
 
 const config: Config = {
   nodeEnv: process.env.NODE_ENV || 'development',
+  logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
   port: parseInt(process.env.PORT || '3001', 10),
   databaseUrl: process.env.DATABASE_URL || 'file:./prisma/dev.db',
   fbApiUrl: process.env.FB_API_URL || 'https://graph.facebook.com/v18.0',

@@ -7,6 +7,34 @@ import { NormalizedEvent } from '../types';
 import config from '../config';
 import logger from '../utils/logger';
 import { EVENT_MAPPING, validateFbp } from '../utils/eventUtils';
+import axios from 'axios';
+
+// Interfaces para tipagem do payload
+interface UserDataPayload {
+  client_ip_address: string;
+  client_user_agent: string;
+  external_id: string;
+  fbp?: string;
+  fbc?: string;
+  em?: string;
+  ph?: string;
+  country?: string;
+  ct?: string;  // city
+  st?: string;  // state
+  zp?: string;  // zip code
+}
+
+interface CustomDataPayload {
+  currency: string;
+  value: number;
+  content_name?: string;
+  content_type?: string;
+  content_ids?: string[];
+  content_category?: string;
+  num_items?: number;
+  order_id?: string;
+  search_string?: string;
+}
 
 /**
  * Gera o código do pixel para um evento
@@ -90,32 +118,6 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     // Após ter sucesso com o payload mínimo, vamos expandir gradualmente
     // adicionando campos úteis mas mantendo a estabilidade
     
-    // Definir interfaces para os objetos do payload
-    interface UserDataPayload {
-      client_ip_address: string;
-      client_user_agent: string;
-      external_id: string;
-      fbp?: string;
-      fbc?: string;
-      em?: string;
-      ph?: string;
-      country?: string;
-      ct?: string;
-      st?: string;
-      zp?: string;
-      [key: string]: any;
-    }
-    
-    interface CustomDataPayload {
-      currency: string;
-      value: number;
-      content_name?: string;
-      content_type?: string;
-      content_ids?: string[];
-      content_category?: string;
-      [key: string]: any;
-    }
-    
     // Estrutura de userData com campos essenciais e mais alguns úteis
     const userData_payload: UserDataPayload = {
       client_ip_address: userData.client_ip_address || "127.0.0.1",
@@ -197,6 +199,30 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       body: JSON.stringify(requestData)
     });
     
+    // Log detalhado do payload enviado para a API
+    logger.debug(`Payload enviado para API do Meta: ${eventNameToSend}`, {
+      event_name: eventPayload.event_name,
+      event_id: eventPayload.event_id,
+      payload: {
+        event_name: eventPayload.event_name,
+        event_time: eventPayload.event_time,
+        user_data: {
+          external_id: userData_payload.external_id?.substring(0, 8) + '...',
+          has_email: !!userData_payload.em,
+          has_phone: !!userData_payload.ph,
+          has_fbp: !!userData_payload.fbp,
+          has_fbc: !!userData_payload.fbc,
+          has_geo: !!(userData_payload.country || userData_payload.ct || userData_payload.st || userData_payload.zp)
+        },
+        custom_data: {
+          currency: customData_payload.currency,
+          value: customData_payload.value,
+          has_content_ids: !!customData_payload.content_ids,
+          has_content_name: !!customData_payload.content_name
+        }
+      }
+    });
+    
     // Para debug, vamos registrar a resposta completa
     const responseText = await response.text();
     
@@ -252,5 +278,137 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       error: error.message
     });
     return false;
+  }
+};
+
+/**
+ * Prepara o payload para envio ao Meta Conversions API
+ * @param {NormalizedEvent} event - Evento normalizado
+ * @returns {Object} Payload formatado para API
+ */
+export const preparePayload = (event: NormalizedEvent): any => {
+  const { eventName, userData, customData, serverData } = event;
+  
+  // Verificar se temos os tokens necessários
+  if (!config.fbAccessToken) {
+    logger.error('Token de acesso do Facebook não configurado. Evento não enviado para Conversions API.');
+    throw new Error('Token de acesso do Facebook não configurado');
+  }
+  
+  // Obter o nome do evento (usar nome original para eventos personalizados)
+  const eventNameToSend = EVENT_MAPPING[eventName] || eventName;
+  
+  // Estrutura de userData com campos essenciais e mais alguns úteis
+  const userData_payload: UserDataPayload = {
+    client_ip_address: userData.client_ip_address || "127.0.0.1",
+    client_user_agent: userData.client_user_agent || "",
+    external_id: userData.external_id || `user_${Date.now()}`
+  };
+  
+  // Adicionar campos de Advanced Matching se disponíveis
+  if (userData.fbp) userData_payload.fbp = userData.fbp;
+  if (userData.fbc) userData_payload.fbc = userData.fbc;
+  if (userData.em) userData_payload.em = userData.em;
+  if (userData.ph) userData_payload.ph = userData.ph;
+  if (userData.country) userData_payload.country = userData.country;
+  if (userData.city) userData_payload.ct = userData.city;
+  if (userData.state) userData_payload.st = userData.state;
+  if (userData.zip) userData_payload.zp = userData.zip;
+  
+  // Estrutura de customData com campos essenciais e mais alguns úteis
+  const customData_payload: CustomDataPayload = {
+    currency: customData.currency || "BRL",
+    value: customData.value || 0
+  };
+  
+  // Adicionar dados específicos de produto/conteúdo se disponíveis
+  if (customData.content_name) 
+    customData_payload.content_name = customData.content_name;
+  
+  if (customData.content_type) 
+    customData_payload.content_type = customData.content_type;
+  
+  if (customData.content_ids) {
+    // Garantir que content_ids sempre seja um array
+    customData_payload.content_ids = Array.isArray(customData.content_ids) 
+      ? customData.content_ids 
+      : [customData.content_ids];
+  }
+  
+  // Criar payload expandido mas controlado
+  const eventPayload = {
+    event_name: eventNameToSend,
+    event_time: Math.floor(Date.now() / 1000),
+    event_id: serverData.event_id,
+    action_source: "website",
+    event_source_url: serverData.event_source_url || `https://${config.shopifyDomain}`,
+    user_data: userData_payload,
+    custom_data: customData_payload
+  };
+  
+  // Preparar os dados completos para envio
+  return {
+    data: [eventPayload],
+    access_token: config.fbAccessToken,
+    // Usar test_event_code apenas em desenvolvimento
+    test_event_code: config.nodeEnv === 'development' ? (config.fbTestEventCode || "TEST12345") : undefined
+  };
+};
+
+/**
+ * Envia evento para o Conversions API do Facebook
+ * @param {NormalizedEvent} event - Evento normalizado
+ * @returns {Promise<any>} - Resposta da API
+ */
+export const sendEventToConversionsAPI = async (event: NormalizedEvent): Promise<any> => {
+  try {
+    const { eventName, userData, customData, serverData } = event;
+    
+    // Preparar payload para API
+    const payload = preparePayload(event);
+    
+    // Log detalhado do payload
+    logger.debug(`Enviando evento para Meta API: ${eventName}`, {
+      eventId: serverData.event_id,
+      payload: JSON.stringify(payload),
+      userData: {
+        hasExternalId: !!userData.external_id,
+        hasEmail: !!userData.em,
+        hasPhone: !!userData.ph,
+        hasFbp: !!userData.fbp,
+        hasFbc: !!userData.fbc,
+        hasGeo: !!(userData.country || userData.city || userData.state)
+      },
+      customData: {
+        currency: customData?.currency,
+        value: customData?.value,
+        contentIds: customData?.content_ids,
+        contentNames: customData?.content_name
+      }
+    });
+    
+    // Configuração da requisição
+    const response = await axios.post(config.fbApiUrl, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    // Log da resposta
+    logger.debug(`Resposta da Meta API para evento ${eventName}`, {
+      eventId: serverData.event_id,
+      statusCode: response.status,
+      responseData: JSON.stringify(response.data)
+    });
+    
+    return response.data;
+  } catch (error: any) {
+    logger.error(`Erro ao enviar evento para Meta API: ${error.message}`, {
+      eventName: event.eventName,
+      eventId: event.serverData.event_id,
+      errorDetails: error.response?.data ? JSON.stringify(error.response.data) : null,
+      statusCode: error.response?.status
+    });
+    throw error;
   }
 }; 
