@@ -11,9 +11,96 @@
 import { Request, Response } from 'express';
 import { TrackRequest } from '../types';
 import { normalizeEvent, validateFbp, EVENT_MAPPING } from '../utils/eventUtils';
-import { saveEvent, processEvent } from '../services/eventService';
+import { saveEvent, processEvent, findOrCreateUser, updateUserData } from '../services/eventService';
 import { generatePixelCode } from '../services/metaService';
+import { getGeoIPInfo } from '../utils/geoip';
 import logger from '../utils/logger';
+
+/**
+ * Inicializa informações de usuário e retorna dados para o cliente
+ * @param {Request} req - Requisição
+ * @param {Response} res - Resposta
+ */
+export const initUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      res.status(400).json({ error: 'ID de usuário é obrigatório' });
+      return;
+    }
+    
+    // Obter IP da requisição, preferindo IPv4
+    let clientIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
+    
+    // Se for IPv6 no formato ::ffff:IPv4, extrair apenas o IPv4
+    if (clientIp && clientIp.includes('::ffff:')) {
+      clientIp = clientIp.split('::ffff:')[1];
+    }
+    
+    // Obter User-Agent
+    const userAgent = req.headers['user-agent'] || '';
+    
+    // Obter FBP e FBC
+    const fbp = req.body.fbp ? validateFbp(req.body.fbp) : null;
+    const fbc = req.body.fbc || null;
+    
+    // Obter informações de geolocalização
+    let geoData = null;
+    try {
+      geoData = getGeoIPInfo(clientIp);
+      logger.debug(`Dados GeoIP obtidos para IP ${clientIp}`, {
+        country: geoData?.country?.code,
+        region: geoData?.region?.code,
+        city: geoData?.city
+      });
+    } catch (geoError) {
+      logger.warn(`Não foi possível obter informações de geolocalização: ${geoError.message}`);
+    }
+    
+    // Inicializar usuário com dados disponíveis
+    const userData = await findOrCreateUser(userId, {
+      userId,
+      ip: clientIp,
+      userAgent,
+      fbp,
+      fbc,
+      // Adicionar campos de dados pessoais se fornecidos
+      firstName: req.body.fn,
+      lastName: req.body.ln,
+      email: req.body.em,
+      phone: req.body.ph,
+      // Adicionar dados de geolocalização
+      country: geoData?.country?.code,
+      state: geoData?.region?.code,
+      city: geoData?.city,
+      zip: geoData?.postal
+    });
+    
+    // Retornar informações para o cliente
+    res.status(200).json({
+      userId,
+      client_ip_address: clientIp,
+      client_user_agent: userAgent,
+      fbp,
+      fbc,
+      country: geoData?.country?.code,
+      state: geoData?.region?.code,
+      city: geoData?.city,
+      zip: geoData?.postal
+    });
+  } catch (error: any) {
+    logger.error(`Erro ao inicializar usuário: ${error.message}`, {
+      error: error.message,
+      body: req.body
+    });
+    
+    res.status(500).json({
+      error: 'Erro ao inicializar usuário',
+      message: error.message,
+    });
+  }
+};
 
 /**
  * Processa uma requisição de rastreamento de evento
@@ -71,6 +158,35 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       userDataWithIP.ip = clientIp;
       
       logger.debug(`IP detectado para evento ${eventName}: ${clientIp}`);
+      
+      // Obter e adicionar informações de geolocalização
+      try {
+        const geoData = getGeoIPInfo(clientIp);
+        if (geoData) {
+          // Adicionar informações ao userData se não estiverem presentes
+          if (!userDataWithIP.country && geoData.country?.code) {
+            userDataWithIP.country = geoData.country.code;
+          }
+          if (!userDataWithIP.state && geoData.region?.code) {
+            userDataWithIP.state = geoData.region.code;
+          }
+          if (!userDataWithIP.city && geoData.city) {
+            userDataWithIP.city = geoData.city;
+          }
+          if (!userDataWithIP.zip && geoData.postal) {
+            userDataWithIP.zip = geoData.postal;
+          }
+          
+          logger.debug(`Dados de geolocalização adicionados ao evento: ${eventName}`, {
+            country: userDataWithIP.country,
+            state: userDataWithIP.state,
+            city: userDataWithIP.city,
+            zip: userDataWithIP.zip
+          });
+        }
+      } catch (geoError) {
+        logger.warn(`Não foi possível enriquecer com GeoIP: ${geoError.message}`);
+      }
     }
     
     // Adicionar User-Agent ao userData se não estiver presente
@@ -81,6 +197,16 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
     // Validar e corrigir FBP se existir
     if (userDataWithIP.fbp) {
       userDataWithIP.fbp = validateFbp(userDataWithIP.fbp);
+    }
+    
+    // Se tivermos userId, atualizar dados de usuário no cache
+    if (userDataWithIP.userId) {
+      try {
+        await updateUserData(userDataWithIP.userId, userDataWithIP);
+        logger.debug(`Dados de usuário atualizados para evento ${eventName}`);
+      } catch (userError) {
+        logger.warn(`Erro ao atualizar dados de usuário: ${userError.message}`);
+      }
     }
     
     // Melhorar a detecção de categoria para eventos de visualização de categoria

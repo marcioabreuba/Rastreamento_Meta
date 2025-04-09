@@ -2,17 +2,17 @@
  * Definição das rotas da aplicação
  */
 
-import { Router } from 'express';
-import { trackEvent, getPixelCode, getStatus } from '../controllers/eventController';
+import express from 'express';
+import { trackEvent, getPixelCode, getStatus, initUser } from '../controllers/eventController';
 import config from '../config';
 import fs from 'fs';
 import path from 'path';
 
-const router = Router();
+const router = express.Router();
 
 // Rotas de rastreamento
 router.post('/track', trackEvent);
-router.post('/pixel-code', getPixelCode);
+router.post('/pixel', getPixelCode);
 router.get('/pixel-code', (req, res) => {
   // Ler o arquivo do script completo
   const scriptPath = path.join(__dirname, '../public/meta-pixel-script.js');
@@ -84,6 +84,9 @@ router.get('/pixel-code', (req, res) => {
 // Rota de status
 router.get('/status', getStatus);
 
+// Nova rota para inicialização de usuário
+router.post('/init', initUser);
+
 // Rota padrão
 router.get('/', (req, res) => {
   res.json({
@@ -91,9 +94,10 @@ router.get('/', (req, res) => {
     version: '1.5.0',
     endpoints: [
       { method: 'POST', path: '/track', description: 'Rastreia um evento' },
-      { method: 'POST', path: '/pixel-code', description: 'Gera código do pixel para um evento' },
+      { method: 'POST', path: '/pixel', description: 'Gera código do pixel para um evento' },
       { method: 'GET', path: '/pixel-code', description: 'Retorna o código do pixel otimizado com Advanced Matching completo' },
       { method: 'GET', path: '/status', description: 'Retorna o status do servidor' },
+      { method: 'POST', path: '/init', description: 'Inicializa um usuário' },
     ],
   });
 });
