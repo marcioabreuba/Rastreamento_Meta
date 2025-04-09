@@ -135,6 +135,9 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   // Determinar se é um evento de aplicativo
   const isAppEvent = eventData.isAppEvent || false;
   
+  // Determinar se é um evento do servidor
+  const isServerEvent = eventData.isServerEvent || false;
+  
   // Obter IP do cliente
   const clientIP = userData?.ip || null;
   
@@ -285,7 +288,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const serverData = {
     event_time: Math.floor(Date.now() / 1000),
     event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
-    action_source: isAppEvent ? 'app' : 'website',
+    action_source: isAppEvent ? 'app' : (isServerEvent ? 'server' : 'website'),
     event_id: generateEventId(),
     geo_data: geoData,
     // Novos campos

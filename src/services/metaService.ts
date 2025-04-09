@@ -202,6 +202,15 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 🌐 URL: ${serverData.event_source_url.substr(0, 42).padEnd(42)} │`);
     console.log(`│ 🔄 Action Source: ${serverData.action_source.padEnd(42)} │`);
     console.log(`│ 📊 Evento Facebook: ${fbApiEventName.padEnd(42)} │`);
+    // Determinar a origem do evento para logging
+    let eventSource = 'web';
+    if (isAppEvent) {
+      eventSource = 'app';
+    } else if (serverData.action_source === 'server') {
+      eventSource = 'api';
+    }
+    
+    console.log(`│ 🔍 Fonte: ${eventSource.padEnd(42)} │`); // Novo log mostrando a fonte real do evento
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
     console.log('├──────────────────────────────────────────────────────────┤');

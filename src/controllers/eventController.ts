@@ -99,7 +99,8 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       dataProcessingOptionsCountry,
       dataProcessingOptionsState,
       customerSegmentation,
-      isAppEvent
+      isAppEvent,
+      isServerEvent: true
     });
     
     // Determinar a origem do evento para logging
@@ -176,7 +177,8 @@ export const getPixelCode = async (req: Request, res: Response): Promise<void> =
       dataProcessingOptionsCountry,
       dataProcessingOptionsState,
       customerSegmentation,
-      isAppEvent
+      isAppEvent,
+      isServerEvent: true
     });
     
     // Gerar código do pixel

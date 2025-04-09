@@ -197,6 +197,7 @@ export interface TrackRequest {
   dataProcessingOptionsState?: number;
   customerSegmentation?: CustomerSegmentation;
   isAppEvent?: boolean;
+  isServerEvent?: boolean; // Indica se o evento foi gerado pelo servidor
 }
 
 // Dados de geolocalização
