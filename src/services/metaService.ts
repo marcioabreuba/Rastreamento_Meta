@@ -86,39 +86,97 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     // Obter o nome do evento (usar nome original para eventos personalizados)
     const eventNameToSend = EVENT_MAPPING[eventName] || eventName;
     
-    // ======= ABORDAGEM ULTRA SIMPLIFICADA =======
-    // Criar um payload mínimo com apenas os campos obrigatórios absolutos
-    // para testar se o problema é com o formato do payload
+    // ======= PAYLOAD EXPANDIDO MAS CONTROLADO =======
+    // Após ter sucesso com o payload mínimo, vamos expandir gradualmente
+    // adicionando campos úteis mas mantendo a estabilidade
     
-    // Usar os campos básicos que a API requer
+    // Definir interfaces para os objetos do payload
+    interface UserDataPayload {
+      client_ip_address: string;
+      client_user_agent: string;
+      external_id: string;
+      fbp?: string;
+      fbc?: string;
+      em?: string;
+      ph?: string;
+      country?: string;
+      ct?: string;
+      st?: string;
+      zp?: string;
+      [key: string]: any;
+    }
+    
+    interface CustomDataPayload {
+      currency: string;
+      value: number;
+      content_name?: string;
+      content_type?: string;
+      content_ids?: string[];
+      content_category?: string;
+      [key: string]: any;
+    }
+    
+    // Estrutura de userData com campos essenciais e mais alguns úteis
+    const userData_payload: UserDataPayload = {
+      client_ip_address: userData.client_ip_address || "127.0.0.1",
+      client_user_agent: userData.client_user_agent || "",
+      external_id: userData.external_id || `user_${Date.now()}`
+    };
+    
+    // Adicionar campos de Advanced Matching se disponíveis
+    // Isso melhora significativamente a qualidade do matching sem arriscar erros
+    if (userData.fbp) userData_payload.fbp = userData.fbp;
+    if (userData.fbc) userData_payload.fbc = userData.fbc;
+    if (userData.em) userData_payload.em = userData.em;
+    if (userData.ph) userData_payload.ph = userData.ph;
+    if (userData.country) userData_payload.country = userData.country;
+    if (userData.city) userData_payload.ct = userData.city;
+    if (userData.state) userData_payload.st = userData.state;
+    if (userData.zip) userData_payload.zp = userData.zip;
+    
+    // Estrutura de customData com campos essenciais e mais alguns úteis
+    const customData_payload: CustomDataPayload = {
+      currency: customData.currency || "BRL",
+      value: customData.value || 0
+    };
+    
+    // Adicionar dados específicos de produto/conteúdo se disponíveis
+    if (customData.content_name) 
+      customData_payload.content_name = customData.content_name;
+    
+    if (customData.content_type) 
+      customData_payload.content_type = customData.content_type;
+    
+    if (customData.content_ids) {
+      // Garantir que content_ids sempre seja um array
+      customData_payload.content_ids = Array.isArray(customData.content_ids) 
+        ? customData.content_ids 
+        : [customData.content_ids];
+    }
+    
+    // Criar payload expandido mas controlado
     const eventPayload = {
       event_name: eventNameToSend,
       event_time: Math.floor(Date.now() / 1000),
       event_id: serverData.event_id,
       action_source: "website",
-      user_data: {
-        client_ip_address: userData.client_ip_address || "127.0.0.1",
-        client_user_agent: userData.client_user_agent || "",
-        external_id: userData.external_id || `user_${Date.now()}`
-      },
-      custom_data: {
-        currency: "BRL",
-        value: 0
-      }
+      event_source_url: serverData.event_source_url || `https://${config.shopifyDomain}`,
+      user_data: userData_payload,
+      custom_data: customData_payload
     };
     
     // Preparar os dados completos para envio
     const requestData = {
       data: [eventPayload],
       access_token: config.fbAccessToken,
-      // Usar test_event_code em todos os ambientes durante a depuração
-      test_event_code: config.fbTestEventCode || "TEST12345"
+      // Usar test_event_code apenas em desenvolvimento
+      test_event_code: config.nodeEnv === 'development' ? (config.fbTestEventCode || "TEST12345") : undefined
     };
     
     // Log formatado
     const eventTime = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString();
     logger.debug(`Enviando evento para Conversions API: ${eventName} (Nome: ${eventNameToSend})`);
-    logger.debug(`Payload simplificado: ${JSON.stringify(requestData, null, 2)}`);
+    logger.debug(`Payload expandido: ${JSON.stringify(requestData, null, 2)}`);
     
     console.log('\n');
     console.log('┌──────────────────────────────────────────────────────────┐');

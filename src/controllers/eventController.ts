@@ -1,5 +1,11 @@
 /**
  * Controlador para gerenciar requisições de eventos
+ * 
+ * Este controlador é responsável por:
+ * 1. Receber e validar eventos do cliente
+ * 2. Normalizar os dados do evento
+ * 3. Adicionar informações de contexto (IP, User-Agent)
+ * 4. Encaminhar para processamento assíncrono
  */
 
 import { Request, Response } from 'express';
@@ -28,16 +34,27 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       isAppEvent 
     } = req.body as TrackRequest;
     
+    // Verificar se o evento foi especificado
     if (!eventName) {
       res.status(400).json({ error: 'Evento não especificado' });
       return;
     }
     
     // Verificar se o evento é válido (aceitar tanto os mapeados quanto os eventos brutos)
-    // Isso aceitará eventos como Scroll_90 mesmo que não estejam no mapeamento
-    if (!EVENT_MAPPING[eventName] && !Object.values(EVENT_MAPPING).includes(eventName)) {
-      logger.warn(`Evento não reconhecido: ${eventName}. Verificar implementação.`);
+    const isStandardEvent = EVENT_MAPPING[eventName] !== undefined;
+    const isCustomEvent = Object.values(EVENT_MAPPING).includes(eventName);
+    
+    // Log mais detalhado para depuração de eventos
+    if (!isStandardEvent && !isCustomEvent) {
+      logger.warn(`Evento não reconhecido: ${eventName}. Verificar implementação.`, {
+        eventName,
+        isAppEvent: isAppEvent || false,
+        knownEvents: Object.keys(EVENT_MAPPING).slice(0, 5).join(', ') + '...',
+        customData: JSON.stringify(customData || {}).substring(0, 100)
+      });
       // Permitir eventos não mapeados para flexibilidade, mas logar aviso
+    } else {
+      logger.debug(`Evento reconhecido: ${eventName} → ${EVENT_MAPPING[eventName] || eventName}`);
     }
     
     // Adicionar IP ao userData se não estiver presente
@@ -97,6 +114,24 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       }
     }
     
+    // Adicionar dados de eventos de rolagem
+    if (eventName.startsWith('Scroll_') && !customDataFinal.scrollPercentage) {
+      // Extrair a porcentagem do nome do evento (ex: Scroll_25 -> 25)
+      const percentage = parseInt(eventName.split('_')[1]);
+      if (!isNaN(percentage)) {
+        customDataFinal.scrollPercentage = percentage;
+      }
+    }
+    
+    // Adicionar dados de eventos de vídeo
+    if (eventName.startsWith('ViewVideo_') && !customDataFinal.videoPercentage) {
+      // Extrair a porcentagem do nome do evento (ex: ViewVideo_25 -> 25)
+      const percentage = parseInt(eventName.split('_')[1]);
+      if (!isNaN(percentage)) {
+        customDataFinal.videoPercentage = percentage;
+      }
+    }
+    
     // Normalizar o evento com todos os parâmetros
     const normalizedEvent = normalizeEvent({
       eventName,
@@ -117,7 +152,8 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
       eventName,
       eventId: normalizedEvent.serverData.event_id,
       ip: userDataWithIP.ip,
-      eventSource
+      eventSource,
+      url: normalizedEvent.serverData.event_source_url?.substring(0, 100)
     });
     
     // Salvar o evento no banco de dados

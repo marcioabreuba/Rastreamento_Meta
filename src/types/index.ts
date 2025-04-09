@@ -98,6 +98,10 @@ export interface CustomData {
   contents?: any[];
   sourceUrl?: string;
   referrer?: string;
+  // Dados para eventos de rolagem
+  scrollPercentage?: number;
+  // Dados para eventos de vídeo 
+  videoPercentage?: number;
   // Também permitir versões com underscore
   content_name?: string;
   content_category?: string;
