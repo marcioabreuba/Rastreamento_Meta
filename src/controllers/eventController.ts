@@ -13,7 +13,7 @@ import { TrackRequest } from '../types';
 import { normalizeEvent, validateFbp, EVENT_MAPPING } from '../utils/eventUtils';
 import { saveEvent, processEvent, findOrCreateUser, updateUserData } from '../services/eventService';
 import { generatePixelCode } from '../services/metaService';
-import { getGeoIPInfo } from '../utils/geoip';
+import { getGeoIPInfo, isRealIPv6 } from '../utils/geoip';
 import logger from '../utils/logger';
 
 /**
@@ -147,17 +147,22 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
     // Adicionar IP ao userData se não estiver presente
     const userDataWithIP = userData || {};
     if (!userDataWithIP.ip) {
-      // Obter IP da requisição, preferindo IPv4
+      // Obter IP da requisição
       let clientIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
       
-      // Se for IPv6 no formato ::ffff:IPv4, extrair apenas o IPv4
-      if (clientIp && clientIp.includes('::ffff:')) {
-        clientIp = clientIp.split('::ffff:')[1];
+      // Verificar se é um IPv6 real antes de tentar extrair IPv4
+      const isRealIPv6Address = isRealIPv6(clientIp);
+      
+      // Preservar IPv6 reais, extrair apenas IPv4 de endereços IPv4-mapped
+      if (!isRealIPv6Address && clientIp && clientIp.includes('::ffff:')) {
+        const ipv4Part = clientIp.split('::ffff:')[1];
+        logger.debug(`Detectado IPv4-mapped, extraindo parte IPv4: ${ipv4Part}`);
+        clientIp = ipv4Part;
       }
       
       userDataWithIP.ip = clientIp;
       
-      logger.debug(`IP detectado para evento ${eventName}: ${clientIp}`);
+      logger.debug(`IP detectado para evento ${eventName}: ${clientIp} (IPv6: ${isRealIPv6Address ? 'Sim' : 'Não'})`);
       
       // Obter e adicionar informações de geolocalização
       try {
@@ -181,7 +186,8 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
             country: userDataWithIP.country,
             state: userDataWithIP.state,
             city: userDataWithIP.city,
-            zip: userDataWithIP.zip
+            zip: userDataWithIP.zip,
+            isIPv6: geoData.isIPv6
           });
         }
       } catch (geoError) {

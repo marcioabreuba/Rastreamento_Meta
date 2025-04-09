@@ -218,6 +218,7 @@ export interface TrackRequest {
 // Dados de geolocalização
 export interface GeoData {
   ip: string;
+  isIPv6?: boolean; // Indica se é um IPv6 real ou não
   country?: {
     code: string;
     name: string;

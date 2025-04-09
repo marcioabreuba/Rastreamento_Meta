@@ -15,7 +15,8 @@
     "download-geoip": "node download-geoip.js",
     "download-geoip:ts": "ts-node src/scripts/download-geoip.ts",
     "migrate:deploy": "npx prisma migrate deploy",
-    "test:ipv6": "ts-node src/scripts/check-ipv6-conversion.ts"
+    "test:ipv6": "ts-node src/scripts/check-ipv6-conversion.ts",
+    "test:ipv6-detection": "ts-node src/scripts/test-ipv6-detection.ts"
   },
   "keywords": [],
   "author": "",
