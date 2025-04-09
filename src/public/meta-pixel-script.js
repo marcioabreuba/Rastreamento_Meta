@@ -1354,24 +1354,40 @@
         // Verificar limites de rolagem e enviar eventos
         if (scrollPercentage >= 25 && !sentEvents.scroll_25) {
           sentEvents.scroll_25 = true;
-          sendEvent('Scroll_25');
+          sendEvent('Scroll_25', {
+            scrollPercentage: 25,
+            pageUrl: window.location.href,
+            contentName: document.title
+          });
         }
         
         if (scrollPercentage >= 50 && !sentEvents.scroll_50) {
           sentEvents.scroll_50 = true;
-          sendEvent('Scroll_50');
+          sendEvent('Scroll_50', {
+            scrollPercentage: 50,
+            pageUrl: window.location.href,
+            contentName: document.title
+          });
         }
         
         // Adicionar rastreamento de rolagem para 75%
         if (scrollPercentage >= 75 && !sentEvents.scroll_75) {
           sentEvents.scroll_75 = true;
-          sendEvent('Scroll_75');
+          sendEvent('Scroll_75', {
+            scrollPercentage: 75,
+            pageUrl: window.location.href,
+            contentName: document.title
+          });
         }
         
         // Adicionar rastreamento de rolagem para 90%
         if (scrollPercentage >= 90 && !sentEvents.scroll_90) {
           sentEvents.scroll_90 = true;
-          sendEvent('Scroll_90');
+          sendEvent('Scroll_90', {
+            scrollPercentage: 90,
+            pageUrl: window.location.href,
+            contentName: document.title
+          });
         }
       }
     }

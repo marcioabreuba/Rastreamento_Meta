@@ -4,7 +4,7 @@
 
 import { Request, Response } from 'express';
 import { TrackRequest } from '../types';
-import { normalizeEvent, validateFbp } from '../utils/eventUtils';
+import { normalizeEvent, validateFbp, EVENT_MAPPING } from '../utils/eventUtils';
 import { saveEvent, processEvent } from '../services/eventService';
 import { generatePixelCode } from '../services/metaService';
 import logger from '../utils/logger';
@@ -31,6 +31,13 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
     if (!eventName) {
       res.status(400).json({ error: 'Evento não especificado' });
       return;
+    }
+    
+    // Verificar se o evento é válido (aceitar tanto os mapeados quanto os eventos brutos)
+    // Isso aceitará eventos como Scroll_90 mesmo que não estejam no mapeamento
+    if (!EVENT_MAPPING[eventName] && !Object.values(EVENT_MAPPING).includes(eventName)) {
+      logger.warn(`Evento não reconhecido: ${eventName}. Verificar implementação.`);
+      // Permitir eventos não mapeados para flexibilidade, mas logar aviso
     }
     
     // Adicionar IP ao userData se não estiver presente

@@ -99,9 +99,13 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       customer_segmentation?: any;
     }
     
+    // Obter o nome mapeado do evento, mas usar o nome original para eventos personalizados
+    // Com base no projeto de referência, usamos os nomes originais como Scroll_90, não CustomEvent
+    const eventNameToSend = EVENT_MAPPING[eventName] || eventName;
+    
     // Construir o payload do evento
     const eventPayload: EventPayload = {
-      event_name: EVENT_MAPPING[eventName] || eventName,
+      event_name: eventNameToSend,
       event_time: serverData.event_time,
       event_source_url: serverData.event_source_url,
       event_id: serverData.event_id,
@@ -109,23 +113,23 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       user_data: {
         client_ip_address: userData.client_ip_address,
         client_user_agent: userData.client_user_agent,
+        external_id: userData.external_id,
+        fbp: userData.fbp,
+        fbc: userData.fbc,
         em: userData.em,
         ph: userData.ph,
         fn: userData.fn,
         ln: userData.ln,
         ge: userData.ge,
         db: userData.db,
-        external_id: userData.external_id,
-        fbc: userData.fbc,
-        fbp: userData.fbp,
-        subscription_id: userData.subscription_id,
-        fb_login_id: userData.fb_login_id,
-        lead_id: userData.lead_id,
         country: userData.country,
         ct: userData.city,
         st: userData.state,
         zp: userData.zip,
-        // Novos parâmetros
+        // Outros parâmetros
+        subscription_id: userData.subscription_id,
+        fb_login_id: userData.fb_login_id,
+        lead_id: userData.lead_id,
         ctwa_clid: userData.ctwa_clid,
         ig_account_id: userData.ig_account_id,
         ig_sid: userData.ig_sid,
@@ -208,6 +212,8 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     
     // Log formatado similar ao Pixel Helper para debug
     const eventTime = new Date(serverData.event_time * 1000).toISOString();
+    logger.debug(`Enviando evento para Conversions API: ${eventName} (Nome mapeado: ${eventNameToSend})`);
+    
     console.log('\n');
     console.log('┌──────────────────────────────────────────────────────────┐');
     console.log(`│ 🔵 META PIXEL EVENTO RASTREADO: ${eventName.padEnd(28)} │`);
@@ -215,6 +221,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     console.log(`│ 📆 Data/Hora: ${eventTime.padEnd(42)} │`);
     console.log(`│ 🔑 Evento ID: ${serverData.event_id.padEnd(42)} │`);
     console.log(`│ 🌐 URL: ${(serverData.event_source_url || '').substring(0, 42).padEnd(42)} │`);
+    console.log(`│ 📝 Nome evento API: ${eventNameToSend.padEnd(42)} │`);
     console.log('└──────────────────────────────────────────────────────────┘');
     
     // Enviar para a API
@@ -231,7 +238,8 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
       logger.error(`Erro ao enviar evento para Conversions API: ${response.status} ${response.statusText}`, {
         eventName,
         eventId: serverData.event_id,
-        error: errorText
+        error: errorText,
+        requestData: JSON.stringify(requestData)
       });
       return false;
     }

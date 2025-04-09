@@ -37,19 +37,20 @@ export const EVENT_MAPPING: Record<string, string> = {
   'Search': 'Search',
   // Eventos existentes
   'ViewSearchResults': 'Search',
-  'Timer_1min': 'CustomEvent',
-  'Scroll_25': 'CustomEvent',
-  'Scroll_50': 'CustomEvent',
-  'Scroll_75': 'CustomEvent',
-  'Scroll_100': 'CustomEvent',
+  'Timer_1min': 'Timer_1min',
+  'Scroll_25': 'Scroll_25',
+  'Scroll_50': 'Scroll_50',
+  'Scroll_75': 'Scroll_75',
+  'Scroll_90': 'Scroll_90',
+  'Scroll_100': 'Scroll_100',
   // Novos eventos adicionados (baseados no projeto de referência)
   'Lead': 'Lead',
   'AddToWishlist': 'AddToWishlist',
-  'PlayVideo': 'CustomEvent',
-  'ViewVideo_25': 'CustomEvent',
-  'ViewVideo_50': 'CustomEvent',
-  'ViewVideo_75': 'CustomEvent',
-  'ViewVideo_90': 'CustomEvent'
+  'PlayVideo': 'PlayVideo',
+  'ViewVideo_25': 'ViewVideo_25',
+  'ViewVideo_50': 'ViewVideo_50',
+  'ViewVideo_75': 'ViewVideo_75',
+  'ViewVideo_90': 'ViewVideo_90'
 };
 
 /**
@@ -133,12 +134,18 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const { eventName, userData = {}, customData = {} } = eventData;
 
   // Verificar se o evento é válido
-  if (!eventName || !EVENT_MAPPING[eventName]) {
-    throw new Error(`Evento inválido: ${eventName}`);
+  if (!eventName) {
+    throw new Error(`Evento não especificado`);
   }
   
-  // Mapear para o evento do Facebook
-  const fbEventName = EVENT_MAPPING[eventName];
+  // Verifica se o evento está no mapeamento ou é um evento reconhecido (valor do mapeamento)
+  // Isso permite que eventos como Scroll_90 sejam aceitos mesmo se não estiverem explicitamente mapeados
+  if (!EVENT_MAPPING[eventName] && !Object.values(EVENT_MAPPING).includes(eventName)) {
+    console.warn(`Evento não mapeado: ${eventName}. Usando nome original.`);
+  }
+  
+  // Mapear para o evento do Facebook, ou usar o próprio nome se não estiver mapeado
+  const fbEventName = EVENT_MAPPING[eventName] || eventName;
   
   // Determinar se é um evento de aplicativo
   const isAppEvent = eventData.isAppEvent || false;
