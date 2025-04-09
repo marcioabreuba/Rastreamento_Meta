@@ -206,7 +206,7 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     let eventSource = 'web';
     if (isAppEvent) {
       eventSource = 'app';
-    } else if (serverData.action_source === 'server') {
+    } else if (serverData.action_source === 'site') {
       eventSource = 'api';
     }
     

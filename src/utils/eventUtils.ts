@@ -288,7 +288,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const serverData = {
     event_time: Math.floor(Date.now() / 1000),
     event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
-    action_source: isAppEvent ? 'app' : (isServerEvent ? 'server' : 'website'),
+    action_source: isAppEvent ? 'app' : (isServerEvent ? 'site' : 'website'),
     event_id: generateEventId(),
     geo_data: geoData,
     // Novos campos
