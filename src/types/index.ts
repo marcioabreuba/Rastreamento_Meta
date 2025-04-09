@@ -18,37 +18,37 @@ export interface Event {
 
 // Dados do usuário
 export interface UserData {
+  userId?: string | number;
   email?: string;
   phone?: string;
   firstName?: string;
   lastName?: string;
-  userId?: string;
+  gender?: string;        // 'f' ou 'm'
+  dateOfBirth?: string;   // YYYYMMDD ou formatos que possam ser convertidos
   ip?: string;
   userAgent?: string;
-  fbc?: string;
-  fbp?: string;
+  fbc?: string | null;    // Facebook Click ID
+  fbp?: string | null;    // Facebook Browser ID
   subscriptionId?: string;
   fbLoginId?: string;
   leadId?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  zip?: string;
   language?: string;
   referrer?: string;
-  // Novos parâmetros para Advanced Matching
-  gender?: string;
-  dateOfBirth?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  country?: string;
-  // Parâmetros adicionais suportados pela API
-  ctwaClid?: string; // Click ID para WhatsApp
-  igAccountId?: string; // ID da conta Instagram
-  igSid?: string; // ID de sessão do Instagram
-  anonId?: string; // Para eventos de app
-  madid?: string; // Mobile Advertiser ID
-  vendorId?: string; // Identificador do dispositivo (iOS)
-  // Novos parâmetros adicionais
-  pageId?: string; // ID da página
-  pageScopedUserId?: string; // ID do usuário no escopo da página
+  visitorId?: string;     // ID de visitante First-Party
+  // Campos específicos de App (usados se isAppEvent = true)
+  anonId?: string;
+  madid?: string;
+  vendorId?: string;
+  // Novos campos (exemplo: vindo do contexto do usuário)
+  ctwaClid?: string;
+  igAccountId?: string;
+  igSid?: string;
+  pageId?: string;
+  pageScopedUserId?: string;
 }
 
 // Dados normalizados do usuário

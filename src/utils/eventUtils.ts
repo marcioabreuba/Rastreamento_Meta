@@ -196,7 +196,10 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     ln: userData?.lastName ? hashData(userData.lastName.toLowerCase().trim()) : null,
     ge: userData?.gender ? hashData(userData.gender.toLowerCase().trim()) : null,
     db: userData?.dateOfBirth ? hashData(userData.dateOfBirth.trim()) : null,
-    external_id: userData?.userId ? hashData(String(userData.userId)) : generateUserId(),
+    // Prioridade: 1. Hash(userId) se logado, 2. Hash(visitorId) de cookie first-party, 3. Fallback
+    external_id: userData?.userId ? hashData(String(userData.userId)) 
+                  : (userData?.visitorId ? hashData(String(userData.visitorId)) 
+                  : generateUserId()), // Manter fallback atual por enquanto
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
     fbc: userData?.fbc || null,
