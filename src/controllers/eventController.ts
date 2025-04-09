@@ -211,7 +211,8 @@ export const trackEvent = async (req: Request, res: Response): Promise<void> => 
     // Se tivermos userId, atualizar dados de usuário no cache
     if (userDataWithIP.userId) {
       try {
-        await updateUserData(userDataWithIP.userId, userDataWithIP);
+        // Garantir que userId seja string para updateUserData
+        await updateUserData(String(userDataWithIP.userId), userDataWithIP);
         logger.debug(`Dados de usuário atualizados para evento ${eventName}`);
       } catch (userError) {
         logger.warn(`Erro ao atualizar dados de usuário: ${userError.message}`);
