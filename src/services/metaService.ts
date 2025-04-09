@@ -180,15 +180,130 @@ export const sendToConversionsAPI = async (event: NormalizedEvent): Promise<bool
     logger.debug(`Enviando evento para Conversions API: ${eventName} (Nome: ${eventNameToSend})`);
     logger.debug(`Payload expandido: ${JSON.stringify(requestData, null, 2)}`);
     
+    // Log formatado similar ao Pixel Helper para debug
     console.log('\n');
     console.log('┌──────────────────────────────────────────────────────────┐');
     console.log(`│ 🔵 META PIXEL EVENTO RASTREADO: ${eventName.padEnd(28)} │`);
     console.log('├──────────────────────────────────────────────────────────┤');
     console.log(`│ 📆 Data/Hora: ${eventTime.padEnd(42)} │`);
-    console.log(`│ 🔑 Evento ID: ${serverData.event_id.padEnd(42)} │`);
+    console.log(`│ 🆔 Event ID: ${serverData.event_id.padEnd(42)} │`);
     console.log(`│ 🌐 URL: ${(serverData.event_source_url || '').substring(0, 42).padEnd(42)} │`);
-    console.log(`│ 📝 Nome evento API: ${eventNameToSend.padEnd(42)} │`);
+    console.log(`│ 🔄 Action Source: ${eventPayload.action_source.padEnd(42)} │`);
+    console.log('├──────────────────────────────────────────────────────────┤');
+    console.log('│ 👤 DADOS DO USUÁRIO (ADVANCED MATCHING):                 │');
+    console.log('├──────────────────────────────────────────────────────────┤');
+    
+    // Criar uma cópia dos dados do usuário para exibição formatada
+    const userDataCopy = { ...userData_payload };
+    
+    Object.entries(userDataCopy).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        // Limitar a exibição de hashes
+        const displayValue = typeof value === 'string' && value.length > 20 
+          ? value.substring(0, 17) + '...' 
+          : value;
+        console.log(`│ ${key.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
+      }
+    });
+    
+    console.log('├──────────────────────────────────────────────────────────┤');
+    console.log('│ 📊 DADOS PERSONALIZADOS:                                 │');
+    console.log('├──────────────────────────────────────────────────────────┤');
+    
+    // Criar uma cópia dos dados personalizados para exibição formatada
+    const customDataCopy = { 
+      ...customData_payload,
+      app: 'meta-tracking',
+      language: customData.language || 'pt-BR',
+      referrer: customData.referrer || serverData.referrer_url || null,
+      event_time: Math.floor(Date.now() / 1000)
+    };
+    
+    // Destacar os parâmetros prioritários
+    const priorityParams = ['app', 'language', 'referrer', 'event_time'];
+    
+    // Primeiro exibir os parâmetros prioritários
+    priorityParams.forEach(param => {
+      if (customDataCopy[param] !== null && customDataCopy[param] !== undefined) {
+        let displayValue = customDataCopy[param];
+        if (param === 'event_time') {
+          // Formatar timestamp para data legível
+          displayValue = new Date(customDataCopy[param] * 1000).toISOString();
+        }
+        console.log(`│ ${param.padEnd(15)}: ${String(displayValue).padEnd(40)} │`);
+      }
+    });
+    
+    // Depois exibir os demais parâmetros
+    Object.entries(customDataCopy).forEach(([key, value]) => {
+      if (
+        value !== null && 
+        value !== undefined && 
+        !priorityParams.includes(key)
+      ) {
+        const displayValue = typeof value === 'object' 
+          ? JSON.stringify(value).substring(0, 37) + '...' 
+          : String(value).substring(0, 40);
+        console.log(`│ ${key.padEnd(15)}: ${displayValue.padEnd(40)} │`);
+      }
+    });
+    
+    // Exibir dados geográficos se existirem
+    if (serverData.geo_data) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 🌎 DADOS GEOGRÁFICOS:                                    │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      const geo = serverData.geo_data;
+      if (geo.country && geo.country.name) {
+        console.log(`│ País:          ${String(geo.country.name + ' (' + geo.country.code + ')').padEnd(40)} │`);
+      }
+      if (geo.region && geo.region.name) {
+        console.log(`│ Estado:        ${String(geo.region.name + ' (' + geo.region.code + ')').padEnd(40)} │`);
+      }
+      if (geo.city) {
+        console.log(`│ Cidade:        ${String(geo.city).padEnd(40)} │`);
+      }
+      if (geo.postal) {
+        console.log(`│ CEP:           ${String(geo.postal).padEnd(40)} │`);
+      }
+      if (geo.location) {
+        console.log(`│ Coordenadas:   ${String(`${geo.location.latitude}, ${geo.location.longitude}`).padEnd(40)} │`);
+      }
+    }
+    
+    // Exibir opções de processamento de dados se existirem
+    if (serverData.data_processing_options) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 🛡️ OPÇÕES DE PROCESSAMENTO DE DADOS:                     │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log(`│ Opções:        ${String(serverData.data_processing_options.join(', ')).padEnd(40)} │`);
+      if (serverData.data_processing_options_country !== undefined) {
+        console.log(`│ País:          ${String(serverData.data_processing_options_country).padEnd(40)} │`);
+      }
+      if (serverData.data_processing_options_state !== undefined) {
+        console.log(`│ Estado:        ${String(serverData.data_processing_options_state).padEnd(40)} │`);
+      }
+    }
+    
+    // Exibir segmentação de cliente se existir
+    if (serverData.customer_segmentation) {
+      console.log('├──────────────────────────────────────────────────────────┤');
+      console.log('│ 👥 SEGMENTAÇÃO DE CLIENTE:                               │');
+      console.log('├──────────────────────────────────────────────────────────┤');
+      const cs = serverData.customer_segmentation;
+      if (cs.priority_segment) {
+        console.log(`│ Segmento:      ${String(cs.priority_segment).padEnd(40)} │`);
+      }
+      if (cs.lifecycle_stage) {
+        console.log(`│ Ciclo de Vida: ${String(cs.lifecycle_stage).padEnd(40)} │`);
+      }
+      if (cs.predicted_ltv_range) {
+        console.log(`│ Faixa LTV:     ${String(cs.predicted_ltv_range).padEnd(40)} │`);
+      }
+    }
+    
     console.log('└──────────────────────────────────────────────────────────┘');
+    console.log('\n');
     
     // Enviar para a API
     const response = await fetch(apiUrl, {

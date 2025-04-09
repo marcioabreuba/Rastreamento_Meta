@@ -171,18 +171,18 @@ src/
 ## Eventos Suportados
 
 ### Eventos Padrão do Meta
-- PageView
-- ViewContent
-- AddToCart
+  - PageView
+  - ViewContent
+  - AddToCart
 - InitiateCheckout
-- Purchase
+  - Purchase
 - Lead
-- Search
+  - Search
 - AddToWishlist
 
 ### Eventos Personalizados
 - Scroll_25, Scroll_50, Scroll_75, Scroll_90
-- Timer_1min
+  - Timer_1min
 - ViewVideo_25, ViewVideo_50, ViewVideo_75, ViewVideo_90
 - PlayVideo
 
