@@ -1142,9 +1142,24 @@
    * @returns {string|null} FBP válido ou null
    */
   function validateFbp(fbp) {
-    if (!fbp) return null;
+    // Se não existir ou for inválido, GERAR um novo FBP válido
+    if (!fbp || !/^fb\.[12]\.\d+\.\d+$/.test(fbp)) {
+      const timestamp = Date.now();
+      const random = Math.floor(Math.random() * 1000000000);
+      const newFbp = `fb.1.${timestamp}.${random}`;
+      
+      // Definir o cookie _fbp para uso futuro (90 dias)
+      // Verificar se a função setCookie está disponível antes de chamá-la
+      if (typeof setCookie === 'function') {
+        setCookie('_fbp', newFbp, 90); 
+      } else {
+        console.warn('Função setCookie não encontrada. Não foi possível salvar o _fbp gerado.');
+      }
+      
+      return newFbp; // Retorna o FBP recém-gerado
+    }
     
-    // Verificar se já está no formato correto
+    // Verificar se já está no formato correto fb.1...
     if (/^fb\.1\.\d+\.\d+$/.test(fbp)) {
       return fbp;
     }
@@ -1154,7 +1169,8 @@
       return 'fb.1.' + fbp.substring(5);
     }
     
-    // Se for um hash ou outro formato, gerar um novo FBP válido
+    // Como a lógica inicial agora gera um FBP se for inválido,
+    // este fallback teoricamente não será mais alcançado, mas mantemos por segurança.
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000000000);
     return `fb.1.${timestamp}.${random}`;
@@ -1171,8 +1187,10 @@
       const client_user_agent_hashed = await hashSHA256(client_user_agent_raw);
 
       // Obter cookies do Facebook
-      const fbp_raw = getCookie('_fbp') || getUrlParameter('fbp') || 'no_fbp_' + Date.now();
-      const fbp = validateFbp(fbp_raw);
+      // Tentar obter o FBP do cookie ou parâmetro de URL
+      const fbp_cookie_or_param = getCookie('_fbp') || getUrlParameter('fbp');
+      // Validar/Gerar o FBP - A função validateFbp agora garante que sempre teremos um FBP válido
+      const fbp = validateFbp(fbp_cookie_or_param); 
       const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
 
       // Obter informações adicionais do usuário

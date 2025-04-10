@@ -83,15 +83,15 @@ export const validateFbp = (fbp: string | null): string | null => {
  * @returns {string[]} Lista de parâmetros faltantes
  */
 export const validateRequiredParameters = (userData: NormalizedUserData): string[] => {
-  // Parâmetros realmente obrigatórios para o Facebook
+  // Parâmetros realmente obrigatórios para o Facebook (incluindo FBP para desduplicação)
   const requiredParams: Array<keyof NormalizedUserData> = [
-    'external_id', 'client_ip_address', 'client_user_agent'
+    'external_id', 'client_ip_address', 'client_user_agent', 'fbp'
   ];
   
-  // Parâmetros opcionais mas úteis para matching
+  // Parâmetros opcionais mas úteis para matching (remover fbp daqui)
   const optionalParams: Array<keyof NormalizedUserData> = [
     'em', 'ph', 'fn', 'ln', 'ge', 'db', 'city', 'state', 'zip', 'country', 
-    'fbc', 'fbp', 'subscription_id', 'fb_login_id', 'lead_id', 'ctwa_clid', 
+    'fbc', /* 'fbp', */ 'subscription_id', 'fb_login_id', 'lead_id', 'ctwa_clid', 
     'ig_account_id', 'ig_sid', 'page_id', 'page_scoped_user_id'
   ];
   
@@ -203,7 +203,7 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
     fbc: userData?.fbc || null,
-    fbp: userData?.fbp ? validateFbp(userData.fbp) : null,
+    fbp: userData?.fbp ? validateFbp(userData.fbp) : null, // Tenta validar o FBP recebido
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,
@@ -223,6 +223,14 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     madid: null,
     vendor_id: null
   };
+  
+  // Garantir que FBP sempre exista para desduplicação (Geração no Backend se necessário)
+  if (!normalizedUserData.fbp) {
+    const timestamp = Math.floor(Date.now() / 1000); // Usar timestamp do servidor
+    const random = Math.floor(Math.random() * 1000000000);
+    normalizedUserData.fbp = `fb.1.${timestamp}.${random}`;
+    console.info(`FBP gerado no backend: ${normalizedUserData.fbp}`);
+  }
   
   // Se for um evento de app, adicionar os parâmetros específicos
   if (isAppEvent) {
