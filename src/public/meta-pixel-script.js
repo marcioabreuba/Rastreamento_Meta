@@ -1586,10 +1586,29 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Inicializar o pixel do Facebook
+    // Carrega script fbevents.js
     initFacebookPixel();
     
-    // Configurar rastreamentos
+    // Detecta o tipo de página
+    const pageInfo = detectPageType();
+    if (pageInfo) {
+      // Adiciona um atraso antes de enviar o evento inicial
+      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
+      setTimeout(() => {
+        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
+        sendEvent(pageInfo.eventName, pageInfo.data); 
+      }, 750); // Atraso de 750 milissegundos
+    } else {
+      // Se nenhum tipo específico for detectado, enviar PageView como fallback
+      // (Aplicar o mesmo atraso aqui também, se este fallback for usado)
+      console.log('Nenhum tipo de página específico detectado, atrasando envio de PageView fallback por 750ms.');
+       setTimeout(() => {
+        console.log('Enviando PageView fallback após atraso.');
+        sendEvent('PageView');
+       }, 750);
+    }
+
+    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
     setupScrollTracking();
     setupTimerTracking();
     setupVideoTracking();
@@ -1668,18 +1687,6 @@
         link.addEventListener('click', addCheckoutParams);
         link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
       });
-    
-    // Sempre enviar PageView
-    sendEvent('PageView');
-
-    // Detectar o tipo de página e enviar evento específico
-    const pageInfo = detectPageType();
-    if (pageInfo.type !== 'other') {
-      // Aguardar um pouco para enviar o segundo evento
-      setTimeout(() => {
-        sendEvent(pageInfo.eventName, pageInfo.data);
-      }, 500);
-    }
   }
 
   // Inicializar quando o DOM estiver pronto

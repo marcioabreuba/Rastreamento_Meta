@@ -1,22 +1,29 @@
 # Meta Tracking Server
 
-Sistema de rastreamento e integração com Meta Pixel e Conversions API.
+Sistema robusto de rastreamento e integração com Meta Pixel e API de Conversões (CAPI).
 
 ## Visão Geral
 
-Este serviço atua como intermediário entre seus sites/aplicativos e as APIs do Meta (Facebook), permitindo:
-- Rastreamento de eventos para o Meta Pixel
-- Envio de eventos para a Conversions API
-- Armazenamento e processamento assíncrono de eventos
-- Enriquecimento de dados com informações geográficas (GeoIP)
+Este serviço atua como intermediário entre seus sites/aplicativos e as APIs do Meta (Facebook), implementando melhores práticas para maximizar a qualidade dos dados e a correspondência de eventos:
+
+- **Rastreamento Híbrido:** Combina o Meta Pixel (frontend) e a API de Conversões (backend).
+- **Identificação Avançada:** Utiliza um **ID de Visitante First-Party** persistente (via cookie primário) para identificar usuários anônimos de forma estável e duradoura.
+- **Deduplicação Robusta:** Garante que eventos do Pixel e da CAPI sejam corretamente deduplicados usando um **`event_id` consistente** entre ambos os canais.
+- **Processamento Confiável:** Armazena e processa eventos de forma assíncrona usando filas, garantindo que nenhum evento seja perdido.
+- **Enriquecimento de Dados:** Integra-se com MaxMind GeoIP para adicionar dados geográficos aos eventos.
+- **Conformidade:** Implementa hashing SHA256 correto para todos os parâmetros de identificação do usuário (PII e geográficos) enviados via CAPI, conforme a documentação oficial da Meta.
 
 ## Recursos Principais
 
-- 🔄 Processamento assíncrono de eventos com filas
-- 🌍 Integração com MaxMind GeoIP para dados geográficos
-- 📊 Mapeamento automático de eventos personalizados para eventos padrão do Meta
-- 💾 Persistência de eventos em banco de dados PostgreSQL
-- 🔍 Logs detalhados para depuração e monitoramento
+- 🆔 **ID de Visitante First-Party:** Melhor identificação e rastreamento de longo prazo de usuários anônimos.
+- ✨ **Deduplicação Precisa:** Uso de `event_id` consistente entre Pixel e CAPI.
+- 🔐 **Hashing CAPI Correto:** Conformidade com os requisitos de hashing da Meta para `user_data`, incluindo PII e dados geográficos.
+- 🔄 Processamento assíncrono de eventos com filas (BullMQ).
+- 🌍 Integração com MaxMind GeoIP para dados geográficos (via download local do DB).
+- 📊 Mapeamento automático de eventos personalizados para eventos padrão do Meta.
+- 💾 Persistência de eventos em banco de dados PostgreSQL (via Prisma).
+- 🔍 Logs detalhados para depuração e monitoramento (Winston).
+- ⚙️ Configuração flexível via variáveis de ambiente.
 
 ## Configuração
 
@@ -26,30 +33,30 @@ Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
 ```env
 # Servidor
-PORT=3001
-NODE_ENV=development
+PORT=3001 # Porta local; no Render, geralmente 10000
+NODE_ENV=development # ou production
 
-# Banco de Dados
+# Banco de Dados (Exemplo PostgreSQL)
 DATABASE_URL=postgresql://user:pass@host:port/dbname
 
 # Meta (Facebook)
 FB_PIXEL_ID=seu_pixel_id
-FB_ACCESS_TOKEN=seu_access_token
-FB_TEST_EVENT_CODE=seu_test_event_code
-FB_API_URL=https://graph.facebook.com/v16.0
+FB_ACCESS_TOKEN=seu_access_token_da_capi # Gerado no Gerenciador de Negócios
+FB_TEST_EVENT_CODE=seu_test_event_code # Opcional, para testes
+# FB_API_URL=https://graph.facebook.com/v19.0 # Opcional, padrão é v19.0 no código
 
-# GeoIP
-MAXMIND_ACCOUNT_ID=seu_maxmind_id
-MAXMIND_LICENSE_KEY=sua_licença_maxmind
+# GeoIP (MaxMind - necessário para download automático)
+MAXMIND_ACCOUNT_ID=seu_maxmind_account_id
+MAXMIND_LICENSE_KEY=sua_licença_maxmind_key
 
-# Redis (para filas)
+# Redis (para filas - BullMQ)
 REDIS_HOST=seu_redis_host
-REDIS_PORT=seu_redis_port
-REDIS_PASSWORD=sua_senha_redis
-REDIS_USERNAME=seu_usuario_redis
+REDIS_PORT=6379 # Porta padrão Redis
+REDIS_PASSWORD=sua_senha_redis # Opcional
+REDIS_USERNAME=seu_usuario_redis # Opcional
 ```
 
-### Instalação
+### Instalação e Build
 
 ```bash
 # Instalar dependências
@@ -58,142 +65,112 @@ npm install
 # Gerar cliente Prisma
 npx prisma generate
 
-# Fazer migrações do banco
+# (Opcional local) Fazer migrações do banco de dados
 npx prisma migrate dev
 
-# Baixar banco de dados GeoIP
-node dist/scripts/download-geoip.js
-
-# Construir o projeto
+# Construir o projeto (Compilar TypeScript para JavaScript)
 npm run build
+
+# Baixar banco de dados GeoIP (Executar após o build)
+# Certifique-se que as variáveis MAXMIND estão no .env ou ambiente
+node dist/scripts/download-geoip.js
 ```
 
 ### Execução
 
 ```bash
-# Desenvolvimento
+# Desenvolvimento (usa ts-node, compilação não necessária)
 npm run dev
 
-# Produção
+# Produção (executa a partir do build em /dist)
 npm start
 ```
 
-### Deploy no Render
+## Integração com o Site (Frontend)
+
+Este serviço fornece um script JavaScript para ser incluído nas páginas do seu site (ex: Shopify).
+
+1.  **Inclua o Script:** Adicione a seguinte linha ao `<head>` do seu tema ou site:
+    ```html
+    <script src="URL_DO_SEU_SERVICO/meta-pixel-script.js" async defer></script>
+    ```
+    Substitua `URL_DO_SEU_SERVICO` pela URL onde seu backend está hospedado (ex: `https://meu-tracking.onrender.com`).
+
+2.  **Funcionamento do Script (`meta-pixel-script.js`):**
+    *   **Carrega `fbevents.js`:** A biblioteca base do Pixel da Meta.
+    *   **Cria/Gerencia Cookie First-Party (`_mtVisitorId`):** Gera um UUID único para identificar o navegador do visitante anonimamente, com duração de 2 anos.
+    *   **Coleta Dados:** Reúne `fbp`, `fbc` (se disponíveis), dados do navegador (UA, idioma), referrer e o `_mtVisitorId`.
+    *   **Envia para Backend (`/track`):** Envia os dados coletados e informações do evento (nome, dados customizados) para o endpoint `/track` do seu serviço backend.
+    *   **Recebe `eventId`:** Obtém o `eventId` único gerado pelo backend na resposta do `/track`.
+    *   **Dispara Pixel Manualmente:** Constrói a URL do Pixel (`facebook.com/tr/...`) incluindo:
+        *   Parâmetros básicos do evento (`id`, `ev`, `dl`, etc.).
+        *   O `eventId` recebido do backend (parâmetro `eid`) para deduplicação.
+        *   Dados `user_data` hasheados (`ud[...]`), usando o hash do `_mtVisitorId` como `external_id`.
+        *   Dados `custom_data` (`cd[...]`).
+    *   Envia o evento do Pixel carregando uma imagem com essa URL. *(Nota: Não usa `fbq('track', ...)` diretamente)*.
+
+## Deploy no Render
 
 Para fazer deploy deste serviço no [Render](https://render.com), siga estas etapas:
 
-1. **Crie uma conta** no Render e configure um novo Web Service
-2. **Conecte seu repositório** GitHub ao Render
-3. **Configure as variáveis de ambiente** no dashboard do Render:
-   - Todas as variáveis do arquivo `.env` devem ser adicionadas
-   - Adicione `PORT=10000` ou use a porta fornecida pelo Render
-4. **Configure o comando de build**:
-   ```
-   npm install && npm run build && npx prisma generate --schema=./prisma/schema.prisma && node dist/scripts/download-geoip.js
-   ```
-5. **Configure o comando de inicialização**:
-   ```
-   npm start
-   ```
-
-#### Resolvendo Problemas com Prisma e Neon PostgreSQL
-
-Se você estiver usando o [Neon](https://neon.tech) como banco de dados PostgreSQL, pode enfrentar problemas com o Prisma tentando adquirir advisory locks durante migrações. Para resolver:
-
-1. **Desabilite advisory locks** adicionando a variável de ambiente:
-   ```
-   PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=true
-   ```
-
-2. **Modifique a URL de conexão** do banco de dados para usar o pooler do Neon:
-   ```
-   DATABASE_URL=postgresql://user:password@endpoint-pooler.neon.tech:5432/neondb?pgbouncer=true
-   ```
-
-3. **Desative o comando pre-deploy** que executa migrações no Render
-   - Remova `npm run migrate:deploy` do campo "pre-deploy command"
-   - Execute manualmente a migração quando necessário
-
-Se continuar tendo problemas com timeout na conexão, aumente o tempo limite no Prisma:
-```
-DATABASE_URL=postgresql://user:password@endpoint.neon.tech:5432/neondb?connect_timeout=30
-```
+1.  **Crie uma conta** no Render e configure um novo Web Service.
+2.  **Conecte seu repositório** GitHub ao Render.
+3.  **Configure as variáveis de ambiente** no dashboard do Render (todas as do `.env`). Defina `NODE_ENV=production`.
+4.  **Configure o comando de build**:
+    ```
+    npm install && npm run build && npx prisma generate --schema=./prisma/schema.prisma && node dist/scripts/download-geoip.js
+    ```
+5.  **Configure o comando de inicialização**:
+    ```
+    npm start
+    ```
+6.  **(Opcional - Banco de Dados Render/Neon):** Se usar DB do Render ou Neon:
+    *   Certifique-se que a `DATABASE_URL` está correta.
+    *   Pode ser necessário configurar o comando **Pre-deploy** para migrações:
+      ```
+      npm run migrate:deploy
+      ```
+    *   Consulte a documentação do Render/Neon/Prisma para configurações específicas de pooler ou advisory locks se encontrar problemas de conexão/migração.
 
 ## Solução de Problemas
 
-### Erros 400 Bad Request na API de Conversões
-
-Se você estiver recebendo erros 400 Bad Request ao enviar eventos para a API de Conversões do Meta, verifique:
-
-1. **Token de Acesso**: 
-   - O token deve ter permissões para usar a Conversions API
-   - Gere um novo token no Business Manager > Configurações de Negócios > Tokens de Sistema
-
-2. **Payload Mínimo**: 
-   - Tente simplificar o payload para conter apenas campos essenciais:
-     - event_name (nome do evento)
-     - event_id (ID único do evento)
-     - event_time (timestamp em segundos)
-     - action_source (geralmente "website")
-     - user_data (pelo menos client_ip_address, client_user_agent e external_id)
-     - custom_data (pelo menos currency e value)
-
-3. **Test Event Code**:
-   - Use o código de teste do Meta Pixel para depuração
-   - Ele aparece no Business Manager > Eventos > Teste de Eventos > Configure Testes
-
-### Falta de Eventos no Business Manager
-
-Se os eventos não aparecerem no Business Manager:
-
-1. **Navegue até**: Business Manager > Pixel > Eventos de Teste
-2. **Verifique se** o modo de teste está ativado
-3. **Confirme que** o ID do pixel está correto em suas configurações
-4. **Certifique-se** de que os eventos enviados são suportados pelo Meta
+- **Logs:** Verifique os logs do serviço no Render (ou localmente) para erros detalhados.
+- **Variáveis de Ambiente:** Confirme que todas as variáveis (`FB_PIXEL_ID`, `FB_ACCESS_TOKEN`, `DATABASE_URL`, etc.) estão corretamente configuradas no ambiente de deploy.
+- **Build:** Verifique se o comando de build está sendo executado completamente, incluindo a geração do Prisma e o download do GeoIP.
+- **Permissões do Token CAPI:** Garanta que o `FB_ACCESS_TOKEN` tem as permissões necessárias para a API de Conversões.
+- **Teste de Eventos:** Use a ferramenta de Teste de Eventos no Gerenciador de Eventos do Facebook para verificar se os eventos CAPI estão chegando e sendo processados (pode levar alguns minutos). Use o código de teste (`FB_TEST_EVENT_CODE`) se necessário.
 
 ## Arquitetura
 
 ```
 src/
-  ├── config/       - Configurações da aplicação
-  ├── controllers/  - Controladores de requisições
-  ├── middleware/   - Middlewares Express
-  ├── public/       - Arquivos estáticos (scripts para clientes)
-  ├── routes/       - Rotas da API
-  ├── scripts/      - Scripts utilitários
-  ├── services/     - Serviços principais da aplicação
+  ├── config/       - Configurações da aplicação (lê .env)
+  ├── controllers/  - Controladores de requisições HTTP (rotas)
+  ├── middleware/   - Middlewares Express (ex: logger)
+  ├── public/       - Arquivos estáticos servidos ao cliente (ex: meta-pixel-script.js)
+  ├── routes/       - Definição das rotas da API
+  ├── scripts/      - Scripts utilitários (ex: download GeoIP)
+  ├── services/     - Lógica de negócio principal (eventos, CAPI, filas, DB)
   ├── types/        - Definições de tipos TypeScript
-  ├── utils/        - Funções utilitárias
+  ├── utils/        - Funções utilitárias (hash, geoip, normalização)
   ├── app.ts        - Configuração do servidor Express
-  └── index.ts      - Ponto de entrada da aplicação
+  └── index.ts      - Ponto de entrada da aplicação (inicia servidor, filas)
+prisma/
+  ├── migrations/   - Migrações do banco de dados
+  └── schema.prisma - Schema do banco de dados Prisma
 ```
 
-## Eventos Suportados
+## Eventos Suportados (Exemplos)
 
-### Eventos Padrão do Meta
-  - PageView
-  - ViewContent
-  - AddToCart
-- InitiateCheckout
-  - Purchase
-- Lead
-  - Search
-- AddToWishlist
+O sistema mapeia nomes de eventos recebidos para eventos padrão do Meta ou os envia como eventos personalizados. Veja `src/utils/eventUtils.ts` para o mapeamento atual.
 
-### Eventos Personalizados
-- Scroll_25, Scroll_50, Scroll_75, Scroll_90
-  - Timer_1min
-- ViewVideo_25, ViewVideo_50, ViewVideo_75, ViewVideo_90
-- PlayVideo
+- **Padrão:** PageView, ViewContent, AddToCart, InitiateCheckout, Purchase, Lead, Search, AddToWishlist.
+- **Customizados (Frontend):** Scroll_%, Timer_%, ViewVideo_%, PlayVideo.
 
 ## Contribuindo
 
-1. Clone o repositório
-2. Crie uma branch para sua feature (`git checkout -b feature/amazing-feature`)
-3. Faça commit das suas mudanças (`git commit -m 'Add some amazing feature'`)
-4. Faça push para a branch (`git push origin feature/amazing-feature`)
-5. Abra um Pull Request
+Pull requests são bem-vindos. Para mudanças maiores, por favor abra uma issue primeiro para discutir o que você gostaria de mudar.
 
 ## Licença
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo LICENSE para detalhes.
+MIT
