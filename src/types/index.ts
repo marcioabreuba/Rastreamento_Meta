@@ -206,6 +206,7 @@ export interface TrackRequest {
   eventName: string;
   userData?: UserData;
   customData?: CustomData;
+  serverData?: ServerData;
   // Novos campos para processamento de dados e tipo de evento
   dataProcessingOptions?: string[];
   dataProcessingOptionsCountry?: number;
