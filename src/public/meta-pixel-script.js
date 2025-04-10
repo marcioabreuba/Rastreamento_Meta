@@ -1238,7 +1238,8 @@
       });
 
       // Adicionar Advanced Matching (hasheado) para o Pixel
-      const externalIdHashed = await hashSHA256(visitorId); // <-- Usar hash do visitorId
+      const idToHashForPixel = window.metaTrackingUserId || visitorId;
+      const externalIdHashed = await hashSHA256(idToHashForPixel);
       baseParams.append('ud[external_id]', externalIdHashed);
       baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
       baseParams.append('ud[fbp]', fbp);
