@@ -1526,11 +1526,6 @@
       setTimeout(() => {
         console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
         sendEvent(pageInfo.eventName, pageInfo.data); 
-        
-        // CORREÇÃO: Disparar também diretamente via fbq se não for PageView
-        if (pageInfo.eventName !== 'PageView') {
-          fbq('track', pageInfo.eventName, pageInfo.data);
-        }
       }, 750); // Atraso de 750 milissegundos
     } else {
       // Se nenhum tipo específico for detectado, enviar PageView como fallback
