@@ -144,11 +144,13 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
     *   **Problema:**
         1.  O evento PageView estava sendo enviado apenas com o parâmetro `external_id` para Advanced Matching.
         2.  Outros eventos (ViewHome, etc.) estavam enviando parâmetros completos (fbp, fbc, geo, etc.).
+        3.  O evento PageView não incluía parâmetros customizados como app, contentName, etc.
     *   **Solução:**
         1.  Ampliado o Advanced Matching na inicialização do pixel para incluir todos os parâmetros obrigatórios listados no Guia.
         2.  Adicionados fbp/fbc, dados geográficos (país, estado, cidade, CEP) e dados pessoais (se disponíveis).
         3.  Implementada busca de dados do localStorage para recuperar informações previamente coletadas.
         4.  Adicionado `client_user_agent` para padronizar completamente com o evento ViewHome.
+        5.  Adicionados parâmetros customizados como app, contentName, contentType, language e referrer.
     *   **Lição Principal:** Para maximizar a qualidade da correspondência, é importante enviar o máximo de parâmetros de Advanced Matching possível já no evento PageView inicial, não apenas nos eventos subsequentes.
 
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**

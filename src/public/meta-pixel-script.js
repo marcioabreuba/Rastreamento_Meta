@@ -223,7 +223,18 @@
     
     // Inicializar com Advanced Matching completo e disparar PageView imediatamente
     fbq('init', PIXEL_ID, pixelParams);
-    fbq('track', 'PageView');
+    
+    // Adicionar parâmetros customizados ao PageView para padronizar com ViewHome
+    const customParams = {
+      app: 'meta-tracking',
+      contentName: document.title || 'Page View',
+      contentType: 'page_view',
+      language: navigator.language || 'pt-BR',
+      referrer: document.referrer || ''
+    };
+    
+    // Enviar PageView com parâmetros customizados
+    fbq('track', 'PageView', customParams);
     
     console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'com Advanced Matching completo e PageView disparado', pixelParams);
   }
