@@ -164,17 +164,66 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // Configuração do pixel com Advanced Matching
+    // Obter todos os parâmetros obrigatórios de Advanced Matching
+    const externalId = getExternalId();
+    // Obter cookies do Facebook
+    const fbp_cookie = getCookie('_fbp') || getUrlParameter('fbp');
+    const fbp = validateFbp(fbp_cookie);
+    const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
+    
+    // Dados geográficos salvos (se disponíveis)
+    let geoData = {};
+    const savedUserData = localStorage.getItem('meta_tracking_user_data');
+    if (savedUserData) {
+      try {
+        const parsed = JSON.parse(savedUserData);
+        geoData = {
+          country: parsed.country,
+          state: parsed.state,
+          city: parsed.city,
+          zip: parsed.zip
+        };
+      } catch (e) {
+        console.error('Erro ao ler dados de geolocalização salvos:', e);
+      }
+    }
+
+    // Configuração do pixel com Advanced Matching completo
     const pixelParams = {
-      external_id: getExternalId()
-      // Outros parâmetros serão adicionados pelo script completo
+      external_id: externalId,
+      // FBP e FBC não devem ser hasheados conforme Guia.MD
+      fbp: fbp,
+      fbc: fbc
     };
     
-    // Inicializar com Advanced Matching e disparar PageView imediatamente
+    // Adicionar dados geográficos se disponíveis
+    // Nota: estes serão enviados como texto puro, a API do Meta fará o hash corretamente
+    if (geoData.country) pixelParams.country = geoData.country;
+    if (geoData.state) pixelParams.st = geoData.state;
+    if (geoData.city) pixelParams.ct = geoData.city;
+    if (geoData.zip) pixelParams.zp = geoData.zip;
+    
+    // Verificar se temos dados pessoais salvos (email, telefone, nome, etc.)
+    const email = localStorage.getItem('meta_tracking_email');
+    const phone = localStorage.getItem('meta_tracking_phone');
+    const firstName = localStorage.getItem('meta_tracking_first_name');
+    const lastName = localStorage.getItem('meta_tracking_last_name');
+    const gender = localStorage.getItem('meta_tracking_gender');
+    const dob = localStorage.getItem('meta_tracking_dob');
+    
+    // Adicionar dados pessoais se disponíveis (sem hashear, o Meta fará isso)
+    if (email) pixelParams.em = email;
+    if (phone) pixelParams.ph = phone;
+    if (firstName) pixelParams.fn = firstName;
+    if (lastName) pixelParams.ln = lastName;
+    if (gender) pixelParams.ge = gender;
+    if (dob) pixelParams.db = dob;
+    
+    // Inicializar com Advanced Matching completo e disparar PageView imediatamente
     fbq('init', PIXEL_ID, pixelParams);
     fbq('track', 'PageView');
     
-    console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'e PageView disparado');
+    console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'com Advanced Matching completo e PageView disparado', pixelParams);
   }
 
   // Funções para encontrar elementos específicos na página
