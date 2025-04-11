@@ -267,8 +267,8 @@
           ...customParams,
           // Garantir que o título da página seja idêntico
           contentName: document.title || 'Page View',
-          // Garantir que o idioma seja idêntico
-          language: navigator.language || 'pt-BR',
+          // Garantir que o idioma seja sempre pt-BR para consistência com outros eventos
+          language: 'pt-BR',
           // Adicionar currency e value para padronizar com outros eventos
           currency: 'BRL',
           value: 0
