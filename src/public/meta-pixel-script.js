@@ -164,8 +164,9 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // NÃO inicializar o pixel imediatamente - vamos fazer isso em cada evento
-    console.log('Facebook Pixel script carregado para ID:', PIXEL_ID);
+    // Inicializar o pixel imediatamente com o ID definido
+    fbq('init', PIXEL_ID);
+    console.log('Facebook Pixel inicializado com ID:', PIXEL_ID);
   }
 
   // Funções para encontrar elementos específicos na página
@@ -1235,87 +1236,10 @@
         }
       }
 
-      // --- Construção e Envio do Pixel Manual (Usando eventId do backend) ---
-
-      // Inicializar o pixel (pode ser redundante se já inicializado, mas garante)
-      fbq('init', PIXEL_ID);
-
-      // Construir URL do Pixel manualmente
-      const pixelUrl = 'https://www.facebook.com/tr/';
-      const baseParams = new URLSearchParams({
-        id: PIXEL_ID,
-        ev: eventName, // Usar nome original do evento
-        dl: document.location.href,
-        rl: document.referrer,
-        if: false,
-        ts: Date.now(),
-        // v: '2.9.194', // Versão pode ser omitida ou atualizada
-        r: 'stable',
-        // Usar o eventId recebido do backend se disponível, senão gerar um fallback
-        eid: backendEventId || ('meta_tracking_fe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
-      });
-
-      // Adicionar Advanced Matching (hasheado) para o Pixel
-      const idToHashForPixel = window.metaTrackingUserId || visitorId;
-      const externalIdHashed = await hashSHA256(idToHashForPixel);
-      baseParams.append('ud[external_id]', externalIdHashed);
-      baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
-      baseParams.append('ud[fbp]', fbp);
-      if (fbc) {
-        baseParams.append('ud[fbc]', fbc);
-      }
-
-      // Função interna para adicionar dados hasheados ao baseParams
-      const addHashedDataToPixel = async (name, value) => {
-        if (value) {
-          try {
-            // Normalizar e Hashear para o Pixel
-            let normalizedValue = String(value).toLowerCase().trim();
-            if (name === 'ph') normalizedValue = normalizedValue.replace(/\D/g, '');
-            if (name === 'zp') normalizedValue = normalizedValue.replace(/\D/g, '');
-            const hashedValue = await hashSHA256(normalizedValue);
-            baseParams.append(`ud[${name}]`, hashedValue);
-          } catch (e) {
-            console.error(`Erro ao processar ${name} para Pixel:`, e);
-          }
-        }
-      };
-
-      // Adicionar geo e PII hasheados para o Pixel
-      await addHashedDataToPixel('country', userData.country);
-      await addHashedDataToPixel('st', userData.state);
-      await addHashedDataToPixel('ct', userData.city);
-      await addHashedDataToPixel('zp', userData.zip);
-      await addHashedDataToPixel('em', userData.email);
-      await addHashedDataToPixel('ph', userData.phone);
-      await addHashedDataToPixel('fn', userData.firstName);
-      await addHashedDataToPixel('ln', userData.lastName);
-      await addHashedDataToPixel('ge', userData.gender);
-      await addHashedDataToPixel('db', userData.dateOfBirth);
-
-      // Adicionar custom data (não hasheado) para o Pixel
-      const customDataForPixel = {
-          ...customData,
-          app: 'meta-tracking',
-          language: navigator.language || 'pt-BR',
-          referrer: document.referrer
-          // Não precisa adicionar sourceUrl, etc., pois já estão nos parâmetros base (dl, rl)
-      };
-
-      Object.entries(customDataForPixel).forEach(([key, value]) => {
-        if (value !== null && value !== undefined) {
-          if (typeof value === 'object') {
-            baseParams.append(`cd[${key}]`, JSON.stringify(value));
-          } else {
-            baseParams.append(`cd[${key}]`, value);
-          }
-        }
-      });
-
-      // Enviar o pixel manualmente usando um image request
-      const pixelImg = new Image();
-      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
-      console.log(`Pixel ${eventName} enviado manualmente (ID: ${baseParams.get('eid')})`);
+      // --- Envio do evento para o Pixel Browser (Usando eventId do backend) ---
+      // Não reinicializar o pixel, apenas enviar o evento
+      fbq('track', eventName, customData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
+      console.log(`Evento ${eventName} enviado ao pixel do navegador com eventID: ${backendEventId || 'gerado localmente'}`);
 
       // Retornar o resultado do backend
       if (backendEventId) {
@@ -1605,29 +1529,30 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Carrega script fbevents.js
+    // Carrega script fbevents.js e inicializa o pixel
     initFacebookPixel();
     
-    // Detecta o tipo de página
-    const pageInfo = detectPageType();
-    if (pageInfo) {
-      // Adiciona um atraso antes de enviar o evento inicial
-      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
-      setTimeout(() => {
-        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
+    // Enviar PageView primeiro - FUNDAMENTAL para qualidade da correspondência
+    console.log('Enviando PageView inicial para o pixel.');
+    fbq('track', 'PageView');
+    
+    // Enviar PageView para o backend com todos os parâmetros enriquecidos
+    setTimeout(() => {
+      console.log('Enviando PageView para o backend após inicialização.');
+      sendEvent('PageView', {
+        contentType: 'page_view',
+        contentName: document.title
+      });
+      
+      // Detecta o tipo de página e envia evento específico após o PageView
+      const pageInfo = detectPageType();
+      if (pageInfo && pageInfo.eventName !== 'PageView') {
+        console.log(`Enviando evento específico "${pageInfo.eventName}" após o PageView.`);
         sendEvent(pageInfo.eventName, pageInfo.data); 
-      }, 750); // Atraso de 750 milissegundos
-    } else {
-      // Se nenhum tipo específico for detectado, enviar PageView como fallback
-      // (Aplicar o mesmo atraso aqui também, se este fallback for usado)
-      console.log('Nenhum tipo de página específico detectado, atrasando envio de PageView fallback por 750ms.');
-       setTimeout(() => {
-        console.log('Enviando PageView fallback após atraso.');
-        sendEvent('PageView');
-       }, 750);
-    }
+      }
+    }, 750); // Atraso de 750 milissegundos para garantir que o pixel está inicializado
 
-    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
+    // Configurar outros rastreadores (scroll, timer, etc.)
     setupScrollTracking();
     setupTimerTracking();
     setupVideoTracking();
