@@ -153,6 +153,17 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         5.  Adicionados parâmetros customizados como app, contentName, contentType, language e referrer.
     *   **Lição Principal:** Para maximizar a qualidade da correspondência, é importante enviar o máximo de parâmetros de Advanced Matching possível já no evento PageView inicial, não apenas nos eventos subsequentes.
 
+*   **[2025-04-11] - Sincronização de Parâmetros Personalizados entre Web e API:**
+    *   **Problema:**
+        1.  Os parâmetros personalizados (customData) enviados pelo navegador e pela API apresentavam pequenas diferenças.
+        2.  Discrepâncias no nome do conteúdo (contentName), idioma (language) e outros parâmetros.
+        3.  Essas diferenças poderiam afetar a deduplicação e qualidade de correspondência.
+    *   **Solução:**
+        1.  Modificação no código do `meta-pixel-script.js` para garantir que os mesmos parâmetros exatos sejam enviados tanto para o pixel web quanto para a API.
+        2.  Utilização das mesmas fontes para obter valores como título da página e idioma do navegador.
+        3.  Padronização dos campos currency, value, contentName e language entre todos os eventos.
+    *   **Lição Principal:** A sincronização perfeita de parâmetros entre os eventos web e servidor é crucial para maximizar a deduplicação e correspondência no Meta Ads. Mesmo pequenas diferenças nos parâmetros personalizados podem afetar a qualidade do rastreamento.
+
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
 ---

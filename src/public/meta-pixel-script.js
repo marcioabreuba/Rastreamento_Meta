@@ -261,8 +261,18 @@
         state: geoData.state || '',
         city: geoData.city || '',
         zip: geoData.zip || '',
-        // Incluir dados customizados
-        customData: customParams
+        // Usar EXATAMENTE os mesmos parâmetros customizados do evento web
+        // para garantir sincronização perfeita
+        customData: {
+          ...customParams,
+          // Garantir que o título da página seja idêntico
+          contentName: document.title || 'Page View',
+          // Garantir que o idioma seja idêntico
+          language: navigator.language || 'pt-BR',
+          // Adicionar currency e value para padronizar com outros eventos
+          currency: 'BRL',
+          value: 0
+        }
       };
 
       // Enviar para o backend
