@@ -1238,7 +1238,17 @@
 
       // --- Envio do evento para o Pixel Browser (Usando eventId do backend) ---
       // Não reinicializar o pixel, apenas enviar o evento
-      fbq('track', eventName, customData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
+      
+      // Converter dados personalizados para o formato esperado pelo pixel (snake_case)
+      const pixelCustomData = {};
+      Object.entries(customData || {}).forEach(([key, value]) => {
+        // Converter camelCase para snake_case e manter valores
+        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        pixelCustomData[snakeKey] = value;
+      });
+      
+      // Enviar para o pixel do navegador com os dados formatados corretamente
+      fbq('track', eventName, pixelCustomData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
       console.log(`Evento ${eventName} enviado ao pixel do navegador com eventID: ${backendEventId || 'gerado localmente'}`);
 
       // Retornar o resultado do backend
@@ -1534,7 +1544,11 @@
     
     // Enviar PageView primeiro - FUNDAMENTAL para qualidade da correspondência
     console.log('Enviando PageView inicial para o pixel.');
-    fbq('track', 'PageView');
+    // Adicionar parâmetros personalizados ao PageView para melhorar correspondência
+    fbq('track', 'PageView', {
+      content_type: 'page_view',
+      content_name: document.title
+    });
     
     // Enviar PageView para o backend com todos os parâmetros enriquecidos
     setTimeout(() => {
