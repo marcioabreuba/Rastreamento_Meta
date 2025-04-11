@@ -98,4 +98,30 @@
 *   [Adicionar outros itens do backlog aqui]
 
 ---
+
+## ✅ Checklist para Manutenção do Projeto
+
+Para garantir a consistência e a integridade do projeto durante alterações, **siga sempre este checklist**:
+
+1. **Antes de modificar:**
+   - Leia este guia para entender o contexto e possíveis impactos
+   - Valide sua proposta contra os pontos críticos mencionados
+   - Verifique o histórico para confirmar que não está repetindo problemas resolvidos
+
+2. **Ao implementar alterações:**
+   - Mantenha a compatibilidade com sites clientes existentes
+   - Siga o padrão de código e arquitetura estabelecido
+   - Adicione logs adequados para facilitar depuração
+   - Teste a solução em ambiente de desenvolvimento antes de commitar
+
+3. **Após implementar:**
+   - **OBRIGATÓRIO:** Atualize este Guia.MD com:
+      - A data da atualização
+      - Detalhes sobre problemas significativos resolvidos
+      - Novas funcionalidades ou mudanças estruturais
+   - Faça commit e push de todas as alterações, **incluindo o Guia.MD**
+   - Verifique se o deploy foi concluído com sucesso
+   - Monitore o comportamento após a implementação 
+
+---
 *Este documento é a fonte da verdade contextual para o projeto Meta-Tracking.*
