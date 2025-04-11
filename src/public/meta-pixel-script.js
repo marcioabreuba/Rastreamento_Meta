@@ -164,8 +164,17 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // NÃO inicializar o pixel imediatamente - vamos fazer isso em cada evento
-    console.log('Facebook Pixel script carregado para ID:', PIXEL_ID);
+    // Configuração do pixel com Advanced Matching
+    const pixelParams = {
+      external_id: getExternalId()
+      // Outros parâmetros serão adicionados pelo script completo
+    };
+    
+    // Inicializar com Advanced Matching e disparar PageView imediatamente
+    fbq('init', PIXEL_ID, pixelParams);
+    fbq('track', 'PageView');
+    
+    console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'e PageView disparado');
   }
 
   // Funções para encontrar elementos específicos na página
@@ -1605,26 +1614,23 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Carrega script fbevents.js
+    // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
     initFacebookPixel();
     
     // Detecta o tipo de página
     const pageInfo = detectPageType();
-    if (pageInfo) {
-      // Adiciona um atraso antes de enviar o evento inicial
+    if (pageInfo && pageInfo.eventName !== 'PageView') {
+      // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
+      // pois o PageView já foi enviado na inicialização do pixel
       console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
       setTimeout(() => {
         console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
         sendEvent(pageInfo.eventName, pageInfo.data); 
       }, 750); // Atraso de 750 milissegundos
-    } else {
-      // Se nenhum tipo específico for detectado, enviar PageView como fallback
-      // (Aplicar o mesmo atraso aqui também, se este fallback for usado)
-      console.log('Nenhum tipo de página específico detectado, atrasando envio de PageView fallback por 750ms.');
-       setTimeout(() => {
-        console.log('Enviando PageView fallback após atraso.');
-        sendEvent('PageView');
-       }, 750);
+    } else if (!pageInfo) {
+      // Se nenhum tipo específico for detectado, não enviamos PageView novamente como fallback
+      // pois o PageView já foi enviado na inicialização do pixel
+      console.log('Nenhum tipo de página específico detectado. PageView já foi enviado na inicialização.');
     }
 
     // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
