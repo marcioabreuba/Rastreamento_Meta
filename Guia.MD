@@ -37,6 +37,74 @@
 
 ---
 
+## 📊 Eventos e Parâmetros Obrigatórios
+
+### Eventos Obrigatórios de Rastreamento:
+
+Os seguintes eventos são considerados **obrigatórios** para a funcionalidade do sistema e jamais devem ser removidos:
+
+1. **PageView** - Visualização de página (fundamental para inicialização do rastreamento)
+2. **ViewHome** - Visualização da página inicial
+3. **ViewContent** - Visualização de conteúdo (produto/página)
+4. **ViewList** - Visualização de lista (mapeado para ViewContent)
+5. **AddToCart** - Adição ao carrinho
+6. **ViewCart** - Visualização do carrinho
+7. **InitiateCheckout** - Início do checkout
+8. **CompleteRegistration** - Registro completo
+9. **AddPaymentInfo** - Adição de informações de pagamento
+10. **Purchase** - Compra (incluindo variantes por método de pagamento)
+11. **ViewCategory** - Visualização de categoria
+12. **Search** - Pesquisa
+13. **Timer_1min** - Tempo de permanência de 1 minuto
+14. **Scroll_25/50/75/90/100** - Profundidade de rolagem
+15. **Lead** - Captura de leads
+16. **AddToWishlist** - Adição à lista de desejos
+17. **PlayVideo** e **ViewVideo_25/50/75/90** - Interações com vídeos
+
+### Parâmetros Obrigatórios:
+
+#### Dados de Usuário (userData):
+
+1. **Identificação** (nunca remover):
+   - `external_id`: ID do usuário/visitante hasheado
+   - `client_ip_address`: Endereço IP (convertido para IPv6)
+   - `client_user_agent`: User-Agent do navegador
+   - `fbp`: Facebook Browser ID (não hashear)
+   - `fbc`: Facebook Click ID (não hashear)
+
+2. **Dados Pessoais** (sempre normalizar e hashear):
+   - `em`: Email
+   - `ph`: Telefone
+   - `fn`: Primeiro nome
+   - `ln`: Sobrenome
+   - `ge`: Gênero
+   - `db`: Data de nascimento
+
+3. **Localização** (sempre normalizar e hashear):
+   - `country`: País
+   - `state`: Estado
+   - `city`: Cidade
+   - `zip`: CEP
+
+#### Dados Personalizados (customData):
+
+1. **Parâmetros de Compra**:
+   - `currency`: Moeda (padrão 'BRL')
+   - `value`: Valor da compra/produto
+   - `order_id`: ID do pedido
+   - `num_items`: Número de itens
+
+2. **Conteúdo**:
+   - `content_name`: Nome do produto/conteúdo
+   - `content_category`: Categoria do produto
+   - `content_ids`: IDs dos produtos
+   - `content_type`: Tipo de conteúdo
+   - `contents`: Detalhes dos itens (valor, ID, etc.)
+
+**IMPORTANTE:** A remoção ou modificação incorreta destes eventos e parâmetros pode comprometer significativamente a qualidade do rastreamento, a correspondência de eventos no Meta Ads e o funcionamento da integração entre o frontend e a API de Conversões do Meta.
+
+---
+
 ## ⚠️ Pontos Críticos & Limitações (Atenção!)
 
 *   **NÃO Modifique o Site Cliente:** Qualquer correção ou alteração no comportamento do rastreamento do *navegador* deve ser feita no código que gera o `meta-pixel-script.js` no *backend*, não no site do cliente.
