@@ -140,6 +140,16 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         2.  Ajustada a função `init()` para evitar duplicação de eventos PageView.
     *   **Lição Principal:** O arquivo servido diretamente ao cliente deve conter toda a lógica necessária para a inicialização correta do pixel, incluindo as chamadas obrigatórias `fbq('init', ...)` e `fbq('track', 'PageView')`, mesmo se houver rotas alternativas implementadas no backend.
 
+*   **[2025-04-11] - Melhoria no Advanced Matching para o Evento PageView:**
+    *   **Problema:**
+        1.  O evento PageView estava sendo enviado apenas com o parâmetro `external_id` para Advanced Matching.
+        2.  Outros eventos (ViewHome, etc.) estavam enviando parâmetros completos (fbp, fbc, geo, etc.).
+    *   **Solução:**
+        1.  Ampliado o Advanced Matching na inicialização do pixel para incluir todos os parâmetros obrigatórios listados no Guia.
+        2.  Adicionados fbp/fbc, dados geográficos (país, estado, cidade, CEP) e dados pessoais (se disponíveis).
+        3.  Implementada busca de dados do localStorage para recuperar informações previamente coletadas.
+    *   **Lição Principal:** Para maximizar a qualidade da correspondência, é importante enviar o máximo de parâmetros de Advanced Matching possível já no evento PageView inicial, não apenas nos eventos subsequentes.
+
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
 ---
