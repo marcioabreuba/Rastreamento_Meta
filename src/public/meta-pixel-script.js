@@ -193,7 +193,9 @@
       external_id: externalId,
       // FBP e FBC não devem ser hasheados conforme Guia.MD
       fbp: fbp,
-      fbc: fbc
+      fbc: fbc,
+      // Adicionar client_user_agent para padronizar com ViewHome
+      client_user_agent: navigator.userAgent
     };
     
     // Adicionar dados geográficos se disponíveis
