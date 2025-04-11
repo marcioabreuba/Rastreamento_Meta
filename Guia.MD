@@ -1,6 +1,6 @@
 # 🚀 Briefing Rápido: Projeto Meta-Tracking para IA 🤖
 
-**Última Atualização:** [AAAA-MM-DD] <!-- Atualize esta data ao modificar! -->
+**Última Atualização:** [2025-04-11] <!-- Atualize esta data ao modificar! -->
 
 **Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
 
@@ -129,6 +129,15 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         2.  Implementada normalização aprimorada (sem acentos, etc.) em `eventUtils.ts` antes do hashing.
         3.  Garantido que `fbp`/`fbc` não são hasheados.
     *   **Lição Principal:** A correta inicialização do pixel no browser e a normalização *pré-hashing* dos dados PII são absolutamente cruciais para a qualidade da correspondência e deduplicação.
+
+*   **[2025-04-11] - Problema de Eventos PageView Ausentes:**
+    *   **Causas Raiz:**
+        1.  O script `meta-pixel-script.js` não continha as chamadas `fbq('init', ...)` e `fbq('track', 'PageView')`, apenas a lógica para outros eventos como ViewHome.
+        2.  As chamadas de inicialização e PageView estavam implementadas na rota `/pixel-code`, mas o site cliente estava usando `/meta-pixel-script.js`.
+    *   **Solução:**
+        1.  Modificado diretamente o arquivo `src/public/meta-pixel-script.js` para incluir `fbq('init', PIXEL_ID, pixelParams)` e `fbq('track', 'PageView')` dentro da função `initFacebookPixel()`.
+        2.  Ajustada a função `init()` para evitar duplicação de eventos PageView.
+    *   **Lição Principal:** O arquivo servido diretamente ao cliente deve conter toda a lógica necessária para a inicialização correta do pixel, incluindo as chamadas obrigatórias `fbq('init', ...)` e `fbq('track', 'PageView')`, mesmo se houver rotas alternativas implementadas no backend.
 
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
