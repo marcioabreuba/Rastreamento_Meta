@@ -237,6 +237,51 @@
     fbq('track', 'PageView', customParams);
     
     console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'com Advanced Matching completo e PageView disparado', pixelParams);
+    
+    // Enviar o mesmo evento para o backend para processamento via API
+    setTimeout(function() {
+      // Preparar payload com todos os dados disponíveis (mesmo Advanced Matching do pixel)
+      const payload = {
+        eventName: 'PageView',
+        eventId: generateUUID(),
+        eventSource: 'web',
+        url: window.location.href,
+        // Incluir todos os parâmetros de Advanced Matching
+        fbp: fbp,
+        fbc: fbc,
+        // Incluir dados pessoais se disponíveis
+        em: email || '',
+        ph: phone || '',
+        fn: firstName || '',
+        ln: lastName || '',
+        ge: gender || '',
+        db: dob || '',
+        // Incluir dados de geolocalização se disponíveis
+        country: geoData.country || '',
+        state: geoData.state || '',
+        city: geoData.city || '',
+        zip: geoData.zip || '',
+        // Incluir dados customizados
+        customData: customParams
+      };
+
+      // Enviar para o backend
+      fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log('✅ Evento PageView enviado com sucesso para o backend');
+        } else {
+          console.error('❌ Erro ao enviar evento PageView para o backend:', response.status);
+        }
+      })
+      .catch(error => {
+        console.error('❌ Erro ao enviar evento PageView para o backend:', error);
+      });
+    }, 100); // Pequeno delay para garantir que o pixel foi inicializado
   }
 
   // Funções para encontrar elementos específicos na página
