@@ -214,9 +214,9 @@
           type: 'search_results',
           eventName: 'ViewSearchResults',
           data: {
-            searchString: searchQuery,
-            contentType: 'search_results',
-            contentName: `Resultados para "${searchQuery}"`
+            search_string: searchQuery,
+            content_type: 'search_results',
+            content_name: `Resultados para "${searchQuery}"`
           }
         };
       }
@@ -230,8 +230,8 @@
           type: 'checkout',
           eventName: 'StartCheckout',
           data: {
-            contentName: 'Checkout',
-            contentType: 'checkout'
+            content_name: 'Checkout',
+            content_type: 'checkout'
           }
         };
       }
@@ -242,8 +242,8 @@
           type: 'payment',
           eventName: 'AddPaymentInfo',
           data: {
-            contentName: 'Payment Information',
-            contentType: 'payment'
+            content_name: 'Payment Information',
+            content_type: 'payment'
           }
         };
       }
@@ -254,10 +254,10 @@
           type: 'purchase',
           eventName: 'Purchase',
           data: {
-            contentName: 'Purchase Confirmation',
-            contentType: 'purchase',
+            content_name: 'Purchase Confirmation',
+            content_type: 'purchase',
             // Tentar obter ID do pedido da URL
-            orderId: getUrlParameter('order_id') || getUrlParameter('pedido')
+            order_id: getUrlParameter('order_id') || getUrlParameter('pedido')
           }
         };
       }
@@ -269,8 +269,8 @@
         type: 'home',
         eventName: 'ViewHome',
         data: {
-          contentName: 'Home Page',
-          contentType: 'home_page'
+          content_name: 'Home Page',
+          content_type: 'home_page'
         }
       };
     }
@@ -535,10 +535,10 @@
         type: 'product',
         eventName: 'ViewContent',
         data: {
-          contentName: productTitle || document.title.split('|')[0].trim(),
-          contentType: 'product',
-          contentCategory: productCategories,
-          contentIds: productId ? [productId] : null,
+          content_name: productTitle || document.title.split('|')[0].trim(),
+          content_type: 'product',
+          content_category: productCategories,
+          content_ids: productId ? [productId] : null,
           value: extractPrice() || 0
         }
       };
@@ -911,11 +911,11 @@
         type: 'cart', 
         eventName: 'ViewCart',
         data: {
-            contentName: 'Carrinho Vazio',
-            contentType: 'cart',
-            contentCategory: ['cart'],
+            content_name: 'Carrinho Vazio',
+            content_type: 'cart',
+            content_category: ['cart'],
             value: 0,
-            numItems: 0
+            num_items: 0
           }
         };
       }
@@ -927,13 +927,13 @@
         type: 'cart',
         eventName: 'ViewCart',
         data: {
-          contentName: cartData.itemNames || 'Shopping Cart',
-          contentType: 'cart',
-          contentCategory: cartData.categories,
-          contentIds: contentIds,
+          content_name: cartData.itemNames || 'Shopping Cart',
+          content_type: 'cart',
+          content_category: cartData.categories,
+          content_ids: contentIds,
           contents: cartData.items,
           value: cartData.total,
-          numItems: cartData.quantity,
+          num_items: cartData.quantity,
           currency: 'BRL'
         }
       };
@@ -1002,9 +1002,9 @@
         type: 'collection',
         eventName: 'ViewCategory',
         data: {
-          contentName: 'Category Page',
-          contentType: 'category',
-          contentCategory: categoryName
+          content_name: 'Category Page',
+          content_type: 'category',
+          content_category: categoryName
         }
       };
     }
@@ -1015,8 +1015,8 @@
         type: 'search',
         eventName: 'Pesquisar',
         data: {
-          searchString: searchQuery,
-          contentType: 'search'
+          search_string: searchQuery,
+          content_type: 'search'
         }
       };
     }
@@ -1026,8 +1026,8 @@
       type: 'other',
       eventName: 'PageView',
       data: {
-        contentName: document.title,
-        contentType: 'other'
+        content_name: document.title,
+        content_type: 'other'
       }
     };
   }
@@ -1177,11 +1177,36 @@
     return `fb.1.${timestamp}.${random}`;
   }
 
+  // Função utilitária para converter todas as chaves de um objeto de camelCase para snake_case
+  function convertKeysToSnakeCase(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      return obj;
+    }
+    
+    const result = {};
+    Object.keys(obj).forEach(key => {
+      // Converter camelCase para snake_case
+      const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+      
+      // Processar recursivamente se for um objeto
+      if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+        result[snakeKey] = convertKeysToSnakeCase(obj[key]);
+      } else {
+        result[snakeKey] = obj[key];
+      }
+    });
+    
+    return result;
+  }
+
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     // Definir variável para armazenar o eventId do backend
     let backendEventId = null;
     try {
+      // Garantir que todos os dados estão em snake_case (ponto extra de segurança)
+      const processedCustomData = convertKeysToSnakeCase(customData);
+      
       // Preparar Advanced Matching
       const visitorId = getOrCreateVisitorId(); // <-- Usar o novo ID first-party
       const client_user_agent_raw = navigator.userAgent;
@@ -1211,7 +1236,7 @@
           ...userData // Adiciona geo (country, state, city, zip) e outros se coletados
         },
         customData: {
-          ...customData, // Adiciona dados específicos do evento (conteúdo, valor, etc.)
+          ...processedCustomData, // Usar dados convertidos
           sourceUrl: window.location.href
         }
       };
@@ -1237,18 +1262,8 @@
       }
 
       // --- Envio do evento para o Pixel Browser (Usando eventId do backend) ---
-      // Não reinicializar o pixel, apenas enviar o evento
-      
-      // Converter dados personalizados para o formato esperado pelo pixel (snake_case)
-      const pixelCustomData = {};
-      Object.entries(customData || {}).forEach(([key, value]) => {
-        // Converter camelCase para snake_case e manter valores
-        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        pixelCustomData[snakeKey] = value;
-      });
-      
-      // Enviar para o pixel do navegador com os dados formatados corretamente
-      fbq('track', eventName, pixelCustomData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
+      // Enviar para o pixel do navegador com os dados processados (snake_case)
+      fbq('track', eventName, processedCustomData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
       console.log(`Evento ${eventName} enviado ao pixel do navegador com eventID: ${backendEventId || 'gerado localmente'}`);
 
       // Retornar o resultado do backend
@@ -1297,18 +1312,18 @@
         if (scrollPercentage >= 25 && !sentEvents.scroll_25) {
           sentEvents.scroll_25 = true;
           sendEvent('Scroll_25', {
-            scrollPercentage: 25,
-            pageUrl: window.location.href,
-            contentName: document.title
+            scroll_percentage: 25,
+            page_url: window.location.href,
+            content_name: document.title
           });
         }
         
         if (scrollPercentage >= 50 && !sentEvents.scroll_50) {
           sentEvents.scroll_50 = true;
           sendEvent('Scroll_50', {
-            scrollPercentage: 50,
-            pageUrl: window.location.href,
-            contentName: document.title
+            scroll_percentage: 50,
+            page_url: window.location.href,
+            content_name: document.title
           });
         }
         
@@ -1316,9 +1331,9 @@
         if (scrollPercentage >= 75 && !sentEvents.scroll_75) {
           sentEvents.scroll_75 = true;
           sendEvent('Scroll_75', {
-            scrollPercentage: 75,
-            pageUrl: window.location.href,
-            contentName: document.title
+            scroll_percentage: 75,
+            page_url: window.location.href,
+            content_name: document.title
           });
         }
         
@@ -1326,9 +1341,9 @@
         if (scrollPercentage >= 90 && !sentEvents.scroll_90) {
           sentEvents.scroll_90 = true;
           sendEvent('Scroll_90', {
-            scrollPercentage: 90,
-            pageUrl: window.location.href,
-            contentName: document.title
+            scroll_percentage: 90,
+            page_url: window.location.href,
+            content_name: document.title
           });
         }
       }
@@ -1348,9 +1363,9 @@
       if (!sentEvents.timer_1min) {
         sentEvents.timer_1min = true;
         sendEvent('Timer_1min', {
-          timeOnPage: 60, // segundos
-          pageUrl: window.location.href,
-          contentName: document.title
+          time_on_page: 60, // segundos
+          page_url: window.location.href,
+          content_name: document.title
         });
       }
     }, 60000); // 60 segundos = 1 minuto
@@ -1369,9 +1384,9 @@
         
         // Dados do vídeo para enviar nos eventos
         let videoData = {
-          contentIds: [videoId],
-          contentName: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
-          contentType: 'video'
+          content_ids: [videoId],
+          content_name: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
+          content_type: 'video'
         };
         
         // Armazenar pontos de progresso já rastreados
@@ -1389,7 +1404,7 @@
             trackedProgressPoints.start = true;
             
             // Adicionar duração do vídeo aos dados
-            videoData.videoDuration = video.duration;
+            videoData.video_duration = video.duration;
             
             // Enviar evento de início de vídeo
             sendEvent('PlayVideo', videoData);
@@ -1406,9 +1421,9 @@
             trackedProgressPoints['25'] = true;
             sendEvent('ViewVideo_25', {
               ...videoData,
-              videoPosition: 25,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 25,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1416,9 +1431,9 @@
             trackedProgressPoints['50'] = true;
             sendEvent('ViewVideo_50', {
               ...videoData,
-              videoPosition: 50,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 50,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1426,9 +1441,9 @@
             trackedProgressPoints['75'] = true;
             sendEvent('ViewVideo_75', {
               ...videoData,
-              videoPosition: 75,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 75,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1436,9 +1451,20 @@
             trackedProgressPoints['90'] = true;
             sendEvent('ViewVideo_90', {
               ...videoData,
-              videoPosition: 90,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 90,
+              video_duration: video.duration,
+              video_title: videoData.content_name
+            });
+          }
+          
+          // Verificar se o evento é um VideoView_XX ou se é um tipo de vídeo do YouTube
+          if (videoData.video_title && videoData.video_title.includes('YouTube')) {
+            // Evento específico para YouTube
+            sendEvent('YouTubeView', {
+              video_platform: 'youtube',
+              video_position: percentage,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
         });
@@ -1554,8 +1580,8 @@
     setTimeout(() => {
       console.log('Enviando PageView para o backend após inicialização.');
       sendEvent('PageView', {
-        contentType: 'page_view',
-        contentName: document.title
+        content_type: 'page_view',
+        content_name: document.title
       });
       
       // Detecta o tipo de página e envia evento específico após o PageView
