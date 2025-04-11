@@ -122,7 +122,25 @@ export const generateEventId = (): string => {
  */
 export const hashData = (data: string | undefined | null): string | null => {
   if (!data) return null;
+  // A normalização (lowercase, trim, remoção de acentos/especiais) deve ocorrer ANTES de chamar hashData
   return crypto.createHash('sha256').update(data).digest('hex');
+};
+
+/**
+ * Normaliza uma string de geolocalização (lowercase, remove acentos, remove não-alfabéticos)
+ * @param {string | undefined | null} data - String a normalizar
+ * @returns {string | null} String normalizada ou null
+ */
+const normalizeGeoString = (data: string | undefined | null): string | null => {
+  if (!data) return null;
+  try {
+    return data.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove acentos diacríticos
+      .replace(/[^a-z]/g, ''); // Remove tudo que não for letra minúscula a-z
+  } catch (error) {
+    console.error(`Erro ao normalizar string geográfica: ${data}`, error);
+    return null; // Retorna null em caso de erro na normalização
+  }
 };
 
 /**
@@ -172,6 +190,25 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     }
   }
 
+  // Função auxiliar para normalizar e hashear PII
+  const hashPII = (value: string | undefined | null): string | null => {
+    if (!value) return null;
+    return hashData(value.toLowerCase().trim());
+  };
+
+   // Função auxiliar para normalizar (acentos, etc.) e hashear Geo
+   const hashGeo = (value: string | undefined | null): string | null => {
+    const normalized = normalizeGeoString(value);
+    return normalized ? hashData(normalized) : null;
+   };
+
+   // Função auxiliar para normalizar e hashear CEP
+   const hashZip = (value: string | undefined | null): string | null => {
+     if (!value) return null;
+     const normalized = value.replace(/\D/g, '');
+     return normalized ? hashData(normalized) : null;
+   };
+
   // Mapeamento para transformar nomes camelCase em nomes com underscore
   const paramMapping: Record<string, string> = {
     'contentCategory': 'content_category',
@@ -192,26 +229,24 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const normalizedUserData: NormalizedUserData = {
     em: userData?.email ? hashData(userData.email.toLowerCase().trim()) : null,
     ph: userData?.phone ? hashData(userData.phone.replace(/\D/g, '')) : null,
-    fn: userData?.firstName ? hashData(userData.firstName.toLowerCase().trim()) : null,
-    ln: userData?.lastName ? hashData(userData.lastName.toLowerCase().trim()) : null,
-    ge: userData?.gender ? hashData(userData.gender.toLowerCase().trim()) : null,
-    db: userData?.dateOfBirth ? hashData(userData.dateOfBirth.trim()) : null,
-    // Prioridade: 1. Hash(userId) se logado, 2. Hash(visitorId) de cookie first-party, 3. Fallback
-    external_id: userData?.userId ? hashData(String(userData.userId)) 
-                  : (userData?.visitorId ? hashData(String(userData.visitorId)) 
-                  : generateUserId()), // Manter fallback atual por enquanto
+    fn: hashPII(userData?.firstName),
+    ln: hashPII(userData?.lastName),
+    ge: userData?.gender ? hashData(userData.gender.toLowerCase().charAt(0)) : null,
+    db: userData?.dateOfBirth ? hashData(userData.dateOfBirth.replace(/-/g, '')) : null,
+    external_id: userData?.userId ? hashData(String(userData.userId))
+                  : (userData?.visitorId ? hashData(String(userData.visitorId))
+                  : generateUserId()),
     client_ip_address: ipToUse,
     client_user_agent: userData?.userAgent || null,
     fbc: userData?.fbc || null,
-    fbp: userData?.fbp ? validateFbp(userData.fbp) : null, // Tenta validar o FBP recebido
+    fbp: userData?.fbp ? validateFbp(userData.fbp) : null,
     subscription_id: userData?.subscriptionId || null,
     fb_login_id: userData?.fbLoginId || null,
     lead_id: userData?.leadId || null,
-    country: userData?.country ? hashData(userData.country.toLowerCase().trim()) : (geoData?.country?.code ? hashData(geoData.country.code.toLowerCase()) : null),
-    state: userData?.state ? hashData(userData.state.toLowerCase().trim()) : (geoData?.region?.code ? hashData(geoData.region.code.toLowerCase()) : null),
-    city: userData?.city ? hashData(userData.city.toLowerCase().trim()) : (geoData?.city ? hashData(geoData.city.toLowerCase()) : null),
-    zip: userData?.zip ? hashData(userData.zip.replace(/\D/g, '')) : (geoData?.postal ? hashData(geoData.postal) : null),
-    // Novos parâmetros que não são específicos de app
+    country: hashGeo(userData?.country ?? geoData?.country?.code),
+    state: hashGeo(userData?.state ?? geoData?.region?.code),
+    city: hashGeo(userData?.city ?? geoData?.city),
+    zip: hashZip(userData?.zip ?? geoData?.postal),
     ctwa_clid: userData?.ctwaClid || null,
     ig_account_id: userData?.igAccountId || null,
     ig_sid: userData?.igSid || null,
