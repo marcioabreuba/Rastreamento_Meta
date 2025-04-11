@@ -1,138 +1,101 @@
-# 📚 Histórico e Contexto do Projeto Meta-Tracking
+# 🚀 Briefing Rápido: Projeto Meta-Tracking para IA 🤖
 
-## 🎯 Propósito deste Documento
+**Última Atualização:** [2024-04-12] <!-- Atualize esta data ao modificar! -->
 
-Este documento serve como um diário técnico e registro histórico do projeto Meta-Tracking. Seu propósito é:
-
-1. **Preservar o contexto técnico** do projeto para evitar repetição de erros
-2. **Documentar decisões técnicas** importantes e suas justificativas
-3. **Registrar problemas encontrados** e suas soluções
-4. **Fornecer referência rápida** para aspectos críticos do projeto
-
-## 🤖 Instruções para a IA
-
-Antes de analisar qualquer alteração ou responder a qualquer pergunta sobre o projeto Meta-Tracking:
-
-1. **Consulte este documento** para entender o contexto histórico do projeto
-2. **Identifique limitações conhecidas** e peculiaridades do ambiente
-3. **Verifique soluções anteriores** para problemas similares
-4. **Atualize este documento** após cada interação significativa que acrescente novo contexto
-
-> **IMPORTANTE**: Este documento deve ser tratado como fonte primária de verdade sobre o contexto do projeto. Informações aqui têm precedência sobre suposições gerais baseadas em práticas comuns de mercado.
-
-## 🏗️ Estrutura do Projeto
-
-### Arquitetura Geral
-
-O projeto Meta-Tracking é dividido em duas partes principais:
-
-1. **Frontend**: Implementação extremamente simples que consiste em apenas UMA linha de código no site do cliente:
-   ```html
-   <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
-   ```
-   > ⚠️ **IMPORTANTE**: O frontend não contém nenhuma outra implementação além desta linha! Qualquer correção no comportamento do pixel deve ser feita no arquivo hospedado no servidor, não no site cliente.
-
-2. **Backend**: Aplicação Node.js/TypeScript que:
-   - Fornece o script `meta-pixel-script.js` para o browser
-   - Processa eventos via API REST (`/track`)
-   - Envia eventos para a API de Conversões do Meta (CAPI)
-   - Faz enriquecimento de dados (GeoIP)
-
-### Repositórios e Hospedagem
-
-- **GitHub**: [https://github.com/marcioabreuba/Rastreamento_Meta.git](https://github.com/marcioabreuba/Rastreamento_Meta.git)
-- **Hospedagem**: Render.com (deploy automático a partir do branch `master`)
-- **URL do Serviço**: [https://rastreamento-meta.onrender.com/](https://rastreamento-meta.onrender.com/)
-
-### Características Especiais
-
-- O projeto gerencia **múltiplos pixels** do Meta em diferentes sites/domínios
-- Existe um **projeto de referência** em PHP/Laravel na pasta `referencia/` que tem alta performance e serve como benchmark
-
-## 📝 Histórico de Problemas e Soluções
-
-### 2023-11-14: Problema de Qualidade de Correspondência no Meta
-
-**Problema**: Baixa pontuação de qualidade de correspondência (6.7/10) no Gerenciador de Eventos Meta.
-
-**Causas Identificadas**:
-1. **Crítico**: O Meta Pixel (ID: 1163339595278098) não estava disparando o evento PageView
-2. Falta de normalização adequada (remoção de acentos, etc.) para dados geográficos antes do hashing
-3. Parâmetro `fn` (nome) identificado como vazio pelo Meta
-4. Baixa taxa de deduplicação via `fbp` (82.25% vs 100% via event_id)
-
-**Soluções Implementadas**:
-
-1. **Correção Frontend (meta-pixel-script.js)**:
-   - Adicionamos `fbq('init', PIXEL_ID)` e `fbq('track', 'PageView')` que faltavam
-   - Modificamos `sendEvent()` para chamar `fbq('track', ...)` antes de enviar para a API
-   - Corrigimos duplicação de eventos removendo chamada redundante de `fbq('track', ...)`
-
-2. **Melhorias Backend (eventUtils.ts)**:
-   - Implementamos normalização aprimorada para dados geográficos antes do hashing (remoção de acentos, etc.)
-   - Criamos funções auxiliares específicas (`normalizeGeoString()`, `hashGeo()`, etc.)
-   - Garantimos que `fbp` e `fbc` não sejam hasheados, conforme documentação Meta
-
-**Resultados**:
-- O Meta Pixel Helper agora mostra o evento PageView para o pixel correto
-- O aviso de "Pixel activated 2 times" foi corrigido
-- Esperamos melhoria significativa na qualidade de correspondência após 24-48h
-
-**Lições Aprendidas**:
-1. O Meta Pixel **deve ser inicializado corretamente** no browser com `fbq('init', ID)` e `fbq('track', 'PageView')`
-2. O envio via CAPI **não substitui** a necessidade do pixel no browser para eventos base
-3. Dados PII devem ser normalizados (lowercase, sem acentos) **antes** do hashing SHA-256
-4. `fbp` e `fbc` **não devem ser hasheados**
-
-### 2023-11-14: Detalhes Técnicos sobre o Projeto
-
-**Características Específicas**:
-
-1. **Dois Pixels Diferentes**:
-   - O projeto gerencia dois pixels Meta diferentes:
-     - ID: 1163339595278098 (principal, usado para a maioria dos sites)
-     - ID: Segundo pixel para outros propósitos (gerenciado por outro projeto)
-   - Ambos são esperados e não devem interferir entre si
-
-2. **Tratamento de IP e Geolocalização**:
-   - Usa `@maxmind/geoip2-node` para detecção de localização
-   - Implementação específica para lidar com IPv6 e IPv4-mapped
-
-3. **Processamento de Eventos**:
-   - Eventos são enviados para a API backend (`/track`)
-   - Enriquecidos com GeoIP e outros dados
-   - Normalizados e hasheados conforme necessário
-   - Enviados para a API de Conversões do Meta
-
-## 🚫 Limitações Conhecidas
-
-1. **Frontend Simples**:
-   - O frontend é apenas uma linha de código que carrega o script do servidor
-   - Qualquer modificação visual ou de UX deve ser feita no site cliente, não neste projeto
-
-2. **Coleta de PII**:
-   - A coleta de dados como `fn` (nome) depende de formulários/login no site cliente
-   - Este projeto pode processar esses dados, mas não é responsável por coletá-los
-
-3. **Múltiplos Projetos**:
-   - Existe mais de um projeto gerenciando pixels diferentes
-   - Alterações devem ser cuidadosas para não interferir com outros projetos
-
-## 🚀 Futuros Aprimoramentos
-
-1. **Banner de Consentimento LGPD/GDPR**:
-   - Ainda não implementado, item pendente na lista de tarefas
-
-2. **Melhorias de Monitoramento**:
-   - Adicionar mais logs para diagnóstico de problemas na correspondência
-   - Implementar ferramentas de diagnóstico como no projeto de referência
+**Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
 
 ---
 
-## 📋 Log de Atualizações deste Documento
+## 🎯 Objetivo Central do Projeto
 
-- **2023-11-14**: Criação inicial do documento com histórico de problemas, soluções e contexto do projeto.
+- **O quê:** Receber eventos de rastreamento de sites clientes (via script JS simples), enriquecê-los (GeoIP, normalização) e enviá-los para a API de Conversões do Meta (CAPI).
+- **Por quê:** Melhorar a qualidade da correspondência de eventos no Meta Ads e permitir rastreamento server-side, superando limitações de rastreamento no navegador.
+- **Como:** Aplicação Node.js/TypeScript (`meta-tracking`) hospedada no Render, servindo um script JS (`meta-pixel-script.js`) e processando eventos via API REST (`/track`).
 
 ---
 
-*"Este documento é um trabalho em andamento e deve ser atualizado sempre que novas informações relevantes sobre o projeto forem descobertas ou mudanças significativas forem implementadas."* 
+## 🏗️ Visão Geral da Arquitetura
+
+1.  **Frontend (Cliente):** **APENAS UMA LINHA!**
+    ```html
+    <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
+    ```
+    *   **Ponto Chave:** Nenhuma lógica adicional no cliente. Toda a inteligência de rastreamento no navegador está no script `meta-pixel-script.js` servido pelo backend.
+
+2.  **Backend (Servidor - `meta-tracking`):**
+    *   **Linguagem/Stack:** Node.js / TypeScript
+    *   **Repositório:** [https://github.com/marcioabreuba/Rastreamento_Meta.git](https://github.com/marcioabreuba/Rastreamento_Meta.git)
+    *   **Hospedagem:** Render.com (deploy automático do branch `master`)
+    *   **URL Base:** `https://rastreamento-meta.onrender.com/`
+    *   **Responsabilidades:**
+        *   Servir o script dinâmico `meta-pixel-script.js`.
+        *   Receber dados de eventos via endpoint API REST `/track`.
+        *   Enriquecer dados: Geolocalização via IP (`@maxmind/geoip2-node`), tratamento de IPv6/IPv4-mapped.
+        *   Normalizar e Hashear dados PII (conforme regras do Meta - ver `eventUtils.ts` ou similar).
+        *   Enviar eventos processados para a API de Conversões do Meta (CAPI).
+    *   **Gerencia Múltiplos Pixels:** O sistema é projetado para lidar com diferentes IDs de Pixel Meta para diferentes clientes/domínios.
+
+---
+
+## ⚠️ Pontos Críticos & Limitações (Atenção!)
+
+*   **NÃO Modifique o Site Cliente:** Qualquer correção ou alteração no comportamento do rastreamento do *navegador* deve ser feita no código que gera o `meta-pixel-script.js` no *backend*, não no site do cliente.
+*   **Inicialização do Pixel no Browser é ESSENCIAL:** O script `meta-pixel-script.js` *deve* chamar `fbq('init', PIXEL_ID)` e `fbq('track', 'PageView')`. O envio via CAPI complementa, mas não substitui totalmente a necessidade do pixel no browser para deduplicação e eventos base.
+*   **Normalização ANTES do Hashing:** Dados PII (ex: email, telefone, nome, geo) devem ser normalizados (lowercase, sem acentos/diacríticos, formato específico) *antes* de aplicar o hash SHA-256.
+*   **NÃO Hashear `fbp` e `fbc`:** Esses identificadores do Meta devem ser enviados como estão, sem hashing.
+*   **Coleta de PII:** Este backend *processa* PII (ex: `fn`, `em`), mas a *coleta* desses dados depende da implementação no site cliente (formulários, áreas logadas, etc.). O backend não coleta PII diretamente do usuário.
+*   **Múltiplos Projetos/Pixels:** Tenha cuidado, pois pode haver outros sistemas ou pixels (ex: um segundo pixel mencionado no histórico) operando nos mesmos sites. Evite interferências.
+*   **Projeto de Referência:** Existe um projeto PHP/Laravel na pasta `referencia/`. Ele possui alta performance e pode servir como benchmark ou fonte de inspiração para boas práticas (ex: tratamento de erros, logging, otimizações).
+
+---
+
+## 📜 Histórico de Problemas Relevantes (Resumo)
+
+*   **[2023-11-14] - Baixa Qualidade de Correspondência no Meta (Score 6.7/10):**
+    *   **Causas Raiz:**
+        1.  Script `meta-pixel-script.js` não chamava `fbq('init', ...)` nem `fbq('track', 'PageView')`.
+        2.  Falta de normalização adequada de dados geográficos antes do hashing.
+        3.  Envio de `fn` (nome) vazio.
+    *   **Solução:**
+        1.  Corrigido `meta-pixel-script.js` para incluir chamadas `fbq` faltantes e evitar duplicação.
+        2.  Implementada normalização aprimorada (sem acentos, etc.) em `eventUtils.ts` antes do hashing.
+        3.  Garantido que `fbp`/`fbc` não são hasheados.
+    *   **Lição Principal:** A correta inicialização do pixel no browser e a normalização *pré-hashing* dos dados PII são absolutamente cruciais para a qualidade da correspondência e deduplicação.
+
+*   **[2024-04-11] - Eventos PageView Não Apareciam no Gerenciador de Eventos do Meta:**
+    *   **Causas Raiz:**
+        1.  A inicialização do pixel (`fbq('init', PIXEL_ID)`) estava sendo feita apenas durante o envio de eventos, não no carregamento do script.
+        2.  O PageView não era enviado como primeiro evento, mas apenas após um timeout para detectar o tipo de página.
+        3.  A implementação manual do envio de pixel via imagem estava substituindo o fluxo padrão.
+    *   **Solução:**
+        1.  Modificada função `initFacebookPixel()` para inicializar o pixel imediatamente após o carregamento.
+        2.  Reestruturada função `init()` para enviar `PageView` primeiro, antes de qualquer evento específico.
+        3.  Simplificada função `sendEvent()` para usar a API JavaScript `fbq('track', ...)` padrão, mantendo os dados enriquecidos.
+    *   **Lição Principal:** A sequência de inicialização e envio de eventos é crítica - o `PageView` deve ser sempre o primeiro evento e a API JavaScript do Facebook (`fbq`) deve ser usada em vez de implementações manuais, para garantir compatibilidade com mecanismos de deduplicação.
+
+*   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
+
+---
+
+## 🛠️ Como Trabalhar Neste Projeto (Guia para IA)
+
+1.  **Entenda o Fluxo:** Cliente carrega HTML -> HTML carrega `meta-pixel-script.js` do nosso backend -> Script JS inicializa Pixel (`fbq('init',...)`, `fbq('track','PageView')`) -> Ação do usuário dispara evento -> Script JS envia dados para `/track` (backend) -> Backend recebe em `/track`, enriquece com GeoIP, normaliza PII, hasheia PII -> Backend envia dados formatados para a Meta CAPI.
+2.  **Localize o Código Relevante:**
+    *   **Lógica do Browser:** Código TypeScript/JavaScript que gera/serve `meta-pixel-script.js`.
+    *   **Processamento Backend:** Controller/Handler da rota `/track`, módulos/funções de utilitários de eventos (como `eventUtils.ts`), serviço de GeoIP, serviço de envio para CAPI.
+3.  **Verifique os "Pontos Críticos" e o "Histórico":** Antes de propor soluções, revise as seções acima para garantir que sua sugestão não viola uma regra estabelecida ou repete um erro passado.
+4.  **Peça Contexto Adicional:** Se precisar ver o conteúdo exato de arquivos como `eventUtils.ts`, a implementação da rota `/track`, ou a configuração do GeoIP, solicite a leitura desses arquivos (`read_file`).
+5.  **Considere a Referência:** Se estiver buscando otimizações ou melhores práticas, pode ser útil pedir para analisar partes específicas do projeto em `referencia/`.
+6.  **Atualize Este Guia:** Se descobrirmos novas informações críticas, resolvermos novos problemas significativos ou fizermos mudanças arquiteturais, lembre-se de propor uma atualização para este documento.
+
+---
+
+## 🚀 Próximos Passos / Melhorias Pendentes
+
+*   Implementar Banner de Consentimento LGPD/GDPR (tarefa pendente).
+*   Melhorar o monitoramento e adicionar mais logs detalhados para diagnóstico de problemas de correspondência.
+*   Implementar ferramentas de diagnóstico/debug (inspirado no projeto de referência).
+*   [Adicionar outros itens do backlog aqui]
+
+---
+*Este documento é a fonte da verdade contextual para o projeto Meta-Tracking.*
