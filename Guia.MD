@@ -67,11 +67,14 @@
         1.  A inicialização do pixel (`fbq('init', PIXEL_ID)`) estava sendo feita apenas durante o envio de eventos, não no carregamento do script.
         2.  O PageView não era enviado como primeiro evento, mas apenas após um timeout para detectar o tipo de página.
         3.  A implementação manual do envio de pixel via imagem estava substituindo o fluxo padrão.
+        4.  Os parâmetros personalizados não estavam sendo passados corretamente para o evento PageView.
     *   **Solução:**
         1.  Modificada função `initFacebookPixel()` para inicializar o pixel imediatamente após o carregamento.
         2.  Reestruturada função `init()` para enviar `PageView` primeiro, antes de qualquer evento específico.
         3.  Simplificada função `sendEvent()` para usar a API JavaScript `fbq('track', ...)` padrão, mantendo os dados enriquecidos.
-    *   **Lição Principal:** A sequência de inicialização e envio de eventos é crítica - o `PageView` deve ser sempre o primeiro evento e a API JavaScript do Facebook (`fbq`) deve ser usada em vez de implementações manuais, para garantir compatibilidade com mecanismos de deduplicação.
+        4.  Adicionados parâmetros personalizados (content_type, content_name) ao evento PageView inicial.
+        5.  Implementada conversão de camelCase para snake_case nos parâmetros de eventos para compatibilidade com o formato esperado pelo Meta.
+    *   **Lição Principal:** A sequência de inicialização e envio de eventos é crítica - o `PageView` deve ser sempre o primeiro evento, com parâmetros de conteúdo adequados, e a API JavaScript do Facebook (`fbq`) deve ser usada em vez de implementações manuais, para garantir compatibilidade com mecanismos de deduplicação.
 
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
