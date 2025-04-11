@@ -1,6 +1,6 @@
 # 🚀 Briefing Rápido: Projeto Meta-Tracking para IA 🤖
 
-**Última Atualização:** [2024-04-12] <!-- Atualize esta data ao modificar! -->
+**Última Atualização:** [AAAA-MM-DD] <!-- Atualize esta data ao modificar! -->
 
 **Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
 
@@ -62,20 +62,6 @@
         3.  Garantido que `fbp`/`fbc` não são hasheados.
     *   **Lição Principal:** A correta inicialização do pixel no browser e a normalização *pré-hashing* dos dados PII são absolutamente cruciais para a qualidade da correspondência e deduplicação.
 
-*   **[2024-04-11] - Eventos PageView Não Apareciam no Gerenciador de Eventos do Meta:**
-    *   **Causas Raiz:**
-        1.  A inicialização do pixel (`fbq('init', PIXEL_ID)`) estava sendo feita apenas durante o envio de eventos, não no carregamento do script.
-        2.  O PageView não era enviado como primeiro evento, mas apenas após um timeout para detectar o tipo de página.
-        3.  A implementação manual do envio de pixel via imagem estava substituindo o fluxo padrão.
-        4.  Os parâmetros personalizados não estavam sendo passados corretamente para o evento PageView.
-    *   **Solução:**
-        1.  Modificada função `initFacebookPixel()` para inicializar o pixel imediatamente após o carregamento.
-        2.  Reestruturada função `init()` para enviar `PageView` primeiro, antes de qualquer evento específico.
-        3.  Simplificada função `sendEvent()` para usar a API JavaScript `fbq('track', ...)` padrão, mantendo os dados enriquecidos.
-        4.  Adicionados parâmetros personalizados (content_type, content_name) ao evento PageView inicial.
-        5.  Implementada conversão de camelCase para snake_case nos parâmetros de eventos para compatibilidade com o formato esperado pelo Meta.
-    *   **Lição Principal:** A sequência de inicialização e envio de eventos é crítica - o `PageView` deve ser sempre o primeiro evento, com parâmetros de conteúdo adequados, e a API JavaScript do Facebook (`fbq`) deve ser usada em vez de implementações manuais, para garantir compatibilidade com mecanismos de deduplicação.
-
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
 ---
@@ -99,32 +85,6 @@
 *   Melhorar o monitoramento e adicionar mais logs detalhados para diagnóstico de problemas de correspondência.
 *   Implementar ferramentas de diagnóstico/debug (inspirado no projeto de referência).
 *   [Adicionar outros itens do backlog aqui]
-
----
-
-## ✅ Checklist para Manutenção do Projeto
-
-Para garantir a consistência e a integridade do projeto durante alterações, **siga sempre este checklist**:
-
-1. **Antes de modificar:**
-   - Leia este guia para entender o contexto e possíveis impactos
-   - Valide sua proposta contra os pontos críticos mencionados
-   - Verifique o histórico para confirmar que não está repetindo problemas resolvidos
-
-2. **Ao implementar alterações:**
-   - Mantenha a compatibilidade com sites clientes existentes
-   - Siga o padrão de código e arquitetura estabelecido
-   - Adicione logs adequados para facilitar depuração
-   - Teste a solução em ambiente de desenvolvimento antes de commitar
-
-3. **Após implementar:**
-   - **OBRIGATÓRIO:** Atualize este Guia.MD com:
-      - A data da atualização
-      - Detalhes sobre problemas significativos resolvidos
-      - Novas funcionalidades ou mudanças estruturais
-   - Faça commit e push de todas as alterações, **incluindo o Guia.MD**
-   - Verifique se o deploy foi concluído com sucesso
-   - Monitore o comportamento após a implementação 
 
 ---
 *Este documento é a fonte da verdade contextual para o projeto Meta-Tracking.*

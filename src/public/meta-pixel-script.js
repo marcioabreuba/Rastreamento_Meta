@@ -164,9 +164,8 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // Inicializar o pixel imediatamente com o ID definido
-    fbq('init', PIXEL_ID);
-    console.log('Facebook Pixel inicializado com ID:', PIXEL_ID);
+    // NÃO inicializar o pixel imediatamente - vamos fazer isso em cada evento
+    console.log('Facebook Pixel script carregado para ID:', PIXEL_ID);
   }
 
   // Funções para encontrar elementos específicos na página
@@ -214,9 +213,9 @@
           type: 'search_results',
           eventName: 'ViewSearchResults',
           data: {
-            search_string: searchQuery,
-            content_type: 'search_results',
-            content_name: `Resultados para "${searchQuery}"`
+            searchString: searchQuery,
+            contentType: 'search_results',
+            contentName: `Resultados para "${searchQuery}"`
           }
         };
       }
@@ -230,8 +229,8 @@
           type: 'checkout',
           eventName: 'StartCheckout',
           data: {
-            content_name: 'Checkout',
-            content_type: 'checkout'
+            contentName: 'Checkout',
+            contentType: 'checkout'
           }
         };
       }
@@ -242,8 +241,8 @@
           type: 'payment',
           eventName: 'AddPaymentInfo',
           data: {
-            content_name: 'Payment Information',
-            content_type: 'payment'
+            contentName: 'Payment Information',
+            contentType: 'payment'
           }
         };
       }
@@ -254,10 +253,10 @@
           type: 'purchase',
           eventName: 'Purchase',
           data: {
-            content_name: 'Purchase Confirmation',
-            content_type: 'purchase',
+            contentName: 'Purchase Confirmation',
+            contentType: 'purchase',
             // Tentar obter ID do pedido da URL
-            order_id: getUrlParameter('order_id') || getUrlParameter('pedido')
+            orderId: getUrlParameter('order_id') || getUrlParameter('pedido')
           }
         };
       }
@@ -269,8 +268,8 @@
         type: 'home',
         eventName: 'ViewHome',
         data: {
-          content_name: 'Home Page',
-          content_type: 'home_page'
+          contentName: 'Home Page',
+          contentType: 'home_page'
         }
       };
     }
@@ -535,10 +534,10 @@
         type: 'product',
         eventName: 'ViewContent',
         data: {
-          content_name: productTitle || document.title.split('|')[0].trim(),
-          content_type: 'product',
-          content_category: productCategories,
-          content_ids: productId ? [productId] : null,
+          contentName: productTitle || document.title.split('|')[0].trim(),
+          contentType: 'product',
+          contentCategory: productCategories,
+          contentIds: productId ? [productId] : null,
           value: extractPrice() || 0
         }
       };
@@ -911,11 +910,11 @@
         type: 'cart', 
         eventName: 'ViewCart',
         data: {
-            content_name: 'Carrinho Vazio',
-            content_type: 'cart',
-            content_category: ['cart'],
+            contentName: 'Carrinho Vazio',
+            contentType: 'cart',
+            contentCategory: ['cart'],
             value: 0,
-            num_items: 0
+            numItems: 0
           }
         };
       }
@@ -927,13 +926,13 @@
         type: 'cart',
         eventName: 'ViewCart',
         data: {
-          content_name: cartData.itemNames || 'Shopping Cart',
-          content_type: 'cart',
-          content_category: cartData.categories,
-          content_ids: contentIds,
+          contentName: cartData.itemNames || 'Shopping Cart',
+          contentType: 'cart',
+          contentCategory: cartData.categories,
+          contentIds: contentIds,
           contents: cartData.items,
           value: cartData.total,
-          num_items: cartData.quantity,
+          numItems: cartData.quantity,
           currency: 'BRL'
         }
       };
@@ -1002,9 +1001,9 @@
         type: 'collection',
         eventName: 'ViewCategory',
         data: {
-          content_name: 'Category Page',
-          content_type: 'category',
-          content_category: categoryName
+          contentName: 'Category Page',
+          contentType: 'category',
+          contentCategory: categoryName
         }
       };
     }
@@ -1015,8 +1014,8 @@
         type: 'search',
         eventName: 'Pesquisar',
         data: {
-          search_string: searchQuery,
-          content_type: 'search'
+          searchString: searchQuery,
+          contentType: 'search'
         }
       };
     }
@@ -1026,8 +1025,8 @@
       type: 'other',
       eventName: 'PageView',
       data: {
-        content_name: document.title,
-        content_type: 'other'
+        contentName: document.title,
+        contentType: 'other'
       }
     };
   }
@@ -1177,36 +1176,11 @@
     return `fb.1.${timestamp}.${random}`;
   }
 
-  // Função utilitária para converter todas as chaves de um objeto de camelCase para snake_case
-  function convertKeysToSnakeCase(obj) {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
-      return obj;
-    }
-    
-    const result = {};
-    Object.keys(obj).forEach(key => {
-      // Converter camelCase para snake_case
-      const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-      
-      // Processar recursivamente se for um objeto
-      if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
-        result[snakeKey] = convertKeysToSnakeCase(obj[key]);
-      } else {
-        result[snakeKey] = obj[key];
-      }
-    });
-    
-    return result;
-  }
-
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
     // Definir variável para armazenar o eventId do backend
     let backendEventId = null;
     try {
-      // Garantir que todos os dados estão em snake_case (ponto extra de segurança)
-      const processedCustomData = convertKeysToSnakeCase(customData);
-      
       // Preparar Advanced Matching
       const visitorId = getOrCreateVisitorId(); // <-- Usar o novo ID first-party
       const client_user_agent_raw = navigator.userAgent;
@@ -1236,7 +1210,7 @@
           ...userData // Adiciona geo (country, state, city, zip) e outros se coletados
         },
         customData: {
-          ...processedCustomData, // Usar dados convertidos
+          ...customData, // Adiciona dados específicos do evento (conteúdo, valor, etc.)
           sourceUrl: window.location.href
         }
       };
@@ -1261,10 +1235,87 @@
         }
       }
 
-      // --- Envio do evento para o Pixel Browser (Usando eventId do backend) ---
-      // Enviar para o pixel do navegador com os dados processados (snake_case)
-      fbq('track', eventName, processedCustomData, { eventID: backendEventId || ('meta_tracking_fe_' + Date.now()) });
-      console.log(`Evento ${eventName} enviado ao pixel do navegador com eventID: ${backendEventId || 'gerado localmente'}`);
+      // --- Construção e Envio do Pixel Manual (Usando eventId do backend) ---
+
+      // Inicializar o pixel (pode ser redundante se já inicializado, mas garante)
+      fbq('init', PIXEL_ID);
+
+      // Construir URL do Pixel manualmente
+      const pixelUrl = 'https://www.facebook.com/tr/';
+      const baseParams = new URLSearchParams({
+        id: PIXEL_ID,
+        ev: eventName, // Usar nome original do evento
+        dl: document.location.href,
+        rl: document.referrer,
+        if: false,
+        ts: Date.now(),
+        // v: '2.9.194', // Versão pode ser omitida ou atualizada
+        r: 'stable',
+        // Usar o eventId recebido do backend se disponível, senão gerar um fallback
+        eid: backendEventId || ('meta_tracking_fe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
+      });
+
+      // Adicionar Advanced Matching (hasheado) para o Pixel
+      const idToHashForPixel = window.metaTrackingUserId || visitorId;
+      const externalIdHashed = await hashSHA256(idToHashForPixel);
+      baseParams.append('ud[external_id]', externalIdHashed);
+      baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
+      baseParams.append('ud[fbp]', fbp);
+      if (fbc) {
+        baseParams.append('ud[fbc]', fbc);
+      }
+
+      // Função interna para adicionar dados hasheados ao baseParams
+      const addHashedDataToPixel = async (name, value) => {
+        if (value) {
+          try {
+            // Normalizar e Hashear para o Pixel
+            let normalizedValue = String(value).toLowerCase().trim();
+            if (name === 'ph') normalizedValue = normalizedValue.replace(/\D/g, '');
+            if (name === 'zp') normalizedValue = normalizedValue.replace(/\D/g, '');
+            const hashedValue = await hashSHA256(normalizedValue);
+            baseParams.append(`ud[${name}]`, hashedValue);
+          } catch (e) {
+            console.error(`Erro ao processar ${name} para Pixel:`, e);
+          }
+        }
+      };
+
+      // Adicionar geo e PII hasheados para o Pixel
+      await addHashedDataToPixel('country', userData.country);
+      await addHashedDataToPixel('st', userData.state);
+      await addHashedDataToPixel('ct', userData.city);
+      await addHashedDataToPixel('zp', userData.zip);
+      await addHashedDataToPixel('em', userData.email);
+      await addHashedDataToPixel('ph', userData.phone);
+      await addHashedDataToPixel('fn', userData.firstName);
+      await addHashedDataToPixel('ln', userData.lastName);
+      await addHashedDataToPixel('ge', userData.gender);
+      await addHashedDataToPixel('db', userData.dateOfBirth);
+
+      // Adicionar custom data (não hasheado) para o Pixel
+      const customDataForPixel = {
+          ...customData,
+          app: 'meta-tracking',
+          language: navigator.language || 'pt-BR',
+          referrer: document.referrer
+          // Não precisa adicionar sourceUrl, etc., pois já estão nos parâmetros base (dl, rl)
+      };
+
+      Object.entries(customDataForPixel).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          if (typeof value === 'object') {
+            baseParams.append(`cd[${key}]`, JSON.stringify(value));
+          } else {
+            baseParams.append(`cd[${key}]`, value);
+          }
+        }
+      });
+
+      // Enviar o pixel manualmente usando um image request
+      const pixelImg = new Image();
+      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
+      console.log(`Pixel ${eventName} enviado manualmente (ID: ${baseParams.get('eid')})`);
 
       // Retornar o resultado do backend
       if (backendEventId) {
@@ -1312,18 +1363,18 @@
         if (scrollPercentage >= 25 && !sentEvents.scroll_25) {
           sentEvents.scroll_25 = true;
           sendEvent('Scroll_25', {
-            scroll_percentage: 25,
-            page_url: window.location.href,
-            content_name: document.title
+            scrollPercentage: 25,
+            pageUrl: window.location.href,
+            contentName: document.title
           });
         }
         
         if (scrollPercentage >= 50 && !sentEvents.scroll_50) {
           sentEvents.scroll_50 = true;
           sendEvent('Scroll_50', {
-            scroll_percentage: 50,
-            page_url: window.location.href,
-            content_name: document.title
+            scrollPercentage: 50,
+            pageUrl: window.location.href,
+            contentName: document.title
           });
         }
         
@@ -1331,9 +1382,9 @@
         if (scrollPercentage >= 75 && !sentEvents.scroll_75) {
           sentEvents.scroll_75 = true;
           sendEvent('Scroll_75', {
-            scroll_percentage: 75,
-            page_url: window.location.href,
-            content_name: document.title
+            scrollPercentage: 75,
+            pageUrl: window.location.href,
+            contentName: document.title
           });
         }
         
@@ -1341,9 +1392,9 @@
         if (scrollPercentage >= 90 && !sentEvents.scroll_90) {
           sentEvents.scroll_90 = true;
           sendEvent('Scroll_90', {
-            scroll_percentage: 90,
-            page_url: window.location.href,
-            content_name: document.title
+            scrollPercentage: 90,
+            pageUrl: window.location.href,
+            contentName: document.title
           });
         }
       }
@@ -1363,9 +1414,9 @@
       if (!sentEvents.timer_1min) {
         sentEvents.timer_1min = true;
         sendEvent('Timer_1min', {
-          time_on_page: 60, // segundos
-          page_url: window.location.href,
-          content_name: document.title
+          timeOnPage: 60, // segundos
+          pageUrl: window.location.href,
+          contentName: document.title
         });
       }
     }, 60000); // 60 segundos = 1 minuto
@@ -1384,9 +1435,9 @@
         
         // Dados do vídeo para enviar nos eventos
         let videoData = {
-          content_ids: [videoId],
-          content_name: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
-          content_type: 'video'
+          contentIds: [videoId],
+          contentName: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
+          contentType: 'video'
         };
         
         // Armazenar pontos de progresso já rastreados
@@ -1404,7 +1455,7 @@
             trackedProgressPoints.start = true;
             
             // Adicionar duração do vídeo aos dados
-            videoData.video_duration = video.duration;
+            videoData.videoDuration = video.duration;
             
             // Enviar evento de início de vídeo
             sendEvent('PlayVideo', videoData);
@@ -1421,9 +1472,9 @@
             trackedProgressPoints['25'] = true;
             sendEvent('ViewVideo_25', {
               ...videoData,
-              video_position: 25,
-              video_duration: video.duration,
-              video_title: videoData.content_name
+              videoPosition: 25,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
             });
           }
           
@@ -1431,9 +1482,9 @@
             trackedProgressPoints['50'] = true;
             sendEvent('ViewVideo_50', {
               ...videoData,
-              video_position: 50,
-              video_duration: video.duration,
-              video_title: videoData.content_name
+              videoPosition: 50,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
             });
           }
           
@@ -1441,9 +1492,9 @@
             trackedProgressPoints['75'] = true;
             sendEvent('ViewVideo_75', {
               ...videoData,
-              video_position: 75,
-              video_duration: video.duration,
-              video_title: videoData.content_name
+              videoPosition: 75,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
             });
           }
           
@@ -1451,20 +1502,9 @@
             trackedProgressPoints['90'] = true;
             sendEvent('ViewVideo_90', {
               ...videoData,
-              video_position: 90,
-              video_duration: video.duration,
-              video_title: videoData.content_name
-            });
-          }
-          
-          // Verificar se o evento é um VideoView_XX ou se é um tipo de vídeo do YouTube
-          if (videoData.video_title && videoData.video_title.includes('YouTube')) {
-            // Evento específico para YouTube
-            sendEvent('YouTubeView', {
-              video_platform: 'youtube',
-              video_position: percentage,
-              video_duration: video.duration,
-              video_title: videoData.content_name
+              videoPosition: 90,
+              videoDuration: video.duration,
+              videoTitle: videoData.contentName
             });
           }
         });
@@ -1565,34 +1605,29 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Carrega script fbevents.js e inicializa o pixel
+    // Carrega script fbevents.js
     initFacebookPixel();
     
-    // Enviar PageView primeiro - FUNDAMENTAL para qualidade da correspondência
-    console.log('Enviando PageView inicial para o pixel.');
-    // Adicionar parâmetros personalizados ao PageView para melhorar correspondência
-    fbq('track', 'PageView', {
-      content_type: 'page_view',
-      content_name: document.title
-    });
-    
-    // Enviar PageView para o backend com todos os parâmetros enriquecidos
-    setTimeout(() => {
-      console.log('Enviando PageView para o backend após inicialização.');
-      sendEvent('PageView', {
-        content_type: 'page_view',
-        content_name: document.title
-      });
-      
-      // Detecta o tipo de página e envia evento específico após o PageView
-      const pageInfo = detectPageType();
-      if (pageInfo && pageInfo.eventName !== 'PageView') {
-        console.log(`Enviando evento específico "${pageInfo.eventName}" após o PageView.`);
+    // Detecta o tipo de página
+    const pageInfo = detectPageType();
+    if (pageInfo) {
+      // Adiciona um atraso antes de enviar o evento inicial
+      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
+      setTimeout(() => {
+        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
         sendEvent(pageInfo.eventName, pageInfo.data); 
-      }
-    }, 750); // Atraso de 750 milissegundos para garantir que o pixel está inicializado
+      }, 750); // Atraso de 750 milissegundos
+    } else {
+      // Se nenhum tipo específico for detectado, enviar PageView como fallback
+      // (Aplicar o mesmo atraso aqui também, se este fallback for usado)
+      console.log('Nenhum tipo de página específico detectado, atrasando envio de PageView fallback por 750ms.');
+       setTimeout(() => {
+        console.log('Enviando PageView fallback após atraso.');
+        sendEvent('PageView');
+       }, 750);
+    }
 
-    // Configurar outros rastreadores (scroll, timer, etc.)
+    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
     setupScrollTracking();
     setupTimerTracking();
     setupVideoTracking();

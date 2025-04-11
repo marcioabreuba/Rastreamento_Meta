@@ -1,0 +1,5 @@
+[33mcommit 3a892341e9e711710abe5fab3106d707cc369d35[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Marcio Abreu <marcioabreu.ba@gmail.com>
+Date:   Fri Apr 11 09:53:36 2025 -0300
+
+    Corrigir parâmetros personalizados no evento PageView e formatação de dados para o pixel
