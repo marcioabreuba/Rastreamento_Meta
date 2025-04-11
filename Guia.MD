@@ -21,6 +21,7 @@
     <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
     ```
     *   **Ponto Chave:** Nenhuma lógica adicional no cliente. Toda a inteligência de rastreamento no navegador está no script `meta-pixel-script.js` servido pelo backend.
+    *   **Funcionalidade Atual:** O script agora inicializa corretamente o pixel (`fbq('init', PIXEL_ID)`) e dispara o evento `PageView` (`fbq('track', 'PageView')`) no carregamento, além de rastrear eventos personalizados.
 
 2.  **Backend (Servidor - `meta-tracking`):**
     *   **Linguagem/Stack:** Node.js / TypeScript
@@ -158,6 +159,7 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
 
 ## 🚀 Próximos Passos / Melhorias Pendentes
 
+*   Monitorar a qualidade de correspondência no Meta Ads após as correções do evento PageView (adicionado em 2025-04-11).
 *   Implementar Banner de Consentimento LGPD/GDPR (tarefa pendente).
 *   Melhorar o monitoramento e adicionar mais logs detalhados para diagnóstico de problemas de correspondência.
 *   Implementar ferramentas de diagnóstico/debug (inspirado no projeto de referência).
