@@ -164,13 +164,8 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     
-    // INICIALIZAR o pixel - CORREÇÃO CRÍTICA
-    fbq('init', PIXEL_ID);
-    
-    // Disparar PageView - CORREÇÃO CRÍTICA
-    fbq('track', 'PageView');
-    
-    console.log('Facebook Pixel inicializado e PageView enviado para ID:', PIXEL_ID);
+    // NÃO inicializar o pixel imediatamente - vamos fazer isso em cada evento
+    console.log('Facebook Pixel script carregado para ID:', PIXEL_ID);
   }
 
   // Funções para encontrar elementos específicos na página
@@ -1183,59 +1178,154 @@
 
   // Enviar evento para o Pixel e para a API
   async function sendEvent(eventName, customData = {}) {
-    // Obter informações do usuário
-    const userData = await getUserData();
-    
-    // Mapear o nome do evento, se necessário
-    const mappedEventName = EVENT_MAPPING[eventName] || eventName;
-    
-    // Construir o payload
-    const payload = {
-      eventName: mappedEventName,
-      userData: userData,
-      customData: customData,
-      isServerEvent: true // Indicar que é um evento server-side
-    };
-    
-    // Registrar o evento
-    console.log(`Enviando evento para API: ${mappedEventName}`, payload);
-    
-    // CORREÇÃO: Disparar o evento diretamente via fbq para garantir rastreamento no navegador
-    // Isso garante que o evento aparecerá no Meta Pixel Helper
+    // Definir variável para armazenar o eventId do backend
+    let backendEventId = null;
     try {
-      fbq('track', mappedEventName, customData);
-      console.log(`Evento ${mappedEventName} enviado diretamente via fbq()`);
-    } catch (fbqError) {
-      console.error(`Erro ao enviar evento via fbq():`, fbqError);
-    }
-    
-    // Enviar para a API (sua lógica existente)
-    try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Preparar Advanced Matching
+      const visitorId = getOrCreateVisitorId(); // <-- Usar o novo ID first-party
+      const client_user_agent_raw = navigator.userAgent;
+      const client_user_agent_hashed = await hashSHA256(client_user_agent_raw);
+
+      // Obter cookies do Facebook
+      // Tentar obter o FBP do cookie ou parâmetro de URL
+      const fbp_cookie_or_param = getCookie('_fbp') || getUrlParameter('fbp');
+      // Validar/Gerar o FBP - A função validateFbp agora garante que sempre teremos um FBP válido
+      const fbp = validateFbp(fbp_cookie_or_param); 
+      const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
+
+      // Obter informações adicionais do usuário
+      const userData = await getUserData();
+
+      // --- Envio para o Backend /track PRIMEIRO para obter eventId ---
+      const eventDataForBackend = {
+        eventName: eventName,
+        userData: {
+          userAgent: client_user_agent_raw, // Enviar não hasheado para o backend
+          language: navigator.language || 'pt-BR',
+          fbp: fbp,
+          fbc: fbc,
+          visitorId: visitorId, // <-- Enviar o ID do cookie first-party
+          userId: window.metaTrackingUserId || null, // Enviar ID de usuário logado se existir
+          referrer: document.referrer,
+          ...userData // Adiciona geo (country, state, city, zip) e outros se coletados
         },
-        body: JSON.stringify(payload),
-        // Enviar mesmo se estiver em um contexto cross-domain
-        mode: 'cors', 
-        credentials: 'include'
+        customData: {
+          ...customData, // Adiciona dados específicos do evento (conteúdo, valor, etc.)
+          sourceUrl: window.location.href
+        }
+      };
+
+      // Enviar para a API backend e obter resposta (incluindo eventId)
+      const backendResponse = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventDataForBackend)
       });
-      
-      // Processar a resposta
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`Evento ${mappedEventName} processado pela API: `, data);
-        return data;
+
+      if (!backendResponse.ok) {
+        console.error(`Erro na resposta do backend /track: ${backendResponse.status}`);
+        // Considerar se deve continuar com o envio do pixel mesmo com erro no backend
       } else {
-        const errorData = await response.text();
-        console.error(`Erro ao processar evento ${mappedEventName}: `, errorData);
+        const backendResult = await backendResponse.json();
+        if (backendResult && backendResult.eventId) {
+          backendEventId = backendResult.eventId; // <-- Capturar o eventId do backend
+          console.log(`Backend respondeu com eventId: ${backendEventId}`);
+        } else {
+          console.warn('Backend não retornou eventId');
+        }
       }
-    } catch (apiError) {
-      console.error(`Erro de rede ao enviar evento ${mappedEventName} para API:`, apiError);
+
+      // --- Construção e Envio do Pixel Manual (Usando eventId do backend) ---
+
+      // Inicializar o pixel (pode ser redundante se já inicializado, mas garante)
+      fbq('init', PIXEL_ID);
+
+      // Construir URL do Pixel manualmente
+      const pixelUrl = 'https://www.facebook.com/tr/';
+      const baseParams = new URLSearchParams({
+        id: PIXEL_ID,
+        ev: eventName, // Usar nome original do evento
+        dl: document.location.href,
+        rl: document.referrer,
+        if: false,
+        ts: Date.now(),
+        // v: '2.9.194', // Versão pode ser omitida ou atualizada
+        r: 'stable',
+        // Usar o eventId recebido do backend se disponível, senão gerar um fallback
+        eid: backendEventId || ('meta_tracking_fe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
+      });
+
+      // Adicionar Advanced Matching (hasheado) para o Pixel
+      const idToHashForPixel = window.metaTrackingUserId || visitorId;
+      const externalIdHashed = await hashSHA256(idToHashForPixel);
+      baseParams.append('ud[external_id]', externalIdHashed);
+      baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
+      baseParams.append('ud[fbp]', fbp);
+      if (fbc) {
+        baseParams.append('ud[fbc]', fbc);
+      }
+
+      // Função interna para adicionar dados hasheados ao baseParams
+      const addHashedDataToPixel = async (name, value) => {
+        if (value) {
+          try {
+            // Normalizar e Hashear para o Pixel
+            let normalizedValue = String(value).toLowerCase().trim();
+            if (name === 'ph') normalizedValue = normalizedValue.replace(/\D/g, '');
+            if (name === 'zp') normalizedValue = normalizedValue.replace(/\D/g, '');
+            const hashedValue = await hashSHA256(normalizedValue);
+            baseParams.append(`ud[${name}]`, hashedValue);
+          } catch (e) {
+            console.error(`Erro ao processar ${name} para Pixel:`, e);
+          }
+        }
+      };
+
+      // Adicionar geo e PII hasheados para o Pixel
+      await addHashedDataToPixel('country', userData.country);
+      await addHashedDataToPixel('st', userData.state);
+      await addHashedDataToPixel('ct', userData.city);
+      await addHashedDataToPixel('zp', userData.zip);
+      await addHashedDataToPixel('em', userData.email);
+      await addHashedDataToPixel('ph', userData.phone);
+      await addHashedDataToPixel('fn', userData.firstName);
+      await addHashedDataToPixel('ln', userData.lastName);
+      await addHashedDataToPixel('ge', userData.gender);
+      await addHashedDataToPixel('db', userData.dateOfBirth);
+
+      // Adicionar custom data (não hasheado) para o Pixel
+      const customDataForPixel = {
+          ...customData,
+          app: 'meta-tracking',
+          language: navigator.language || 'pt-BR',
+          referrer: document.referrer
+          // Não precisa adicionar sourceUrl, etc., pois já estão nos parâmetros base (dl, rl)
+      };
+
+      Object.entries(customDataForPixel).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          if (typeof value === 'object') {
+            baseParams.append(`cd[${key}]`, JSON.stringify(value));
+          } else {
+            baseParams.append(`cd[${key}]`, value);
+          }
+        }
+      });
+
+      // Enviar o pixel manualmente usando um image request
+      const pixelImg = new Image();
+      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
+      console.log(`Pixel ${eventName} enviado manualmente (ID: ${baseParams.get('eid')})`);
+
+      // Retornar o resultado do backend
+      if (backendEventId) {
+          return { eventId: backendEventId }; // Retornar o ID do backend se sucesso
+      }
+
+    } catch (error) {
+      console.error('Erro geral ao enviar evento:', error);
+      return null;
     }
-    
-    return null;
   }
 
   // Função para monitorar rolagem da página
@@ -1515,7 +1605,7 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Carrega script fbevents.js e inicializa o pixel
+    // Carrega script fbevents.js
     initFacebookPixel();
     
     // Detecta o tipo de página
@@ -1529,8 +1619,12 @@
       }, 750); // Atraso de 750 milissegundos
     } else {
       // Se nenhum tipo específico for detectado, enviar PageView como fallback
-      // (Não precisamos fazer nada aqui já que o PageView já foi enviado no initFacebookPixel)
-      console.log('Nenhum tipo de página específico detectado, PageView já enviado na inicialização.');
+      // (Aplicar o mesmo atraso aqui também, se este fallback for usado)
+      console.log('Nenhum tipo de página específico detectado, atrasando envio de PageView fallback por 750ms.');
+       setTimeout(() => {
+        console.log('Enviando PageView fallback após atraso.');
+        sendEvent('PageView');
+       }, 750);
     }
 
     // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
