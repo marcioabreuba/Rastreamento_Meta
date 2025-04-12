@@ -7,27 +7,27 @@ import { CustomData, GeoData, NormalizedCustomData, NormalizedEvent, NormalizedU
 import config from '../config';
 import { getGeoIPInfo, convertIPv4ToIPv6 } from './geoip';
 
-// Mapeamento de eventos do Shopify para eventos do Facebook
+// Mapeamento dos nomes de eventos para o Facebook
 export const EVENT_MAPPING: Record<string, string> = {
   'PageView': 'PageView',
-  'ViewHome': 'ViewHome',
+  'ViewHome': 'ViewContent', // Garantir que ViewHome seja mapeado para ViewContent
   'ViewList': 'ViewContent',
   'ViewContent': 'ViewContent',
   'Ver conteúdo': 'ViewContent',
   'AddToCart': 'AddToCart',
   'Adicionar ao carrinho': 'AddToCart',
   'ViewCart': 'ViewContent',
+  'InitiateCheckout': 'InitiateCheckout',
   'StartCheckout': 'InitiateCheckout',
-  'Iniciar finalização da compra': 'InitiateCheckout',
+  'CompleteRegistration': 'CompleteRegistration',
   'RegisterDone': 'CompleteRegistration',
   'ShippingLoaded': 'AddPaymentInfo',
   'AddPaymentInfo': 'AddPaymentInfo',
   'Adicionar informações de pagamento': 'AddPaymentInfo',
   'Purchase': 'Purchase',
-  'Comprar': 'Purchase',
-  'Purchase - credit_card': 'Purchase',
-  'Purchase - pix': 'Purchase',
-  'Purchase - billet': 'Purchase',
+  'Purchase_credit_card': 'Purchase',
+  'Purchase_pix': 'Purchase',
+  'Purchase_billet': 'Purchase',
   'Purchase - paid_pix': 'Purchase',
   'Purchase - high_ticket': 'Purchase',
   'ViewCategory': 'ViewContent',
@@ -35,22 +35,20 @@ export const EVENT_MAPPING: Record<string, string> = {
   'Refused - credit_card': 'CustomEvent',
   'Pesquisar': 'Search',
   'Search': 'Search',
-  // Eventos existentes
   'ViewSearchResults': 'Search',
-  'Timer_1min': 'Timer_1min',
-  'Scroll_25': 'Scroll_25',
-  'Scroll_50': 'Scroll_50',
-  'Scroll_75': 'Scroll_75',
-  'Scroll_90': 'Scroll_90',
-  'Scroll_100': 'Scroll_100',
-  // Novos eventos adicionados (baseados no projeto de referência)
+  'Timer_1min': 'CustomEvent',
+  'Scroll_25': 'CustomEvent',
+  'Scroll_50': 'CustomEvent',
+  'Scroll_75': 'CustomEvent',
+  'Scroll_90': 'CustomEvent',
+  'Scroll_100': 'CustomEvent',
   'Lead': 'Lead',
   'AddToWishlist': 'AddToWishlist',
-  'PlayVideo': 'PlayVideo',
-  'ViewVideo_25': 'ViewVideo_25',
-  'ViewVideo_50': 'ViewVideo_50',
-  'ViewVideo_75': 'ViewVideo_75',
-  'ViewVideo_90': 'ViewVideo_90'
+  'PlayVideo': 'CustomEvent',
+  'ViewVideo_25': 'CustomEvent',
+  'ViewVideo_50': 'CustomEvent',
+  'ViewVideo_75': 'CustomEvent',
+  'ViewVideo_90': 'CustomEvent'
 };
 
 /**
@@ -176,6 +174,23 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   // Determinar se é um evento do servidor
   const isServerEvent = eventData.isServerEvent || false;
   
+  // Dados do servidor
+  const serverData = {
+    event_time: Math.floor(Date.now() / 1000),
+    event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
+    action_source: isAppEvent ? 'app' : (isServerEvent ? 'site' : 'website'),
+    // Prioriza o ID vindo do frontend (assumindo que ele está em eventData.serverData.event_id)
+    // Se não existir (ex: evento puramente de servidor), gera um novo.
+    event_id: eventData.serverData?.event_id || generateEventId(),
+    geo_data: null, // Será atualizado após busca de GeoIP
+    // Novos campos
+    data_processing_options: eventData.dataProcessingOptions || [],
+    data_processing_options_country: eventData.dataProcessingOptionsCountry || null,
+    data_processing_options_state: eventData.dataProcessingOptionsState || null,
+    referrer_url: customData?.referrer || userData?.referrer || null,
+    customer_segmentation: eventData.customerSegmentation || null
+  };
+  
   // Obter IP do cliente
   const clientIP = userData?.ip || null;
   
@@ -190,11 +205,13 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   if (ipToUse) {
     try {
       geoData = getGeoIPInfo(ipToUse);
+      // Atualizar serverData com dados geográficos
+      serverData.geo_data = geoData;
     } catch (error) {
       console.error('Erro ao obter informações de geolocalização:', error);
     }
   }
-
+  
   // Mapeamento para transformar nomes camelCase em nomes com underscore
   const paramMapping: Record<string, string> = {
     'contentCategory': 'content_category',
@@ -311,7 +328,12 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
           }]
         ) : null),
     app: 'meta-tracking',
-    language: userData?.language || (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR',
+    // Definir idioma pt-BR por padrão para sites brasileiros
+    language: userData?.language || 
+              // Se o país for Brasil ou o domínio terminar em .br, usar pt-BR por padrão
+              (geoData?.country?.code === 'BR' || serverData?.event_source_url?.includes('.br') ? 
+                'pt-BR' : 
+                (typeof navigator !== 'undefined' ? navigator.language : null) || 'pt-BR'),
     referrer: customData?.referrer || userData?.referrer || null,
     event_time: Math.floor(Date.now() / 1000),
   };
@@ -347,23 +369,6 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
   const dataProcessingOptions = eventData.dataProcessingOptions || [];
   const dataProcessingOptionsCountry = eventData.dataProcessingOptionsCountry || null;
   const dataProcessingOptionsState = eventData.dataProcessingOptionsState || null;
-  
-  // Dados do servidor
-  const serverData = {
-    event_time: Math.floor(Date.now() / 1000),
-    event_source_url: customData?.sourceUrl || `https://${config.shopifyDomain}`,
-    action_source: isAppEvent ? 'app' : (isServerEvent ? 'site' : 'website'),
-    // Prioriza o ID vindo do frontend (assumindo que ele está em eventData.serverData.event_id)
-    // Se não existir (ex: evento puramente de servidor), gera um novo.
-    event_id: eventData.serverData?.event_id || generateEventId(),
-    geo_data: geoData,
-    // Novos campos
-    data_processing_options: dataProcessingOptions,
-    data_processing_options_country: dataProcessingOptionsCountry,
-    data_processing_options_state: dataProcessingOptionsState,
-    referrer_url: customData?.referrer || userData?.referrer || null,
-    customer_segmentation: eventData.customerSegmentation || null
-  };
   
   return {
     eventName, // Usar o nome do evento original ao invés de fbEventName para manter os nomes originais

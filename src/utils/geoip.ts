@@ -95,6 +95,17 @@ export function getGeoIPInfo(ip: string): GeoData | null {
       // @ts-ignore - O tipado oficial não está incluindo o método city corretamente
       const geoData = geoipReader.city(ipToUse);
       
+      // Normalizar CEP brasileiro para 8 dígitos
+      let postalCode = geoData.postal ? geoData.postal.code : null;
+      if (postalCode && geoData.country && geoData.country.isoCode === 'BR') {
+        // Remover caracteres não numéricos
+        postalCode = postalCode.replace(/\D/g, '');
+        // Se for um CEP brasileiro e tiver menos de 8 dígitos, complementar com zeros à direita
+        if (postalCode.length > 0 && postalCode.length < 8) {
+          postalCode = postalCode.padEnd(8, '0');
+        }
+      }
+      
       // Formatar os dados
       return {
         ip,
@@ -108,7 +119,7 @@ export function getGeoIPInfo(ip: string): GeoData | null {
           name: geoData.subdivisions[0].names.en
         } : null,
         city: geoData.city ? geoData.city.names.en : null,
-        postal: geoData.postal ? geoData.postal.code : null,
+        postal: postalCode,
         location: geoData.location ? {
           latitude: geoData.location.latitude,
           longitude: geoData.location.longitude,
@@ -124,6 +135,17 @@ export function getGeoIPInfo(ip: string): GeoData | null {
           // @ts-ignore
           const geoData = geoipReader.city(ipToUse);
           
+          // Normalizar CEP brasileiro para 8 dígitos
+          let postalCode = geoData.postal ? geoData.postal.code : null;
+          if (postalCode && geoData.country && geoData.country.isoCode === 'BR') {
+            // Remover caracteres não numéricos
+            postalCode = postalCode.replace(/\D/g, '');
+            // Se for um CEP brasileiro e tiver menos de 8 dígitos, complementar com zeros à direita
+            if (postalCode.length > 0 && postalCode.length < 8) {
+              postalCode = postalCode.padEnd(8, '0');
+            }
+          }
+          
           // Formatar os dados (mantendo o IP original)
           return {
             ip,
@@ -137,7 +159,7 @@ export function getGeoIPInfo(ip: string): GeoData | null {
               name: geoData.subdivisions[0].names.en
             } : null,
             city: geoData.city ? geoData.city.names.en : null,
-            postal: geoData.postal ? geoData.postal.code : null,
+            postal: postalCode,
             location: geoData.location ? {
               latitude: geoData.location.latitude,
               longitude: geoData.location.longitude,

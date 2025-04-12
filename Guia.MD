@@ -182,6 +182,18 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         4.  Corrigida a mesma lógica no projeto de referência PHP/Laravel.
     *   **Lição Principal:** O formato correto do CEP específico de cada país é crucial para a qualidade da correspondência. Para o Brasil, é essencial garantir que CEPs tenham 8 dígitos completos antes do hashing.
 
+*   **[2025-04-12] - Problema com Processamento do Evento ViewHome:**
+    *   **Problema:**
+        1.  Os eventos ViewHome não estavam sendo processados corretamente pela API de Conversões do Meta.
+        2.  O mapeamento incorreto do evento ViewHome estava causando problemas de correspondência.
+    *   **Causas Raiz:**
+        1.  O evento ViewHome estava sendo mapeado incorretamente como "ViewHome" no EVENT_MAPPING.
+        2.  O Meta espera que o evento ViewHome seja mapeado para "ViewContent" para processamento correto.
+    *   **Solução:**
+        1.  Corrigido o mapeamento em eventUtils.ts para associar 'ViewHome' ao tipo 'ViewContent' no META.
+        2.  Validado que todos os eventos de CustomEvent estão mapeados corretamente.
+    *   **Lição Principal:** O mapeamento correto de eventos para os tipos suportados pelo Meta é essencial para o funcionamento adequado da integração. Eventos personalizados como ViewHome precisam ser mapeados para os tipos de eventos standard do Meta (neste caso, ViewContent).
+
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
 ---
