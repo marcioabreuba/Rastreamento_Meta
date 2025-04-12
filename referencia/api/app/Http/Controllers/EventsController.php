@@ -49,6 +49,18 @@ class EventsController extends Controller
             $state = strtolower($record->mostSpecificSubdivision->isoCode);
             $city = strtolower($record->city->name);
             $postalCode = $record->postal->code;
+            
+            // Normalizar CEP brasileiro para ter 8 dígitos (correção de formato)
+            // ==================================================
+            if ($country === 'br' && $postalCode) {
+                // Remover caracteres não numéricos
+                $postalCode = preg_replace('/\D/', '', $postalCode);
+                
+                // Se for um CEP brasileiro e tiver menos de 8 dígitos, complementar com zeros à direita
+                if (strlen($postalCode) > 0 && strlen($postalCode) < 8) {
+                    $postalCode = str_pad($postalCode, 8, '0', STR_PAD_RIGHT);
+                }
+            }
 
             // Substitui acentos manualmente
             // ==================================================

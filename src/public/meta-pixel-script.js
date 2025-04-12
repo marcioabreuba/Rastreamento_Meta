@@ -1196,6 +1196,29 @@
     }
   }
   
+  /**
+   * Normaliza o CEP brasileiro para o formato padrão de 8 dígitos
+   * @param {string|null} zipCode - CEP a ser normalizado
+   * @param {string|null} countryCode - Código do país (para verificar se é Brasil)
+   * @returns {string|null} CEP normalizado ou o original se não for brasileiro
+   */
+  function normalizeBrazilianZipCode(zipCode, countryCode) {
+    // Se não tiver CEP ou país, retorna o valor original
+    if (!zipCode) return zipCode;
+    
+    // Remove caracteres não numéricos
+    const numericZip = String(zipCode).replace(/\D/g, '');
+    
+    // Verifica se é um CEP brasileiro (país = br) e tem menos de 8 dígitos
+    if (countryCode && countryCode.toLowerCase() === 'br' && numericZip.length > 0 && numericZip.length < 8) {
+      // Completa com zeros à direita até ter 8 dígitos
+      return numericZip.padEnd(8, '0');
+    }
+    
+    // Retorna o valor numérico sem alterações para outros países
+    return numericZip;
+  }
+
   // Função para obter dados de geolocalização
   async function getGeoLocation() {
     try {
@@ -1208,11 +1231,14 @@
         });
       
       if (geoData) {
+        // Normalizar o CEP brasileiro para o formato correto de 8 dígitos
+        const normalizedZip = normalizeBrazilianZipCode(geoData.postal, geoData.country_code);
+        
         return {
           country: geoData.country_code || null,
           state: geoData.region_code || null,
           city: geoData.city || null,
-          zip: geoData.postal || null
+          zip: normalizedZip
         };
       }
     } catch (e) {
@@ -1397,12 +1423,22 @@
           try {
             // Normalizar e Hashear para o Pixel
             let normalizedValue = String(value).toLowerCase().trim();
-            if (name === 'ph') normalizedValue = normalizedValue.replace(/\D/g, '');
-            if (name === 'zp') normalizedValue = normalizedValue.replace(/\D/g, '');
+            
+            // Tratamento especial para CEP no Brasil
+            if (name === 'zp' && userData.country && userData.country.toLowerCase() === 'br') {
+              normalizedValue = normalizeBrazilianZipCode(normalizedValue, userData.country);
+            }
+            
+            // Remove caracteres não alfanuméricos para alguns campos
+            if (['em', 'ph', 'zp'].includes(name)) {
+              normalizedValue = normalizedValue.replace(/[^a-z0-9]/g, '');
+            }
+            
+            // Calcular o hash SHA-256
             const hashedValue = await hashSHA256(normalizedValue);
             baseParams.append(`ud[${name}]`, hashedValue);
-          } catch (e) {
-            console.error(`Erro ao processar ${name} para Pixel:`, e);
+          } catch (error) {
+            console.warn(`Erro ao hashear ${name}:`, error);
           }
         }
       };

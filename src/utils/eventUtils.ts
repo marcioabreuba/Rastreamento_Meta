@@ -126,6 +126,29 @@ export const hashData = (data: string | undefined | null): string | null => {
 };
 
 /**
+ * Normaliza o CEP brasileiro para o formato padrão de 8 dígitos
+ * @param {string | null} zipCode - CEP a ser normalizado
+ * @param {string | null} countryCode - Código do país (para verificar se é Brasil)
+ * @returns {string | null} CEP normalizado ou o original se não for brasileiro
+ */
+export const normalizeBrazilianZipCode = (zipCode: string | null, countryCode: string | null): string | null => {
+  // Se não tiver CEP ou país, retorna o valor original
+  if (!zipCode) return zipCode;
+  
+  // Remove caracteres não numéricos
+  const numericZip = zipCode.replace(/\D/g, '');
+  
+  // Verifica se é um CEP brasileiro (país = br) e tem menos de 8 dígitos
+  if (countryCode?.toLowerCase() === 'br' && numericZip.length > 0 && numericZip.length < 8) {
+    // Completa com zeros à direita até ter 8 dígitos
+    return numericZip.padEnd(8, '0');
+  }
+  
+  // Retorna o valor numérico sem alterações para outros países
+  return numericZip;
+};
+
+/**
  * Normaliza e valida um evento
  * @param {TrackRequest} eventData - Dados do evento a serem normalizados
  * @returns {NormalizedEvent} Evento normalizado
@@ -210,7 +233,12 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     country: userData?.country ? hashData(userData.country.toLowerCase().trim()) : (geoData?.country?.code ? hashData(geoData.country.code.toLowerCase()) : null),
     state: userData?.state ? hashData(userData.state.toLowerCase().trim()) : (geoData?.region?.code ? hashData(geoData.region.code.toLowerCase()) : null),
     city: userData?.city ? hashData(userData.city.toLowerCase().trim()) : (geoData?.city ? hashData(geoData.city.toLowerCase()) : null),
-    zip: userData?.zip ? hashData(userData.zip.replace(/\D/g, '')) : (geoData?.postal ? hashData(geoData.postal) : null),
+    // Normalizar CEP brasileiro com 8 dígitos antes do hashing
+    zip: userData?.zip 
+         ? hashData(normalizeBrazilianZipCode(userData.zip, userData?.country || geoData?.country?.code)) 
+         : (geoData?.postal 
+            ? hashData(normalizeBrazilianZipCode(geoData.postal, geoData?.country?.code)) 
+            : null),
     // Novos parâmetros que não são específicos de app
     ctwa_clid: userData?.ctwaClid || null,
     ig_account_id: userData?.igAccountId || null,
