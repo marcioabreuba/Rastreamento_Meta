@@ -338,6 +338,29 @@ export const normalizeEvent = (eventData: TrackRequest): NormalizedEvent => {
     event_time: Math.floor(Date.now() / 1000),
   };
   
+  // Verificar se content_name é um array e convertê-lo para string
+  // Isto é especialmente importante para eventos ViewCart que podem ter múltiplos produtos
+  if (Array.isArray(normalizedCustomData.content_name)) {
+    console.info(`Convertendo content_name de array para string no evento ${eventName}`);
+    
+    // Se tiver apenas um item, usar o nome diretamente
+    if (normalizedCustomData.content_name.length === 1) {
+      normalizedCustomData.content_name = normalizedCustomData.content_name[0];
+    } 
+    // Se tiver mais itens, mostrar o primeiro com indicação de quantidade
+    else if (normalizedCustomData.content_name.length > 1) {
+      const firstItem = normalizedCustomData.content_name[0];
+      const remainingCount = normalizedCustomData.content_name.length - 1;
+      normalizedCustomData.content_name = `${firstItem} e mais ${remainingCount} ${remainingCount === 1 ? 'item' : 'itens'}`;
+    }
+    // Se for array vazio, definir valor padrão baseado no tipo de evento
+    else {
+      normalizedCustomData.content_name = eventName === 'ViewCart' ? 'Carrinho de compras' : 
+                                         eventName === 'ViewContent' ? 'Produto' : 
+                                         'Meta Tracking';
+    }
+  }
+  
   // Processar campos específicos para eventos de vídeo
   if (eventName.includes('Video')) {
     normalizedCustomData.video_position = customData?.videoPosition || customData?.video_position || null;

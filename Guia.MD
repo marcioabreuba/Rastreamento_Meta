@@ -1,6 +1,6 @@
 # 🚀 Briefing Rápido: Projeto Meta-Tracking para IA 🤖
 
-**Última Atualização:** [2025-04-11] <!-- Atualize esta data ao modificar! -->
+**Última Atualização:** [2025-04-13] <!-- Atualize esta data ao modificar! -->
 
 **Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
 
@@ -102,6 +102,12 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
    - `content_type`: Tipo de conteúdo
    - `contents`: Detalhes dos itens (valor, ID, etc.)
 
+3. **Parâmetros de Contexto**:
+   - `language`: Idioma do usuário (sempre usar 'pt-BR' para sites brasileiros)
+   - `referrer`: URL de referência 
+   - `app`: Identificador da aplicação (normalmente 'meta-tracking')
+   - `sourceUrl`: URL da página atual
+
 **IMPORTANTE:** A remoção ou modificação incorreta destes eventos e parâmetros pode comprometer significativamente a qualidade do rastreamento, a correspondência de eventos no Meta Ads e o funcionamento da integração entre o frontend e a API de Conversões do Meta.
 
 ---
@@ -111,11 +117,12 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
 *   **NÃO Modifique o Site Cliente:** Qualquer correção ou alteração no comportamento do rastreamento do *navegador* deve ser feita no código que gera o `meta-pixel-script.js` no *backend*, não no site do cliente.
 *   **Inicialização do Pixel no Browser é ESSENCIAL:** O script `meta-pixel-script.js` *deve* chamar `fbq('init', PIXEL_ID)` e `fbq('track', 'PageView')`. O envio via CAPI complementa, mas não substitui totalmente a necessidade do pixel no browser para deduplicação e eventos base.
 *   **Normalização ANTES do Hashing:** Dados PII (ex: email, telefone, nome, geo) devem ser normalizados (lowercase, sem acentos/diacríticos, formato específico) *antes* de aplicar o hash SHA-256.
-*   **Formato do CEP Brasileiro:** CEPs do Brasil DEVEM ter 8 dígitos completos. Sempre normalizar CEPs com menos de 8 dígitos completando com zeros à direita (ex: "35240" → "35240000").
+*   **Formato do CEP Brasileiro:** CEPs do Brasil DEVEM ter 8 dígitos completos. Sempre normalizar CEPs com menos de 8 dígitos completando com zeros à direita (ex: "35240" → "35240000"). Esta normalização deve ser aplicada tanto no backend quanto no frontend.
 *   **NÃO Hashear `fbp` e `fbc`:** Esses identificadores do Meta devem ser enviados como estão, sem hashing.
 *   **Coleta de PII:** Este backend *processa* PII (ex: `fn`, `em`), mas a *coleta* desses dados depende da implementação no site cliente (formulários, áreas logadas, etc.). O backend não coleta PII diretamente do usuário.
 *   **Múltiplos Projetos/Pixels:** Tenha cuidado, pois pode haver outros sistemas ou pixels (ex: um segundo pixel mencionado no histórico) operando nos mesmos sites. Evite interferências.
 *   **Projeto de Referência:** Existe um projeto PHP/Laravel na pasta `referencia/`. Ele possui alta performance e pode servir como benchmark ou fonte de inspiração para boas práticas (ex: tratamento de erros, logging, otimizações).
+*   **Configuração de Idioma:** Sempre definir o parâmetro `language` como 'pt-BR' para garantir consistência entre todos os eventos e evitar problemas de correspondência. Isso deve ser aplicado mesmo que o navegador retorne outro idioma.
 
 ---
 
@@ -194,7 +201,31 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         2.  Validado que todos os eventos de CustomEvent estão mapeados corretamente.
     *   **Lição Principal:** O mapeamento correto de eventos para os tipos suportados pelo Meta é essencial para o funcionamento adequado da integração. Eventos personalizados como ViewHome precisam ser mapeados para os tipos de eventos standard do Meta (neste caso, ViewContent).
 
-*   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
+*   **[2025-04-13] - Padronização de Idioma para Eventos:**
+    *   **Problema:**
+        1.  Alguns eventos estavam usando valores inconsistentes para o parâmetro `language`.
+        2.  Em alguns casos era utilizado `navigator.language`, em outros forçado para 'pt-BR'.
+        3.  Esta inconsistência poderia afetar a qualidade da correspondência de eventos.
+    *   **Solução:**
+        1.  Padronizado o uso de 'pt-BR' como valor padrão para o parâmetro `language` em todos os eventos.
+        2.  Implementada lógica de fallback consistente: verificar idioma explícito do usuário → verificar país (BR) → usar 'pt-BR' como padrão.
+        3.  Garantido que tanto frontend quanto backend usam a mesma lógica de determinação de idioma.
+    *   **Lição Principal:** A consistência nos parâmetros de contexto como `language` é fundamental para a qualidade do rastreamento. Para o mercado brasileiro, é recomendável padronizar como 'pt-BR' para evitar problemas de correspondência.
+
+*   **[2025-04-13] - Correção de Formato para content_name no ViewCart:**
+    *   **Problema:**
+        1.  Os eventos ViewCart estavam falhando na API de Conversões do Meta com erro 400 Bad Request.
+        2.  O erro específico indicava: "Param $['data'][0]['custom_data']['content_name'] must be a string."
+        3.  O sistema estava enviando um array de nomes de produtos quando a API exige uma string.
+    *   **Causas Raiz:**
+        1.  No frontend (meta-pixel-script.js), os nomes dos produtos no carrinho eram coletados como array.
+        2.  Durante a normalização no backend (eventUtils.ts), este array não era convertido para string.
+        3.  A API do Meta rejeita arrays para o campo content_name, exigindo estritamente uma string.
+    *   **Solução:**
+        1.  Implementada verificação e conversão de arrays para string na função normalizeEvent em eventUtils.ts.
+        2.  Para carrinhos com múltiplos produtos, o formato implementado foi: "Produto 1 e mais X itens".
+        3.  Adicionada lógica para lidar com diferentes cenários (um item, múltiplos itens, array vazio).
+    *   **Lição Principal:** A API de Conversões do Meta tem requisitos estritos para formatos de dados. É essencial validar e normalizar todos os campos, convertendo-os para os tipos exatos esperados pela API antes do envio.
 
 ---
 
@@ -215,6 +246,9 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
 
 *   Monitorar a qualidade de correspondência no Meta Ads após as correções do formato de CEP brasileiro (adicionado em 2025-04-11).
 *   Monitorar a qualidade de correspondência no Meta Ads após as correções do evento PageView (adicionado em 2025-04-11).
+*   Verificar se a padronização de idioma para 'pt-BR' melhora a taxa de correspondência (adicionado em 2025-04-13).
+*   Monitorar se a correção do formato content_name para eventos ViewCart resolveu completamente os erros 400 Bad Request (adicionado em 2025-04-13).
+*   Considerar implementar testes automatizados para a função `normalizeBrazilianZipCode()` e outras funções críticas de normalização.
 *   Implementar Banner de Consentimento LGPD/GDPR (tarefa pendente).
 *   Melhorar o monitoramento e adicionar mais logs detalhados para diagnóstico de problemas de correspondência.
 *   Implementar ferramentas de diagnóstico/debug (inspirado no projeto de referência).
