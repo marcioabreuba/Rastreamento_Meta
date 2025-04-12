@@ -85,7 +85,7 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
    - `country`: País
    - `state`: Estado
    - `city`: Cidade
-   - `zip`: CEP
+   - `zip`: CEP (para Brasil - sempre usar 8 dígitos, completando com zeros à direita se necessário)
 
 #### Dados Personalizados (customData):
 
@@ -111,6 +111,7 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
 *   **NÃO Modifique o Site Cliente:** Qualquer correção ou alteração no comportamento do rastreamento do *navegador* deve ser feita no código que gera o `meta-pixel-script.js` no *backend*, não no site do cliente.
 *   **Inicialização do Pixel no Browser é ESSENCIAL:** O script `meta-pixel-script.js` *deve* chamar `fbq('init', PIXEL_ID)` e `fbq('track', 'PageView')`. O envio via CAPI complementa, mas não substitui totalmente a necessidade do pixel no browser para deduplicação e eventos base.
 *   **Normalização ANTES do Hashing:** Dados PII (ex: email, telefone, nome, geo) devem ser normalizados (lowercase, sem acentos/diacríticos, formato específico) *antes* de aplicar o hash SHA-256.
+*   **Formato do CEP Brasileiro:** CEPs do Brasil DEVEM ter 8 dígitos completos. Sempre normalizar CEPs com menos de 8 dígitos completando com zeros à direita (ex: "35240" → "35240000").
 *   **NÃO Hashear `fbp` e `fbc`:** Esses identificadores do Meta devem ser enviados como estão, sem hashing.
 *   **Coleta de PII:** Este backend *processa* PII (ex: `fn`, `em`), mas a *coleta* desses dados depende da implementação no site cliente (formulários, áreas logadas, etc.). O backend não coleta PII diretamente do usuário.
 *   **Múltiplos Projetos/Pixels:** Tenha cuidado, pois pode haver outros sistemas ou pixels (ex: um segundo pixel mencionado no histórico) operando nos mesmos sites. Evite interferências.
@@ -145,6 +146,7 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         1.  O evento PageView estava sendo enviado apenas com o parâmetro `external_id` para Advanced Matching.
         2.  Outros eventos (ViewHome, etc.) estavam enviando parâmetros completos (fbp, fbc, geo, etc.).
         3.  O evento PageView não incluía parâmetros customizados como app, contentName, etc.
+        4.  O evento PageView não incluía parâmetros personalizados como app, contentName, etc.
     *   **Solução:**
         1.  Ampliado o Advanced Matching na inicialização do pixel para incluir todos os parâmetros obrigatórios listados no Guia.
         2.  Adicionados fbp/fbc, dados geográficos (país, estado, cidade, CEP) e dados pessoais (se disponíveis).
@@ -163,6 +165,22 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
         2.  Utilização das mesmas fontes para obter valores como título da página e idioma do navegador.
         3.  Padronização dos campos currency, value, contentName e language entre todos os eventos.
     *   **Lição Principal:** A sincronização perfeita de parâmetros entre os eventos web e servidor é crucial para maximizar a deduplicação e correspondência no Meta Ads. Mesmo pequenas diferenças nos parâmetros personalizados podem afetar a qualidade do rastreamento.
+
+*   **[2025-04-11] - Problema com Formato de CEP Incompleto:**
+    *   **Problema:**
+        1.  CEPs brasileiros estavam sendo enviados com formato incompleto (5 dígitos, como "35240").
+        2.  A documentação do Meta exige que CEPs brasileiros tenham formato completo de 8 dígitos.
+        3.  O formato incompleto afetava a qualidade da correspondência no Meta Ads.
+    *   **Causas Raiz:**
+        1.  Faltava normalização específica para CEPs brasileiros tanto no frontend quanto no backend.
+        2.  O sistema de geolocalização às vezes retornava CEPs com apenas 5 dígitos.
+        3.  Não havia validação ou correção para garantir o formato de 8 dígitos.
+    *   **Solução:**
+        1.  Implementada função `normalizeBrazilianZipCode()` no backend (eventUtils.ts) e no frontend (meta-pixel-script.js).
+        2.  Adicionada lógica para detectar CEPs brasileiros (baseado no código do país) e completar com zeros à direita até 8 dígitos.
+        3.  Aplicada normalização antes do hashing para garantir correspondência correta.
+        4.  Corrigida a mesma lógica no projeto de referência PHP/Laravel.
+    *   **Lição Principal:** O formato correto do CEP específico de cada país é crucial para a qualidade da correspondência. Para o Brasil, é essencial garantir que CEPs tenham 8 dígitos completos antes do hashing.
 
 *   **[Adicionar outros problemas relevantes aqui resumidamente - Data, Problema, Causa Raiz, Solução, Lição]**
 
@@ -183,6 +201,7 @@ Os seguintes eventos são considerados **obrigatórios** para a funcionalidade d
 
 ## 🚀 Próximos Passos / Melhorias Pendentes
 
+*   Monitorar a qualidade de correspondência no Meta Ads após as correções do formato de CEP brasileiro (adicionado em 2025-04-11).
 *   Monitorar a qualidade de correspondência no Meta Ads após as correções do evento PageView (adicionado em 2025-04-11).
 *   Implementar Banner de Consentimento LGPD/GDPR (tarefa pendente).
 *   Melhorar o monitoramento e adicionar mais logs detalhados para diagnóstico de problemas de correspondência.
