@@ -879,6 +879,48 @@
     });
   }
 
+  // Adiciona listener para o evento AddToCart
+  function setupAddToCartListener() {
+    console.log('[Meta Tracking Debug] Configurando listener AddToCart...');
+    // Seletores comuns para botões AddToCart (ajustar se necessário para soleterra.com.br)
+    const addToCartSelectors = [
+      'form[action*="/cart/add"] button[type="submit"]',
+      'button[name="add"]',
+      '[data-add-to-cart]',
+      '.add-to-cart-button',
+      'button[id*="AddToCart"]',
+      'button[class*="add_to_cart"]',
+      'button[data-button-action="add-to-cart"]'
+    ];
+
+    let buttonFound = false;
+    addToCartSelectors.forEach(selector => {
+      if (buttonFound) return; // Sai se já encontrou e adicionou o listener
+      const button = document.querySelector(selector);
+      if (button) {
+        buttonFound = true;
+        console.log('[Meta Tracking Debug] Botão AddToCart encontrado com seletor:', selector, button);
+        button.addEventListener('click', (event) => {
+          // Pode ser necessário um pequeno delay ou verificar se o clique foi bem-sucedido
+          // antes de disparar o evento, mas por enquanto vamos disparar imediatamente.
+          console.log('[Meta Tracking Debug] Evento de clique AddToCart disparado!');
+          // Obter os dados do produto ATUAL da página
+          const productData = getProductDetails(); 
+          // Remover dados que não são padrão do AddToCart se necessário (como contentCategory)
+          // delete productData.contentCategory; 
+          console.log('[Meta Tracking Debug] Dados do produto para AddToCart:', productData);
+          sendEvent('AddToCart', productData);
+        });
+      } else {
+        console.log('[Meta Tracking Debug] Seletor AddToCart não encontrado:', selector);
+      }
+    });
+
+    if (!buttonFound) {
+       console.warn('[Meta Tracking Debug] Nenhum botão AddToCart encontrado com os seletores padrão.');
+    }
+  }
+
   // Função principal - detecta a página e envia os eventos
   function init() {
     // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
@@ -904,6 +946,7 @@
     setupTimerTracking();
     setupVideoTracking();
     setupLeadTracking();
+    setupAddToCartListener();
     
     // Função para testar o envio completo de todos os parâmetros
     function testCompleteEvent() {
