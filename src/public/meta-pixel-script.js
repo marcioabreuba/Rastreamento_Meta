@@ -203,7 +203,7 @@
 
     // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
-    console.log('[Meta Tracking] fbq('init') enfileirado.', pixelParams);
+    console.log(`[Meta Tracking] fbq('init') enfileirado.`, pixelParams);
 
     // Montar parâmetros customizados para PageView explícito
     const customParams = {
