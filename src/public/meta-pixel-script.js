@@ -201,7 +201,7 @@
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
     Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
-    console.log('[Meta Tracking Debug] Parâmetros para fbq('init'):', pixelParams); // Log dos parâmetros do init
+    console.log('[Meta Tracking Debug] Parâmetros para fbq(\'init\'):', pixelParams); // Log dos parâmetros do init (ASPAS ESCAPADAS)
 
     // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
