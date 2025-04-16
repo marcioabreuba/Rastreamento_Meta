@@ -3,6 +3,7 @@ import * as GeoIPService from '../Core/GeoIPService';
 import * as NormalizationService from '../Core/NormalizationService';
 import { RawEventInput } from '../Core/NormalizationService';
 import logger from '../../utils/logger'; // Ajustar caminho
+import config from '../../config'; // <--- Adicionar esta linha
 // Importar todos os handlers de evento
 import { handlePurchase } from '../events/PurchaseHandler';
 import { handleViewContent } from '../events/ViewContentHandler';
@@ -103,25 +104,53 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
     };
 
     // 5. Normalizar Evento para CAPI
-    const serverEvent = NormalizationService.normalizeEventForCAPI(rawEventInput);
+    const capiEvent = NormalizationService.normalizeEventForCAPI(rawEventInput);
 
-    // 6. Enviar para CAPI (se válido)
-    if (serverEvent) {
-      logger.info(`[TrackController] Processing event ${serverEvent.event_name}`, {
-          eventId: serverEvent.event_id,
-          clientIp: clientIp, // Adicionar IP ao log INFO
-          actionSource: serverEvent.action_source
-      });
+    // Responder ao cliente imediatamente se a normalização for bem-sucedida
+    // e iniciar o envio para a CAPI de forma assíncrona.
+    if (capiEvent) {
+        // ++ Log Detalhado Similando Pixel Helper (Backend) ++
+        try {
+            // Função auxiliar para formatar objetos para log (evita [Object object])
+            const formatObjectForLog = (obj: any): string => {
+                if (!obj || Object.keys(obj).length === 0) return ' (None)';
+                let logString = '';
+                for (const key in obj) {
+                    // Não logar user agent completo nos logs do Render
+                     const valueToLog = (key === 'client_user_agent' && obj[key]) ? String(obj[key]).substring(0, 70) + '...' : obj[key];
+                     if (valueToLog !== null && valueToLog !== undefined) { // Logar apenas chaves com valor
+                         logString += `\n        ${key}: ${valueToLog}`;
+                     }
+                }
+                return logString || ' (None)';
+            };
 
-      // Chamar CapiService de forma assíncrona
-      sendEventToCapi(serverEvent).catch(error => { // <<< Usar a função importada diretamente
-          logger.error(`[TrackController] Erro assíncrono ao enviar evento ${serverEvent.event_id} para CAPI: ${error.message}`, { error });
-      });
+            logger.debug(`[TrackController] Prepared CAPI Event (Pixel Helper Simulation):
+          Event Name: ${capiEvent.event_name}
+          Pixel ID: ${config.fbPixelId}
+          Event ID: ${capiEvent.event_id}
+          --- Custom Parameters ---${formatObjectForLog(capiEvent.custom_data)}
+          --- User Data (Advanced Matching) ---${formatObjectForLog(capiEvent.user_data)}
+          --- Event Info ---
+            Event Time: ${capiEvent.event_time}
+            Action Source: ${capiEvent.action_source}
+            Source URL: ${capiEvent.event_source_url ?? '(Not provided)'}
+            Data Processing Options: ${capiEvent.data_processing_options?.join(', ') || '[]'}`);
 
-      // Responder imediatamente ao cliente (sucesso na recepção e início do processamento)
-      const processingTime = Date.now() - requestStartTime;
-      logger.info(`[TrackController] Resposta 200 enviada para ${eventName} (ID: ${serverEvent.event_id}). Tempo: ${processingTime}ms`);
-      res.status(200).json({ success: true, eventId: serverEvent.event_id });
+        } catch (logError: any) {
+            logger.error(`[TrackController] Error generating detailed debug log: ${logError.message}`);
+        }
+        // ++ Fim do Log Detalhado ++
+
+        // Enviar para CAPI de forma assíncrona
+        sendEventToCapi(capiEvent).catch(error => {
+          logger.error(`[TrackController] Erro assíncrono ao enviar evento ${capiEvent.event_id} para CAPI: ${error.message}`, { error });
+        });
+
+        // Responder imediatamente ao cliente (sucesso na recepção e início do processamento)
+        const processingTime = Date.now() - requestStartTime;
+        logger.info(`[TrackController] Resposta 200 enviada para ${eventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
+        res.status(200).json({ success: true, eventId: capiEvent.event_id });
 
     } else {
       logger.error(`[TrackController] Falha ao normalizar evento ${eventName}. Evento descartado.`, { rawInput: rawEventInput });
