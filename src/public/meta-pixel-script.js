@@ -888,18 +888,17 @@
     
     // Detecta o tipo de página
     const pageInfo = detectPageType();
-    if (pageInfo && pageInfo.eventName !== 'PageView') {
+    if (pageInfo && pageInfo.type !== 'PageView') {
       // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
       // pois o PageView já foi enviado na inicialização do pixel
-      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
+      console.log(`Atrasando envio do evento inicial "${pageInfo.type}" por 750ms para permitir a inicialização de cookies.`);
       setTimeout(() => {
-        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
-        sendEvent(pageInfo.eventName, pageInfo.data); 
+        console.log(`Enviando evento inicial "${pageInfo.type}" após atraso.`);
+        sendEvent(pageInfo.type, pageInfo.data);
       }, 750); // Atraso de 750 milissegundos
-    } else if (!pageInfo) {
-      // Se nenhum tipo específico for detectado, não enviamos PageView novamente como fallback
-      // pois o PageView já foi enviado na inicialização do pixel
-      console.log('Nenhum tipo de página específico detectado. PageView já foi enviado na inicialização.');
+    } else if (!pageInfo || pageInfo.type === 'PageView') {
+      // Se nenhum tipo específico for detectado ou for PageView, não enviamos PageView novamente
+      console.log('Nenhum tipo de página específico detectado ou é PageView. PageView já foi enviado na inicialização.');
     }
 
     // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
