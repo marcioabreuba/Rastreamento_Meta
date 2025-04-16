@@ -10,10 +10,9 @@ import logger from '../../utils/logger'; // Ajustar caminho
 import { convertToIPv6Format } from './GeoIPService'; // Importar função de conversão de IP
 import config from '../../config'; // Ajustar caminho
 
-// Mapeamento dos nomes de eventos internos para o Facebook (CAPI)
-// Baseado no Guia.MD e eventUtils.ts
+// Mapeamento de nomes de eventos internos para nomes de eventos padrão da Meta CAPI
 export const EVENT_NAME_MAPPING: Record<string, string> = {
-  // Padrão
+  // Eventos padrão
   'PageView': 'PageView',
   'ViewContent': 'ViewContent',
   'Search': 'Search',
@@ -25,39 +24,40 @@ export const EVENT_NAME_MAPPING: Record<string, string> = {
   'CompleteRegistration': 'CompleteRegistration',
   'AddToWishlist': 'AddToWishlist',
 
-  // Mapeamentos Específicos (conforme Guia.MD / histórico)
-  'ViewHome': 'ViewContent',
-  'ViewList': 'ViewContent',
-  'Ver conteúdo': 'ViewContent', // Alias
-  'Adicionar ao carrinho': 'AddToCart', // Alias
-  'ViewCart': 'ViewContent', // Carrinho mapeado para ViewContent
+  // Mapeamentos Específicos (onde o nome interno difere do padrão Meta ou não há padrão)
+  'ViewHome': 'PageView',        // Mapear ViewHome para PageView no servidor
+  'ViewList': 'ViewContent',     // Lista de produtos é um tipo de ViewContent
+  'ViewCart': 'ViewContent',     // Carrinho também é um tipo de ViewContent
+  'ViewCategory': 'ViewContent', // Página de categoria é um tipo de ViewContent
+  'Pesquisar': 'Search',         // Alias
+  'ViewSearchResults': 'Search', // Alias
   'StartCheckout': 'InitiateCheckout', // Alias
   'RegisterDone': 'CompleteRegistration', // Alias
-  'ShippingLoaded': 'AddPaymentInfo', // Mapeamento específico
+  'ShippingLoaded': 'AddPaymentInfo',   // Mapeado para evento de pagamento
+  'AddCoupon': 'AddToCart',          // Cupom geralmente relacionado ao carrinho/adição
+  'Ver conteúdo': 'ViewContent', // Alias
+  'Adicionar ao carrinho': 'AddToCart', // Alias
   'Adicionar informações de pagamento': 'AddPaymentInfo', // Alias
+
+  // Aliases de Compra
   'Purchase_credit_card': 'Purchase',
   'Purchase_pix': 'Purchase',
   'Purchase_billet': 'Purchase',
   'Purchase - paid_pix': 'Purchase',
   'Purchase - high_ticket': 'Purchase',
-  'ViewCategory': 'ViewContent', // Categoria mapeada para ViewContent
-  'AddCoupon': 'AddToCart', // Mapeamento específico
-  'Pesquisar': 'Search', // Alias
-  'ViewSearchResults': 'Search', // Alias
 
   // Eventos Customizados (mantêm o nome ou mapeiam para 'CustomEvent')
-  'Timer_1min': 'Timer_1min', // Ou pode ser 'CustomEvent' se preferir agrupar
+  'PlayVideo': 'PlayVideo',             // Usar nome customizado
+  'ViewVideo_25': 'ViewVideo_25',       // Usar nome customizado
+  'ViewVideo_50': 'ViewVideo_50',
+  'ViewVideo_75': 'ViewVideo_75',
+  'ViewVideo_90': 'ViewVideo_90',
+  'Timer_1min': 'Timer_1min',
   'Scroll_25': 'Scroll_25',
   'Scroll_50': 'Scroll_50',
   'Scroll_75': 'Scroll_75',
   'Scroll_90': 'Scroll_90',
-  'Scroll_100': 'Scroll_100',
-  'PlayVideo': 'PlayVideo',
-  'ViewVideo_25': 'ViewVideo_25',
-  'ViewVideo_50': 'ViewVideo_50',
-  'ViewVideo_75': 'ViewVideo_75',
-  'ViewVideo_90': 'ViewVideo_90',
-  'Refused - credit_card': 'Refused_CreditCard' // Exemplo de nome customizado
+  'Refused - credit_card': 'Refused_CreditCard' // Nome customizado
 };
 
 /**
