@@ -1,203 +1,226 @@
-# Especificação do Script Frontend (`meta-pixel-script.js`)
+# Especificação e Contexto Atualizado do Projeto: Meta-Tracking
 
-**Última Atualização:** [Data Atual]
+**Última Atualização:** [Data da Execução da Atualização]
 
-**Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
+**Fonte da Verdade:** Este documento resume o estado atual, a arquitetura e as regras essenciais do projeto Meta-Tracking. Consulte-o para entender o contexto e o funcionamento do sistema.
 
 ---
 
 ## 🎯 Objetivo Central do Projeto
 
-- **O quê:** Receber eventos de rastreamento de sites clientes (via script JS simples), enriquecê-los (GeoIP, normalização) e enviá-los para a API de Conversões do Meta (CAPI).
-- **Por quê:** Melhorar a qualidade da correspondência de eventos no Meta Ads e permitir rastreamento server-side, superando limitações de rastreamento no navegador.
-- **Como:** Aplicação Node.js/TypeScript (`meta-tracking`) hospedada no Render, servindo um script JS (`meta-pixel-script.js`) e processando eventos via API REST (`/track`).
+- **O quê:** Receber eventos de rastreamento de sites clientes (via script JS único), enriquecê-los no backend (GeoIP, normalização, hashing) e enviá-los para a API de Conversões do Meta (CAPI), complementando o rastreamento do Pixel no navegador.
+- **Por quê:** Melhorar a qualidade da correspondência de eventos no Meta Ads, permitir rastreamento server-side robusto e superar limitações de rastreamento no navegador.
+- **Como:** Aplicação Node.js/TypeScript (`meta-tracking`) hospedada no Render, servindo um script JS dinâmico (`meta-pixel-script.js`) e processando eventos via API REST (`/track`).
 
 ---
 
-## 🏗️ Visão Geral da Arquitetura
+## 🏗️ Visão Geral da Arquitetura e Fluxo de Dados
 
-1.  **Frontend (Cliente):** **APENAS UMA LINHA!**
-    ```html
-    <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
-    ```
-    *   **Ponto Chave:** Nenhuma lógica adicional no cliente. Toda a inteligência de rastreamento no navegador está no script `meta-pixel-script.js` servido pelo backend.
+1.  **Frontend (Site Cliente):**
+    *   **Instalação:** Apenas uma linha de script é adicionada ao HTML do site cliente:
+        ```html
+        <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
+        ```
+    *   **Script (`meta-pixel-script.js`):** Servido pelo backend. Contém toda a lógica de rastreamento no navegador.
+        *   **Inicializa o Pixel:** Carrega `fbevents.js`, chama `fbq('init', PIXEL_ID, advancedMatchingParams)` usando dados PII e Geo (se disponíveis no `localStorage`) **sem hash**.
+        *   **Envia PageView (Web):** Chama `fbq('track', 'PageView', customParams)` com um `eventID` único logo após o `init`.
+        *   **Coleta Dados:** Obtém informações da página, navegador, IDs (`fbp`/`fbc`, `external_id` gerado/obtido, `visitorId` de cookie first-party) e dados PII/Geo do `localStorage`.
+        *   **Envia Eventos (Web):** Dispara outros eventos (`ViewContent`, `AddToCart`, etc.) via `fbq('track', eventName, eventData)`.
+        *   **Comunica com Backend:** Envia um payload JSON **bruto e não hasheado** para o endpoint `/track` do backend via `POST` para cada evento (incluindo PageView).
 
-    **Backend (Servidor - `meta-tracking`):**
-    *   **Linguagem/Stack:** Node.js / TypeScript
+2.  **Backend (Servidor - `meta-tracking`):**
+    *   **Stack:** Node.js / TypeScript, hospedado no Render.com.
     *   **Repositório:** [https://github.com/marcioabreuba/Rastreamento_Meta.git](https://github.com/marcioabreuba/Rastreamento_Meta.git)
-    *   **Hospedagem:** Render.com (deploy automático do branch `master`)
     *   **URL Base:** `https://rastreamento-meta.onrender.com/`
+    *   **Responsabilidades:**
+        *   Servir o script dinâmico `/meta-pixel-script.js`.
+        *   Receber dados brutos no endpoint `POST /track`.
+        *   **Enriquecer:** Obter GeoIP do IP do requisitante (`GeoIPService`).
+        *   **Normalizar e Hashear:** Processar os dados recebidos e enriquecidos (`NormalizationService`), aplicando regras específicas (PII, CEP BR, etc.) e hashing SHA-256.
+        *   **Enviar para CAPI:** Enviar o evento formatado e hasheado para a API de Conversões do Meta (`CapiService`).
 
-## 🎯 Objetivo e Papel no Sistema
+3.  **Fluxo Simplificado:**
+    `Cliente carrega HTML` -> `HTML carrega /meta-pixel-script.js` -> `Script JS faz fbq('init') + fbq('track', 'PageView')` -> `Script JS envia dados BRUTOS para POST /track` -> `Backend /track recebe` -> `Backend obtém GeoIP` -> `Backend Normaliza/Hasheia (prioriza dados do POST, usa GeoIP como fallback)` -> `Backend envia para CAPI (async)` -> `Backend responde 200 OK para /track`.
 
-Este documento descreve a funcionalidade e estrutura esperada para o script `src/public/meta-pixel-script.js`. Este script é o único componente instalado diretamente nos sites dos clientes e atua como a ponte entre o navegador do usuário, o Pixel do Facebook e o nosso backend (`/track`).
+---
 
-Seu objetivo principal é coletar dados brutos relevantes no navegador e enviá-los para dois destinos:
+## 🧩 Componentes Principais e Responsabilidades (Backend)
 
-1.  **Pixel do Facebook (`fbq`):** Para rastreamento no lado do cliente, correspondência inicial e Advanced Matching (o próprio `fbq` lida com o hashing necessário para isso).
-2.  **Backend (`POST /track`):** Para processamento server-side, enriquecimento (GeoIP), normalização, hashing PII e envio final para a Meta CAPI.
+*   **`src/index.ts`:** Ponto de entrada. Inicializa o servidor Express, carrega a base GeoIP e a injeta no `GeoIPService`.
+*   **`src/config/index.ts`:** Centraliza configurações (portas, URLs, chaves de API, caminho do DB GeoIP, etc.), lidas de variáveis de ambiente.
+*   **`src/App/Http/TrackController.ts`:**
+    *   Recebe requisições `POST /track`.
+    *   Extrai `eventName`, `userData`, `customData`, `eventId`, etc., do corpo da requisição.
+    *   Extrai IP e User Agent da requisição.
+    *   Chama `GeoIPService.getGeoData()` para obter dados de geolocalização.
+    *   Chama um Handler de Evento específico (ex: `PurchaseHandler`) ou o `GenericEventHandler` para pré-processar dados, se necessário.
+    *   Prepara o `RawEventInput` com todos os dados brutos (request, geo, frontend).
+    *   Chama `NormalizationService.normalizeEventForCAPI()`.
+    *   Se a normalização for bem-sucedida, envia a resposta 200 OK para o cliente e chama `CapiService.sendEvent()` de forma assíncrona.
+    *   Loga erros e responde com 4xx/5xx apropriados.
+*   **`src/App/Core/GeoIPService.ts`:**
+    *   Encapsula a interação com a biblioteca `@maxmind/geoip2-node`.
+    *   Recebe a instância do `Reader` na inicialização.
+    *   `getGeoData(ip)`: Busca informações de cidade/região/país/CEP. Trata IPv4/IPv6 (incluindo fallback para IPv4 extraído de mapeados). **Normaliza CEPs brasileiros para 8 dígitos internamente** antes de retornar. Retorna `null` em caso de erro ou IP não encontrado/inválido.
+    *   `convertToIPv6Format(ip)`: Converte IPs para o formato IPv6 (real ou mapeado).
+*   **`src/App/Core/NormalizationService.ts`:**
+    *   **`normalizeEventForCAPI(rawEvent: RawEventInput)`:** Orquestra a normalização.
+        *   **`EVENT_NAME_MAPPING`:** Mapeia nomes de eventos internos/frontend para nomes padrão/customizados da CAPI (ex: `ViewHome` -> `PageView`, `Purchase_pix` -> `Purchase`).
+        *   **`normalizeUserData(...)`:**
+            *   **Mescla Dados Geo:** Prioriza dados PII/Geo vindos do `userData` do frontend (`localStorage`). Se ausentes, usa os dados do `geoData` (obtido pelo `GeoIPService`).
+            *   **Normaliza PII:** Aplica regras (lowercase, remove acentos/diacríticos, apenas dígitos para telefone) aos campos PII (em, ph, fn, ln, ge, db, ct, st, country).
+            *   **Normaliza CEP BR:** Garante formato de 8 dígitos (com padding de '0') para o CEP (`zp`), tanto vindo do frontend quanto do GeoIP, se o país for 'br'.
+            *   **Hasheia PII:** Aplica SHA-256 aos dados PII **normalizados** (incluindo cidade, estado, país, CEP).
+            *   **Inclui Não-Hasheados:** Adiciona `client_ip_address` (formato IPv6), `client_user_agent`, `fbp` (validado), `fbc`.
+            *   **Gera Fallback `external_id`:** Hasheia o `external_id` recebido ou gera/hasheia um UUID como fallback.
+        *   **`normalizeCustomData(...)`:**
+            *   Converte chaves para `snake_case`.
+            *   Define padrões (`currency: 'BRL'`).
+            *   Garante tipos corretos (ex: `value` como número).
+            *   **Trata `content_name` (Array):** Converte array de nomes (comum em `ViewCart`/`AddToCart`) para string (ex: "Produto A e mais X itens").
+            *   **Define `language`:** Padroniza para `'pt-BR'`.
+        *   **Gera `event_id`:** Usa o `eventId` vindo do frontend ou gera um UUID v4 se ausente.
+    *   **`hashData(...)`:** Função auxiliar para aplicar SHA-256 após normalização específica do tipo.
+*   **`src/App/Core/CapiService.ts` (Implícito):** Responsável por fazer a requisição HTTP POST para a API de Conversões do Meta (`graph.facebook.com/vX.X/PIXEL_ID/events`) com o payload `ServerEvent` normalizado.
+*   **`src/App/events/*Handler.ts`:** (Ex: `PurchaseHandler`, `GenericEventHandler`) Funções opcionais para extrair/formatar dados específicos de certos tipos de evento *antes* da normalização principal. O `GenericEventHandler` simplesmente repassa os dados.
+*   **`src/scripts/download-geoip.ts`:** Script auxiliar para baixar/atualizar o banco de dados `GeoLite2-City.mmdb` da MaxMind. Verifica idade, usa backups, etc.
 
-Este script **NÃO** deve realizar chamadas externas de GeoIP, hashing de PII ou normalização complexa de dados, pois essas tarefas são de responsabilidade do backend.
+---
 
-## 🏗️ Estrutura e Funcionalidades Essenciais
+## 📊 Eventos e Parâmetros Chave
 
-O script deve implementar as seguintes funcionalidades:
+### Eventos Principais (Nomes Internos -> CAPI)
 
-### 1. Coleta de Dados Brutos
+*   `PageView` -> `PageView`
+*   `ViewHome` -> `PageView` (*Mapeado*)
+*   `ViewContent` -> `ViewContent`
+*   `ViewList` -> `ViewList`
+*   `ViewCategory` -> `ViewCategory`
+*   `Search` -> `Search`
+*   `AddToCart` -> `AddToCart`
+*   `ViewCart` -> `ViewCart`
+*   `InitiateCheckout` -> `InitiateCheckout`
+*   `AddPaymentInfo` -> `AddPaymentInfo`
+*   `CompleteRegistration` -> `CompleteRegistration`
+*   `AddToWishlist` -> `AddToWishlist`
+*   `Purchase` (e variantes como `Purchase_pix`) -> `Purchase`
+*   Eventos Customizados (`Timer_1min`, `Scroll_*`, `PlayVideo`, etc.) -> Mantêm o nome ou mapeiam para `CustomEvent`.
 
-*   **Informações da Página:** Obter `window.location.href`, `document.title`, `document.referrer`.
-*   **Informações do Navegador:** Obter `navigator.userAgent`, `navigator.language`.
-*   **Dados do Usuário (Storage):** Ler dados persistidos no `localStorage` ou cookies first-party, como e-mail, telefone, nome, endereço (se disponíveis e consentidos) e identificadores (`external_id`, `_mtVisitorId`).
-*   **Dados de Eventos Específicos:** Extrair dados do DOM ou de variáveis JavaScript presentes na página, relevantes para eventos específicos (ex: detalhes de produto em `ViewContent`, dados do carrinho em `ViewCart`/`AddToCart`, `order_id` e valores em `Purchase`, `search_string` em `Search`).
+### Payload: Frontend (`meta-pixel-script.js`) -> Backend (`/track`)
 
-### 2. Gerenciamento de IDs
-
-*   **Obter Cookies do Facebook:** Ler os cookies `_fbp` e `_fbc`.
-*   **Validar/Formatar FBP:** Aplicar a lógica de validação para garantir que o `fbp` esteja no formato correto (`fb.1.timestamp.random`) antes de usá-lo.
-*   **Gerar/Obter `external_id`:** Priorizar a leitura de um ID de usuário do `localStorage` (`meta_tracking_external_id`). Se não existir, gerar um ID único e persisti-lo no `localStorage`.
-*   **Gerar/Obter `visitorId` (Opcional, mas recomendado):** Usar um cookie first-party (ex: `_mtVisitorId`) para rastrear visitantes únicos de forma mais robusta. Gerar um UUID se o cookie não existir.
-*   **Gerar `eventId`:** Criar um UUID v4 único para cada evento enviado ao backend (`/track`) para fins de desduplicação.
-
-### 3. Interação com o Pixel Facebook (`fbq`)
-
-*   **Carregamento:** Incluir o código padrão para carregar assincronamente o `fbevents.js`.
-*   **Inicialização (`fbq('init')`):**
-    *   Chamar `fbq('init', PIXEL_ID, advancedMatchingParams)` **uma vez** no carregamento da página.
-    *   O objeto `advancedMatchingParams` deve conter os dados PII e identificadores coletados **sem hash** (ex: `{ em: 'user@example.com', ph: '123456789', fn: 'john', ..., fbp: 'fb.1...', fbc: 'fb.1...', external_id: 'ext123' }`). O `fbq` fará o hashing necessário internamente.
-*   **Rastreamento (`fbq('track')`):**
-    *   Chamar `fbq('track', 'PageView', pageViewCustomData)` logo após o `init`.
-    *   Para outros eventos (ex: `ViewContent`, `AddToCart`, `Purchase`), chamar `fbq('track', eventName, eventCustomData)`.
-    *   Os dados em `eventCustomData` (ex: `value`, `currency`, `content_name`, `content_ids`) devem ser passados **sem hash**.
-
-### 4. Comunicação com o Backend (`POST /track`)
-
-*   **Função de Envio (`sendEvent`):** Implementar uma função assíncrona (`sendEvent`) responsável por enviar os dados para o endpoint `POST /track` do backend.
-*   **Payload JSON Bruto:** Esta função deve montar um objeto JSON contendo os dados **brutos e não hasheados** coletados, conforme a estrutura esperada pelo `TrackController` no backend.
-*   **Estrutura do Payload:**
+*   **Método:** `POST`
+*   **Content-Type:** `application/json`
+*   **Estrutura (Dados BRUTOS, NÃO HASHED):**
     ```json
     {
-      "eventName": "NomeDoEvento",
-      "eventId": "uuid-gerado-no-frontend",
+      "eventName": "NomeDoEvento", // Ex: "ViewContent"
+      "eventId": "uuid-gerado-no-frontend", // UUID v4
       "sourceUrl": "url-da-pagina-atual",
       "referrer": "url-de-referencia",
-      "userData": {
+      "userData": { // Dados coletados do localStorage, etc.
         "external_id": "id-do-usuario-sem-hash",
-        "visitorId": "id-do-cookie-first-party",
-        "fbp": "valor_fbp_validado",
-        "fbc": "valor_fbc",
-        "em": "email_sem_hash",
-        "ph": "telefone_sem_hash",
-        "fn": "primeiro_nome_sem_hash",
-        "ln": "sobrenome_sem_hash",
-        "ge": "genero_sem_hash",
-        "db": "data_nasc_sem_hash",
-        "ct": "cidade_sem_hash",
-        "st": "estado_sem_hash",
-        "zp": "cep_sem_hash_ou_normalizado", // Normalização de CEP pode ocorrer aqui ou no backend
-        "country": "pais_sem_hash"
-        // NÃO incluir client_ip_address ou client_user_agent aqui (backend obtém da requisição)
+        "visitorId": "id-do-cookie-first-party", // _mtVisitorId
+        "fbp": "valor_fbp_validado_ou_null",
+        "fbc": "valor_fbc_ou_null",
+        "em": "email_sem_hash_ou_null",
+        "ph": "telefone_sem_hash_ou_null",
+        "fn": "primeiro_nome_sem_hash_ou_null",
+        // ... outros PII (ln, ge, db)
+        "ct": "cidade_sem_hash_ou_null",
+        "st": "estado_sem_hash_ou_null", // Sigla?
+        "zp": "cep_sem_hash_ou_null",    // Pode vir normalizado ou não
+        "country": "pais_sem_hash_ou_null" // Sigla?
       },
-      "customData": {
-        "value": 123.45, // Exemplo
+      "customData": { // Dados específicos do evento
+        "value": 123.45,
         "currency": "BRL",
-        "order_id": "order123", // Exemplo
-        "content_name": "Nome do Produto", // Exemplo
+        "order_id": "order123",
+        "content_name": "Nome Produto" | ["Prod A", "Prod B"], // Pode ser string ou array
         "content_ids": ["sku1", "sku2"],
-        "language": "pt-BR", // Exemplo (navigator.language)
+        "language": "pt-BR", // Vem do navigator.language
         "app": "meta-tracking",
-        // ... outros dados específicos do evento
+        // ... outros
       }
-      // Pode incluir dataProcessingOptions se aplicável
+      // dataProcessingOptions, etc. (opcional)
     }
     ```
-*   **Requisição:** Usar `fetch` para enviar este payload JSON via `POST` para a `API_URL` (`.../track`).
 
-## ❌ Funcionalidades Excluídas
+### Payload: Backend (`NormalizationService`) -> Meta CAPI (`ServerEvent`)
 
-O script **NÃO DEVE**:
-
-*   Fazer chamadas a APIs externas de GeoIP.
-*   Implementar ou chamar funções de hashing SHA-256 para PII.
-*   Realizar normalização complexa de dados (ex: remoção de acentos, conversão de caixa) que seja responsabilidade do backend.
-
-## ✨ Exemplo da Função de Envio para Backend
-
-```javascript
-// URL do endpoint backend (deve vir de uma constante no topo do script)
-const API_URL = 'https://rastreamento-meta.onrender.com/track';
-
-async function sendEventToBackend(eventName, specificCustomData = {}) {
-  console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
-
-  // 1. Coletar Dados Gerais e IDs (funções auxiliares como getCookie, getExternalId, etc.)
-  const visitorId = getOrCreateVisitorId();
-  const externalId = getExternalId();
-  const fbp = validateFbp(getCookie('_fbp'));
-  const fbc = getCookie('_fbc') || getUrlParameter('fbclid');
-  const eventId = generateUUID();
-
-  // 2. Coletar Dados do Usuário (sem hash)
-  const rawUserData = {
-      external_id: externalId,
-      visitorId: visitorId,
-      fbp: fbp,
-      fbc: fbc,
-      em: localStorage.getItem('meta_tracking_email'),
-      ph: localStorage.getItem('meta_tracking_phone'),
-      fn: localStorage.getItem('meta_tracking_first_name'),
-      ln: localStorage.getItem('meta_tracking_last_name'),
-      ge: localStorage.getItem('meta_tracking_gender'),
-      db: localStorage.getItem('meta_tracking_dob'),
-      // Geo (opcional enviar o que tiver localmente, sem hash)
-      ct: localStorage.getItem('meta_tracking_city'),
-      st: localStorage.getItem('meta_tracking_state'),
-      zp: normalizeBrazilianZipCode(localStorage.getItem('meta_tracking_zip'), localStorage.getItem('meta_tracking_country')), // Exemplo de normalização local OPCIONAL
-      country: localStorage.getItem('meta_tracking_country')
-  };
-
-  // 3. Montar Payload Bruto
-  const payload = {
-    eventName: eventName,
-    eventId: eventId,
-    sourceUrl: window.location.href,
-    referrer: document.referrer || '',
-    userData: rawUserData,
-    customData: {
-      ...specificCustomData,
-      language: navigator.language || 'pt-BR',
-      app: 'meta-tracking'
-    }
-  };
-
-  // Remover chaves nulas/undefined do payload para limpeza
-  Object.keys(payload.userData).forEach(key => payload.userData[key] == null && delete payload.userData[key]);
-  Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
-
-  // 4. Enviar para /track
-  try {
-    console.log('[Frontend Script] Enviando payload bruto para /track:', JSON.stringify(payload).substring(0, 500) + '...'); // Log truncado
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+*   **Estrutura (Dados NORMALIZADOS e HASHED):**
+    ```json
+    {
+      "event_name": "NomeEventoMAPEADO", // Ex: "ViewContent"
+      "event_time": timestamp_unix,
+      "event_source_url": "url-da-pagina-original",
+      "event_id": "uuid-vindo-do-frontend-ou-gerado",
+      "action_source": "website",
+      "user_data": {
+        // --- HASHED (SHA-256) ---
+        "em": "hash_email_normalizado_lower_sem_acentos",
+        "ph": "hash_telefone_normalizado_so_digitos",
+        "fn": "hash_nome_normalizado_lower_sem_acentos",
+        "ln": "hash_sobrenome_normalizado_lower_sem_acentos",
+        "ge": "hash_genero_normalizado_f_ou_m", // f ou m
+        "db": "hash_data_nasc_normalizado_YYYYMMDD",
+        "ct": "hash_cidade_normalizada_lower_sem_acentos",
+        "st": "hash_estado_normalizado_lower_sem_acentos", // Sigla?
+        "zp": "hash_cep_normalizado_BR_8_digitos",
+        "country": "hash_pais_normalizado_lower_sem_acentos", // Sigla?
+        "external_id": "hash_id_externo_ou_fallback",
+        // --- NÃO HASHED ---
+        "client_ip_address": "ip_cliente_formato_ipv6",
+        "client_user_agent": "user_agent_cliente",
+        "fbp": "valor_fbp_validado_ou_null",
+        "fbc": "valor_fbc_ou_null",
+        "subscription_id": null, // Ou valor se fornecido
+        "fb_login_id": null,
+        "lead_id": null
       },
-      body: JSON.stringify(payload),
-      keepalive: true // Importante para enviar em unload/pagehide
-    });
-    if (!response.ok) {
-      console.error(`[Frontend Script] Erro ao enviar evento ${eventName} para backend: ${response.status} ${response.statusText}`);
+      "custom_data": { // Chaves em snake_case, valores normalizados
+        "value": 123.45, // Número
+        "currency": "BRL", // Padrão
+        "order_id": "order123",
+        "content_name": "Nome Produto" | "Produto A e mais X itens", // STRING
+        "content_ids": ["sku1", "sku2"],
+        "language": "pt-BR", // Padronizado
+        "app": "meta-tracking",
+        // ... outros em snake_case
+      },
+      "data_processing_options": [], // Ou valores se fornecidos
+      // ... outros campos CAPI (test_event_code)
     }
-  } catch (error) {
-    console.error(`[Frontend Script] Falha na requisição fetch para ${eventName}:`, error);
-  }
-}
-```
+    ```
 
-## 🚦 Implementação e Testes
+---
 
-1.  Implementar o `src/public/meta-pixel-script.js` seguindo esta especificação.
-2.  Testar o fluxo completo:
-    *   Verificar as chamadas `fbq('init')` e `fbq('track')` no console do navegador (usando extensões como Meta Pixel Helper).
-    *   Verificar o payload enviado para `/track` na aba Network do navegador.
-    *   Verificar os logs do backend para confirmar o recebimento, processamento (GeoIP, Hashing) e envio para a CAPI.
-    *   Monitorar o Gerenciador de Eventos do Facebook para verificar a correta recepção e desduplicação dos eventos. 
+## ⚙️ Normalização e Hashing (Regras Essenciais Atuais)
+
+*   **PII Geral (`em`, `ph`, `fn`, `ln`, `ge`, `db`, `ct`, `st`, `country`, `external_id`):** Normalizar (lowercase, sem acentos/diacríticos, apenas dígitos para `ph`, formato específico para `ge`/`db` se aplicável) **ANTES** de aplicar o hash SHA-256.
+*   **CEP (`zp`):** Se o país for `br`, normalizar para 8 dígitos (completando com '0' à direita) **ANTES** de aplicar o hash SHA-256.
+*   **Hashing:** Usar SHA-256 para todos os campos PII listados acima após a normalização.
+*   **NÃO Hashear:** `client_ip_address`, `client_user_agent`, `fbp`, `fbc`.
+*   **Validação `fbp`:** Garantir que o formato seja `fb.1.timestamp.random` antes de enviar (função `validateFbp`).
+*   **Prioridade Geo:** Dados do `localStorage` (enviados pelo frontend) têm prioridade sobre dados do GeoIP (obtidos no backend) durante a normalização.
+*   **Idioma (`language`):** Padronizar para `'pt-BR'` no `custom_data` enviado à CAPI.
+*   **Moeda (`currency`):** Padronizar para `'BRL'` no `custom_data` enviado à CAPI, a menos que outro valor seja explicitamente fornecido.
+*   **`content_name` (Array):** Converter arrays (comuns em Carrinho/Compra) para uma string única antes de enviar à CAPI (ex: "Produto A e mais X itens").
+*   **Conversão de IP:** Converter `client_ip_address` para formato IPv6 (real ou mapeado) antes de enviar à CAPI.
+
+---
+
+## ⚠️ Pontos Críticos & Normas Atuais (Atenção!)
+
+*   **Frontend Único:** O script `meta-pixel-script.js`, servido pelo backend, é o **único** código a ser instalado no site cliente. Nenhuma outra lógica de rastreamento deve ser adicionada manualmente no cliente.
+*   **Inicialização `fbq` Essencial:** O `meta-pixel-script.js` **DEVE** carregar `fbevents.js`, chamar `fbq('init', PIXEL_ID, advancedMatchingParams)` (com dados do `localStorage`, sem hash) e `fbq('track', 'PageView', customData, { eventID })` no carregamento de cada página.
+*   **Comunicação Frontend -> Backend:** O script envia dados **brutos e não hasheados** para o endpoint `/track`. Toda normalização complexa, GeoIP e hashing ocorrem no backend.
+*   **Normalização ANTES do Hashing:** É crucial aplicar todas as regras de normalização (acentos, caixa, formato CEP BR, etc.) aos dados PII *antes* de calcular o hash SHA-256.
+*   **Formato CEP BR:** Garanta que CEPs brasileiros sejam enviados para a CAPI (hasheados) com **exatos 8 dígitos**.
+*   **`fbp`/`fbc` Intocados:** **NÃO** aplicar hash aos cookies `_fbp` e `_fbc`. Validar o formato do `fbp`.
+*   **Sincronia Web/Server:** Mantenha os parâmetros (especialmente `event_id` e dados `custom_data`) consistentes entre as chamadas `fbq('track', ...)` e os dados enviados para `/track` para garantir a desduplicação correta pelo Meta.
+*   **Atualização GeoIP DB:** O banco de dados MaxMind (`GeoLite2-City.mmdb`) deve ser mantido atualizado (o script `download-geoip.ts` ajuda, mas pode requerer execução periódica ou automação no deploy).
+*   **Idioma e Moeda:** Padronize `language` para `'pt-BR'` e `currency` para `'BRL'` nos dados enviados à CAPI, a menos que haja uma razão forte para usar outros valores.
+*   **Múltiplos Pixels:** Esteja ciente de que o sistema é projetado para lidar com diferentes IDs de Pixel (embora a configuração atual possa ter um fixo), mas evite conflitos se outros sistemas de rastreamento estiverem presentes na mesma página.
+
+---
+*Este documento reflete o estado atual do projeto Meta-Tracking.* 
