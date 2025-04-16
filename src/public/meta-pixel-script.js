@@ -121,18 +121,6 @@
     return visitorId;
   }
 
-  // Função para obter cookies
-  function getCookie(name) {
-    // Primeiro verificar se o cookie existe como parâmetro na URL (para domínios cruzados)
-    const urlValue = getUrlParameter(name);
-    if (urlValue) return urlValue;
-    
-    // Caso contrário, buscar no cookie
-    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-    if (match) return match[2];
-    return null;
-  }
-
   // Cria ou recupera ID externo para o usuário
   function getExternalId() {
     // Primeiro verificar se o ID externo existe como parâmetro na URL (para domínios cruzados)
@@ -152,23 +140,49 @@
     return externalId;
   }
 
-  // Inicializar o Facebook Pixel
+  // Inicializar o Facebook Pixel (Reestruturado)
   function initFacebookPixel() {
-    // Inicializar o pixel do Facebook (código padrão !function...)
-    !function(f,b,e,v,n,t,s){/*...*/}(window, document,/*...*/);
+    
+    // --- ETAPA 1: Definir fbq e fila (padrão FB) --- 
+    if (window.fbq) {
+        console.log('[Meta Tracking] FBQ já inicializado.');
+        // Poderíamos tentar reenviar o init/track aqui se necessário, 
+        // mas geralmente não é preciso se já foi inicializado.
+        // Por segurança, vamos apenas retornar se já existir.
+        // Se houver problemas com múltiplas inicializações, revisar esta lógica.
+         // return; 
+         // Removido o return para garantir que nosso track explícito ocorra.
+    }
+    var n = window.fbq = function() {
+      n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
+    };
+    if (!window._fbq) window._fbq = n;
+    n.push = n;
+    n.loaded = !0;
+    n.version = '2.0';
+    n.queue = [];
 
-    // --- Gerar ID para o PageView inicial explícito ---
+    // --- ETAPA 2: Carregar fbevents.js assincronamente (padrão FB) --- 
+    var t = document.createElement('script');
+    t.async = !0;
+    t.src = 'https://connect.facebook.net/en_US/fbevents.js';
+    var s = document.getElementsByTagName('script')[0];
+    if (!s) { // Fallback se não encontrar script algum
+        s = document.body;
+    }
+    s.parentNode.insertBefore(t, s);
+    console.log('[Meta Tracking] Script fbevents.js sendo carregado...');
+
+    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init/track --- 
+
     const pageViewEventId = generateUUID();
-
-    // --- Coletar dados para init e track ---
     const externalId = getExternalId();
     const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
     const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
 
-    // Coletar PII do localStorage (sem hash)
+    // Coletar PII (sem hash)
     const email = localStorage.getItem('meta_tracking_email');
     const phone = localStorage.getItem('meta_tracking_phone');
-    // ... (coletar outros: fn, ln, ge, db, ct, st, zp, country)
     const firstName = localStorage.getItem('meta_tracking_first_name');
     const lastName = localStorage.getItem('meta_tracking_last_name');
     const gender = localStorage.getItem('meta_tracking_gender');
@@ -178,23 +192,20 @@
     const zip = localStorage.getItem('meta_tracking_zip');
     const country = localStorage.getItem('meta_tracking_country');
 
-    // Montar parâmetros para fbq('init') (sem hash)
+    // Montar parâmetros para init (sem hash)
     const pixelParams = {
-      external_id: externalId,
-      fbp: fbp,
-      fbc: fbc,
+      external_id: externalId, fbp: fbp, fbc: fbc,
       client_user_agent: navigator.userAgent,
-      // Adicionar PII bruto
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
-    // Remover nulos do pixelParams
     Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
 
-    // Inicializar com Advanced Matching (dispara PageView automático SEM eventID)
+    // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
+    console.log('[Meta Tracking] fbq('init') enfileirado.', pixelParams);
 
-    // Montar parâmetros customizados para o PageView explícito
+    // Montar parâmetros customizados para PageView explícito
     const customParams = {
       app: 'meta-tracking',
       contentName: document.title || 'Page View',
@@ -202,27 +213,23 @@
       language: navigator.language || 'pt-BR',
       referrer: document.referrer || ''
     };
-    // Remover nulos do customParams
     Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
 
-    // --- Enviar PageView EXPLÍCITO com eventID ---
+    // ENFILEIRAR PageView explícito COM eventID
     const fbqOptions = { eventID: pageViewEventId };
     fbq('track', 'PageView', customParams, fbqOptions);
+    console.log(`[Meta Tracking] fbq('track', 'PageView') enfileirado (ID: ${pageViewEventId})`, customParams);
 
-    console.log(`Facebook Pixel inicializado e PageView explícito enviado (ID: ${pageViewEventId})`, pixelParams, customParams);
-
-    // --- Enviar PageView para o Backend com o MESMO eventID ---
-    // Montar dados brutos do usuário para backend (similar ao sendEvent)
+    // --- ETAPA 4: Enviar para Backend (pode ser chamado fora da fila, mas após enfileirar fbq) ---
     const allRawUserDataForInit = {
-        external_id: externalId,
-        visitorId: getOrCreateVisitorId(), // Garante que visitorId seja pego
-        fbp: fbp,
-        fbc: fbc,
-        em: email, ph: phone, fn: firstName, ln: lastName,
+        external_id: externalId, visitorId: getOrCreateVisitorId(),
+        fbp: fbp, fbc: fbc, em: email, ph: phone, fn: firstName, ln: lastName,
         ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
-    // Chamar a função de envio para o backend
-    sendEventToBackend('PageView', allRawUserDataForInit, customParams, pageViewEventId);
+    // Pequeno delay pode ajudar a garantir que IDs como fbp foram setados pelo init
+    setTimeout(function() {
+         sendEventToBackend('PageView', allRawUserDataForInit, customParams, pageViewEventId);
+    }, 150); 
 
   }
 
