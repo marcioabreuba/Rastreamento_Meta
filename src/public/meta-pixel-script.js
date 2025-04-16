@@ -257,33 +257,112 @@
     }
     console.log('[Meta Tracking Debug] getProductDetails - price:', price, 'Elemento:', priceElement); // Log preço
 
-    // ID do produto
-    let productId = '';
-    // Tenta obter de um atributo data, ou da URL (se aplicável)
-    const productElement = document.querySelector('[data-product-id]');
-    if (productElement) {
-        productId = productElement.getAttribute('data-product-id');
-    } else {
-        // Tenta pegar da URL como fallback (exemplo: /products/12345)
-        productId = getProductIdFromURL(); 
-    }
-    console.log('[Meta Tracking Debug] getProductDetails - productId:', productId, 'Elemento:', productElement); // Log ID produto
+    // Tentar obter dados do Shopify ou JSON-LD primeiro
+    let shopifyProductId = null;
+    let shopifyVariantId = null;
+    let shopifyProductType = null;
+    let shopifyPrice = null;
+    let shopifyCurrency = null;
 
-    // Categoria (pode ser mais complexo, tenta do breadcrumb ou meta tag)
-    let category = '';
-    const breadcrumbElement = document.querySelector('.breadcrumb a:last-of-type'); // Exemplo
-    if (breadcrumbElement) {
-        category = breadcrumbElement.textContent.trim();
-    }
-    console.log('[Meta Tracking Debug] getProductDetails - category:', category, 'Elemento:', breadcrumbElement); // Log categoria
+    try {
+      // Tentativa 1: Objeto meta global (comum no Shopify)
+      if (typeof meta !== 'undefined' && meta.product) {
+        console.log('[Meta Tracking Debug] getProductDetails - Encontrado objeto meta.product:', meta.product);
+        shopifyVariantId = meta.product.variants && meta.product.variants.length > 0 ? String(meta.product.variants[0].id) : null;
+        shopifyProductId = String(meta.product.id) || null;
+        shopifyProductType = meta.product.type || null;
+        shopifyPrice = meta.product.price ? meta.product.price / 100 : null; // Preço em centavos
+        // Tentar obter a moeda de outro lugar se não estiver aqui
+      } else {
+         console.log('[Meta Tracking Debug] getProductDetails - Objeto meta.product não encontrado.');
+      }
 
-    // Moeda (pode vir de um meta tag ou configuração global)
-    let currency = 'BRL'; // Default
-    const currencyElement = document.querySelector('meta[property="og:price:currency"]') || document.querySelector('[data-currency]');
-    if (currencyElement) {
-        currency = currencyElement.content || currencyElement.getAttribute('data-currency');
+      // Tentativa 2: JSON-LD
+      if (!shopifyProductId || !shopifyProductType) {
+         console.log('[Meta Tracking Debug] getProductDetails - Tentando JSON-LD...');
+         const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+         jsonLdScripts.forEach(script => {
+            try {
+              const data = JSON.parse(script.textContent);
+              const productData = (data['@type'] === 'Product') ? data : (Array.isArray(data) && data.find(item => item['@type'] === 'Product'));
+              if (productData) {
+                 console.log('[Meta Tracking Debug] getProductDetails - Encontrado JSON-LD @type Product:', productData);
+                 if (!shopifyProductId && (productData.sku || productData.mpn || productData.productID)) {
+                     shopifyProductId = String(productData.sku || productData.mpn || productData.productID);
+                     console.log('[Meta Tracking Debug] getProductDetails - ID (product) do JSON-LD:', shopifyProductId);
+                 }
+                 if (!shopifyVariantId && productData.offers) {
+                    const offer = Array.isArray(productData.offers) ? productData.offers[0] : productData.offers;
+                    if (offer && (offer.sku || offer.variantId)) { // Adicionado variantId
+                        shopifyVariantId = String(offer.sku || offer.variantId);
+                         console.log('[Meta Tracking Debug] getProductDetails - ID (variant/offer) do JSON-LD:', shopifyVariantId);
+                    }
+                 }
+                 if (!shopifyProductType && productData.category) {
+                     shopifyProductType = typeof productData.category === 'string' ? productData.category.split('>').pop().trim() : null;
+                     console.log('[Meta Tracking Debug] getProductDetails - Categoria do JSON-LD:', shopifyProductType);
+                 }
+                 if (!shopifyPrice && productData.offers) {
+                    const offer = Array.isArray(productData.offers) ? productData.offers[0] : productData.offers;
+                    if (offer && offer.price) {
+                       shopifyPrice = parseFloat(offer.price);
+                       console.log('[Meta Tracking Debug] getProductDetails - Preço do JSON-LD:', shopifyPrice);
+                    }
+                 }
+                  if (!shopifyCurrency && productData.offers) {
+                    const offer = Array.isArray(productData.offers) ? productData.offers[0] : productData.offers;
+                    if (offer && offer.priceCurrency) {
+                       shopifyCurrency = offer.priceCurrency;
+                       console.log('[Meta Tracking Debug] getProductDetails - Moeda do JSON-LD:', shopifyCurrency);
+                    }
+                 }
+              }
+            } catch(e) { console.warn('[Meta Tracking Debug] getProductDetails - Erro ao processar JSON-LD:', e); }
+         });
+      }
+
+      // Tentativa 3: Input hidden no formulário AddToCart
+      if (!shopifyVariantId) {
+         console.log('[Meta Tracking Debug] getProductDetails - Tentando input hidden do formulário AddToCart...');
+         const formInputElement = document.querySelector('form[action*="/cart/add"] input[name="id"]');
+         if (formInputElement && formInputElement.value) {
+            shopifyVariantId = String(formInputElement.value);
+            console.log('[Meta Tracking Debug] getProductDetails - ID (variant) do input hidden:', shopifyVariantId);
+         }
+      }
+
+    } catch (err) {
+      console.error('[Meta Tracking Debug] getProductDetails - Erro ao tentar extrair dados Shopify/JSON-LD:', err);
     }
-     console.log('[Meta Tracking Debug] getProductDetails - currency:', currency, 'Elemento:', currencyElement); // Log moeda
+
+    // ID do produto final (Prioridade: variant > product > slug)
+    let finalProductId = shopifyVariantId || shopifyProductId;
+    if (!finalProductId) {
+        console.log('[Meta Tracking Debug] getProductDetails - ID numérico não encontrado, tentando extrair da URL...');
+        finalProductId = getProductIdFromURL(); // Fallback para slug/parte da URL
+        console.log('[Meta Tracking Debug] getProductDetails - ID extraído da URL (fallback):', finalProductId);
+    }
+    console.log('[Meta Tracking Debug] getProductDetails - finalProductId Definido:', finalProductId);
+
+    // Categoria final (Prioridade: Shopify > JSON-LD > Breadcrumb)
+    let finalCategory = shopifyProductType;
+    if (!finalCategory) {
+        console.log('[Meta Tracking Debug] getProductDetails - Categoria Shopify/JSON-LD não encontrada, tentando breadcrumb...');
+        const breadcrumbElement = document.querySelector('.breadcrumb a:last-of-type'); // Exemplo antigo
+        if (breadcrumbElement) {
+            finalCategory = breadcrumbElement.textContent.trim();
+            console.log('[Meta Tracking Debug] getProductDetails - Categoria do breadcrumb (fallback):', finalCategory);
+        }
+    }
+    console.log('[Meta Tracking Debug] getProductDetails - finalCategory Definida:', finalCategory);
+
+    // Preço Final (Prioridade: Shopify > JSON-LD > Extração DOM)
+    const finalPrice = shopifyPrice !== null ? shopifyPrice : price;
+    console.log('[Meta Tracking Debug] getProductDetails - finalPrice Definido:', finalPrice);
+
+    // Moeda Final (Prioridade: Shopify/JSON-LD > DOM)
+    const finalCurrency = shopifyCurrency || currency;
+    console.log('[Meta Tracking Debug] getProductDetails - finalCurrency Definida:', finalCurrency);
 
     // LOG: Verificar objetos globais comuns do Shopify
     console.log('[Meta Tracking Debug] Verificando Globals Shopify:', { 
@@ -292,14 +371,14 @@
     });
 
     const details = { 
-        contentIds: productId ? [productId] : [], 
-        contentName: productName || document.title, // Fallback para título da página
+        contentIds: finalProductId ? [finalProductId] : [], 
+        contentName: productName || document.title, 
         contentType: 'product',
-        value: price,
-        contentCategory: category ? category : '',
-        currency: currency
+        value: finalPrice, // Usa preço final
+        contentCategory: finalCategory ? finalCategory : '', // Usa categoria final
+        currency: finalCurrency // Usa moeda final
     };
-     console.log('[Meta Tracking Debug] getProductDetails - Resultado Final:', details); // Log resultado final
+     console.log('[Meta Tracking Debug] getProductDetails - Resultado Final Combinado:', details); 
     return details;
   }
 
@@ -574,14 +653,25 @@
     try {
       if (window.fbq) {
         const fbqOptions = { eventID: eventId };
-        // Nota: Passamos os PII/IDs como parte do advancedMatchingParams no fbq('init'). 
-        // O fbq('track') usa esses dados automaticamente. 
-        // Passar novamente aqui pode ser redundante ou até causar problemas dependendo da versão do FBQ.
-        // Vamos passar apenas o customData e o eventID.
-        // Se a correspondência avançada não funcionar bem, pode ser necessário testar incluindo 
-        // advancedMatchingParams como terceiro argumento aqui: fbq('track', facebookEventName, finalCustomData, advancedMatchingParams, fbqOptions);
-        fbq('track', facebookEventName, finalCustomData, fbqOptions);
-        console.log(`[Meta Tracking Debug] fbq('track', '${facebookEventName}') enfileirado (ID: ${eventId})`);
+        
+        // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
+        if (['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent') { 
+          // Adicionar nome do evento customizado como parâmetro, se for CustomEvent genérico
+          const customEventPayload = { ...finalCustomData };
+          if (EVENT_MAPPING[eventName] === 'CustomEvent') {
+             customEventPayload.event = eventName; // Adiciona o nome original (ex: Timer_1min) 
+             console.log('[Meta Tracking Debug] Enviando como trackCustom (CustomEvent): ', facebookEventName, customEventPayload, fbqOptions);
+             fbq('trackCustom', eventName, customEventPayload, fbqOptions); // Usa eventName original aqui
+          } else {
+             console.log('[Meta Tracking Debug] Enviando como trackCustom (Não Padrão): ', facebookEventName, finalCustomData, fbqOptions);
+             fbq('trackCustom', facebookEventName, finalCustomData, fbqOptions);
+          }
+        } else {
+          // Para eventos padrão (PageView, ViewContent, AddToCart, Purchase, etc.) usar track padrão
+          console.log('[Meta Tracking Debug] Enviando como track (Padrão): ', facebookEventName, finalCustomData, fbqOptions);
+          fbq('track', facebookEventName, finalCustomData, fbqOptions);
+        }
+        // console.log(`[Meta Tracking Debug] fbq('track...') enfileirado (ID: ${eventId})`); // Log genérico removido, logs específicos acima
       } else {
         console.warn('[Meta Tracking Debug] fbq não está definido ao tentar enviar evento:', facebookEventName);
       }
