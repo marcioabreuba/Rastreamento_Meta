@@ -551,6 +551,55 @@
 
   // >>> INÍCIO DA SEÇÃO MODIFICADA <<<
 
+  // ++ ADICIONADA: Função para logar evento no console com formatação ++
+  function logEventForDebug(eventName, facebookEventName, eventId, pixelId, customData, advancedMatching) {
+    const headerStyle = 'color: #1877f2; font-weight: bold; font-size: 1.1em;';
+    const groupStyle = 'font-weight: bold;';
+    const keyStyle = 'font-weight: bold; color: #555;';
+    const valueStyle = 'color: #333;';
+
+    console.groupCollapsed(`%c[Meta Tracking Debug] Event Fired: ${facebookEventName}`, headerStyle);
+
+    console.log(`%cPixel ID:%c ${pixelId}`, keyStyle, valueStyle);
+
+    // Custom Parameters
+    console.groupCollapsed('%cCustom Parameters Sent', groupStyle);
+    if (Object.keys(customData).length > 0) {
+      for (const key in customData) {
+        console.log(`%c${key}:%c ${customData[key]}`, keyStyle, valueStyle);
+      }
+    } else {
+      console.log('%c(No custom parameters)', 'color: #888;');
+    }
+    console.groupEnd();
+
+    // Advanced Matching Parameters
+    console.groupCollapsed('%cAdvanced Matching Parameters Sent', groupStyle);
+     if (Object.keys(advancedMatching).length > 0) {
+      for (const key in advancedMatching) {
+         // Não logar o user agent completo por padrão para manter console limpo
+         const valueToLog = (key === 'client_user_agent' && advancedMatching[key]) ? advancedMatching[key].substring(0, 50) + '...' : advancedMatching[key];
+         console.log(`%c${key}:%c ${valueToLog}`, keyStyle, valueStyle);
+      }
+    } else {
+      console.log('%c(No advanced matching parameters)', 'color: #888;');
+    }
+    console.groupEnd();
+
+    // Event Info
+    console.groupCollapsed('%cEvent Info', groupStyle);
+    console.log(`%cSetup Method:%c Manual`, keyStyle, valueStyle);
+    console.log(`%cURL Called:%c ${window.location.href}`, keyStyle, valueStyle);
+    // console.log(`%cLoad Time:%c N/A`, keyStyle, valueStyle); // Não temos essa métrica facilmente
+    console.log(`%cPixel Location:%c ${window.location.href}`, keyStyle, valueStyle);
+    console.log(`%cEvent ID:%c ${eventId}`, keyStyle, valueStyle);
+    console.groupEnd();
+
+
+    console.groupEnd(); // Fim do grupo principal
+  }
+  // ++ FIM DA FUNÇÃO ADICIONADA ++
+
   // Função auxiliar para enviar dados brutos para o backend /track
   async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, eventId) {
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
@@ -577,6 +626,14 @@
     // Remover chaves nulas/undefined do payload para limpeza
     Object.keys(payload.userData).forEach(key => payload.userData[key] == null && delete payload.userData[key]);
     Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
+
+    // ++ CHAMAR A NOVA FUNÇÃO DE LOG ++
+    try {
+       logEventForDebug(eventName, EVENT_MAPPING[eventName] || eventName, eventId, PIXEL_ID, payload.customData, payload.userData);
+    } catch (logError) {
+       console.error("[Meta Tracking Debug] Erro ao gerar log formatado:", logError);
+    }
+    // ++ FIM DA CHAMADA ++
 
     // Enviar para /track
     try {
