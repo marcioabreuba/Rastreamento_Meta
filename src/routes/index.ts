@@ -3,16 +3,17 @@
  */
 
 import express from 'express';
-import { trackEvent, getPixelCode, getStatus, initUser } from '../controllers/eventController';
+import { handleTrackRequest } from '../App/Http/TrackController';
 import config from '../config';
 import fs from 'fs';
 import path from 'path';
 
 const router = express.Router();
 
-// Rotas de rastreamento
-router.post('/track', trackEvent);
-router.post('/pixel', getPixelCode);
+// Rota Principal de Rastreamento
+router.post('/track', handleTrackRequest);
+
+// Rota para servir o código do pixel (script completo + inicialização)
 router.get('/pixel-code', (req, res) => {
   // Ler o arquivo do script completo
   const scriptPath = path.join(__dirname, '../public/meta-pixel-script.js');
@@ -81,23 +82,14 @@ router.get('/pixel-code', (req, res) => {
   }
 });
 
-// Rota de status
-router.get('/status', getStatus);
-
-// Nova rota para inicialização de usuário
-router.post('/init', initUser);
-
-// Rota padrão
+// Rota padrão (simplificada)
 router.get('/', (req, res) => {
   res.json({
-    message: 'Meta Tracking API',
-    version: '1.5.0',
+    message: 'Meta Tracking API - Refactored',
+    version: '2.0.0',
     endpoints: [
-      { method: 'POST', path: '/track', description: 'Rastreia um evento' },
-      { method: 'POST', path: '/pixel', description: 'Gera código do pixel para um evento' },
-      { method: 'GET', path: '/pixel-code', description: 'Retorna o código do pixel otimizado com Advanced Matching completo' },
-      { method: 'GET', path: '/status', description: 'Retorna o status do servidor' },
-      { method: 'POST', path: '/init', description: 'Inicializa um usuário' },
+      { method: 'POST', path: '/track', description: 'Rastreia um evento via CAPI.' },
+      { method: 'GET', path: '/pixel-code', description: 'Retorna o código HTML/JS para instalação do pixel.' },
     ],
   });
 });

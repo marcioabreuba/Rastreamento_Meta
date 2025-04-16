@@ -30,6 +30,7 @@ interface Config {
   };
   shopifyApiSecret: string;
   shopifyApiKey: string;
+  fbApiVersion: string;
 }
 
 const config: Config = {
@@ -55,6 +56,7 @@ const config: Config = {
   },
   shopifyApiSecret: process.env.SHOPIFY_API_SECRET || '',
   shopifyApiKey: process.env.SHOPIFY_API_KEY || '',
+  fbApiVersion: process.env.FB_API_VERSION || 'v19.0',
 };
 
 export default config; 

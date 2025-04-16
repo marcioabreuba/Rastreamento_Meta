@@ -239,59 +239,59 @@
     console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'com Advanced Matching completo e PageView disparado', pixelParams);
     
     // Enviar o mesmo evento para o backend para processamento via API
-    setTimeout(function() {
-      // Preparar payload com todos os dados disponíveis (mesmo Advanced Matching do pixel)
-      const payload = {
-        eventName: 'PageView',
-        eventId: generateUUID(),
-        eventSource: 'web',
-        url: window.location.href,
-        // Incluir todos os parâmetros de Advanced Matching
-        fbp: fbp,
-        fbc: fbc,
-        // Incluir dados pessoais se disponíveis
-        em: email || '',
-        ph: phone || '',
-        fn: firstName || '',
-        ln: lastName || '',
-        ge: gender || '',
-        db: dob || '',
-        // Incluir dados de geolocalização se disponíveis
-        country: geoData.country || '',
-        state: geoData.state || '',
-        city: geoData.city || '',
-        zip: geoData.zip || '',
-        // Usar EXATAMENTE os mesmos parâmetros customizados do evento web
-        // para garantir sincronização perfeita
-        customData: {
-          ...customParams,
-          // Garantir que o título da página seja idêntico
-          contentName: document.title || 'Page View',
-          // Garantir que o idioma seja sempre pt-BR para consistência com outros eventos
-          language: 'pt-BR',
-          // Adicionar currency e value para padronizar com outros eventos
-          currency: 'BRL',
-          value: 0
-        }
-      };
-
-      // Enviar para o backend
-      fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      .then(response => {
-        if (response.ok) {
-          console.log('✅ Evento PageView enviado com sucesso para o backend');
-        } else {
-          console.error('❌ Erro ao enviar evento PageView para o backend:', response.status);
-        }
-      })
-      .catch(error => {
-        console.error('❌ Erro ao enviar evento PageView para o backend:', error);
-      });
-    }, 100); // Pequeno delay para garantir que o pixel foi inicializado
+    // setTimeout(function() {
+    //   // Preparar payload com todos os dados disponíveis (mesmo Advanced Matching do pixel)
+    //   const payload = {
+    //     eventName: 'PageView',
+    //     eventId: generateUUID(),
+    //     eventSource: 'web',
+    //     url: window.location.href,
+    //     // Incluir todos os parâmetros de Advanced Matching
+    //     fbp: fbp,
+    //     fbc: fbc,
+    //     // Incluir dados pessoais se disponíveis
+    //     em: email || '',
+    //     ph: phone || '',
+    //     fn: firstName || '',
+    //     ln: lastName || '',
+    //     ge: gender || '',
+    //     db: dob || '',
+    //     // Incluir dados de geolocalização se disponíveis
+    //     country: geoData.country || '',
+    //     state: geoData.state || '',
+    //     city: geoData.city || '',
+    //     zip: geoData.zip || '',
+    //     // Usar EXATAMENTE os mesmos parâmetros customizados do evento web
+    //     // para garantir sincronização perfeita
+    //     customData: {
+    //       ...customParams,
+    //       // Garantir que o título da página seja idêntico
+    //       contentName: document.title || 'Page View',
+    //       // Garantir que o idioma seja sempre pt-BR para consistência com outros eventos
+    //       language: 'pt-BR',
+    //       // Adicionar currency e value para padronizar com outros eventos
+    //       currency: 'BRL',
+    //       value: 0
+    //     }
+    //   };
+    //
+    //   // Enviar para o backend
+    //   fetch(API_URL, {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify(payload)
+    //   })
+    //   .then(response => {
+    //     if (response.ok) {
+    //       console.log('✅ Evento PageView enviado com sucesso para o backend');
+    //     } else {
+    //       console.error('❌ Erro ao enviar evento PageView para o backend:', response.status);
+    //     }
+    //   })
+    //   .catch(error => {
+    //     console.error('❌ Erro ao enviar evento PageView para o backend:', error);
+    //   });
+    // }, 100); // Pequeno delay para garantir que o pixel foi inicializado
   }
 
   // Funções para encontrar elementos específicos na página
@@ -1157,45 +1157,6 @@
     };
   }
 
-  // Hash simples para simular o que o TracLead faz
-  function hashString(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    // Converter para string hexadecimal com 64 caracteres (como o TracLead)
-    let hashString = Math.abs(hash).toString(16);
-    while (hashString.length < 64) {
-      hashString = hashString + Math.abs(Math.floor(Math.random() * 16)).toString(16);
-    }
-    return hashString;
-  }
-  
-  // Função para hash SHA-256 usando SubtleCrypto API
-  async function hashSHA256(data) {
-    if (!data) return null;
-    
-    try {
-      // Converter string para ArrayBuffer
-      const encoder = new TextEncoder();
-      const dataBuffer = encoder.encode(data);
-      
-      // Calcular hash SHA-256
-      const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-      
-      // Converter ArrayBuffer para string hexadecimal
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      return hashHex;
-    } catch (e) {
-      console.error('Erro ao gerar hash SHA-256:', e);
-      return hashString(data); // Fallback para a função hashString
-    }
-  }
-  
   /**
    * Normaliza o CEP brasileiro para o formato padrão de 8 dígitos
    * @param {string|null} zipCode - CEP a ser normalizado
@@ -1219,40 +1180,6 @@
     return numericZip;
   }
 
-  // Função para obter dados de geolocalização
-  async function getGeoLocation() {
-    try {
-      // Tentar obter a localização do usuário através de API de geolocalização
-      const geoData = await fetch('https://api.ipify.org?format=json')
-        .then(response => response.json())
-        .then(data => {
-          return fetch(`https://ipapi.co/${data.ip}/json/`)
-            .then(response => response.json());
-        });
-      
-      if (geoData) {
-        // Normalizar o CEP brasileiro para o formato correto de 8 dígitos
-        const normalizedZip = normalizeBrazilianZipCode(geoData.postal, geoData.country_code);
-        
-        return {
-          country: geoData.country_code || null,
-          state: geoData.region_code || null,
-          city: geoData.city || null,
-          zip: normalizedZip
-        };
-      }
-    } catch (e) {
-      console.log('Erro ao obter dados de geolocalização:', e);
-    }
-    
-    return {
-      country: null,
-      state: null,
-      city: null,
-      zip: null
-    };
-  }
-
   // Função para obter dados do usuário com hash
   async function getUserData() {
     // Tentar buscar dados de endereço/geolocalização salvos
@@ -1266,25 +1193,28 @@
       if (savedUserData) {
         const parsed = JSON.parse(savedUserData);
         userData = { ...userData, ...parsed };
+        // Log para verificar dados carregados
+        // console.log('Dados do usuário carregados do localStorage:', userData);
       }
       
       // Se não temos dados geográficos, tentar obtê-los
-      if (!userData.country || !userData.state || !userData.city || !userData.zip) {
-        const geoData = await getGeoLocation();
-        userData = { ...userData, ...geoData };
-        
-        // Salvar para uso futuro
-        localStorage.setItem('meta_tracking_user_data', JSON.stringify({
-          country: userData.country,
-          state: userData.state,
-          city: userData.city,
-          zip: userData.zip
-        }));
-      }
+      // if (!userData.country || !userData.state || !userData.city || !userData.zip) {
+      //   const geoData = await getGeoLocation();
+      //   userData = { ...userData, ...geoData };
+      //   
+      //   // Salvar para uso futuro
+      //   localStorage.setItem('meta_tracking_user_data', JSON.stringify({
+      //     country: userData.country,
+      //     state: userData.state,
+      //     city: userData.city,
+      //     zip: userData.zip
+      //   }));
+      // }
     } catch (e) {
       console.log('Erro ao recuperar dados do usuário:', e);
     }
     
+    // Apenas retorna os dados lidos do storage (ou vazios)
     return userData;
   }
 
@@ -1328,169 +1258,123 @@
     return `fb.1.${timestamp}.${random}`;
   }
 
-  // Enviar evento para o Pixel e para a API
-  async function sendEvent(eventName, customData = {}) {
-    // Definir variável para armazenar o eventId do backend
-    let backendEventId = null;
-    try {
-      // Preparar Advanced Matching
-      const visitorId = getOrCreateVisitorId(); // <-- Usar o novo ID first-party
-      const client_user_agent_raw = navigator.userAgent;
-      const client_user_agent_hashed = await hashSHA256(client_user_agent_raw);
+  // >>> INÍCIO DA SEÇÃO MODIFICADA <<<
 
-      // Obter cookies do Facebook
-      // Tentar obter o FBP do cookie ou parâmetro de URL
-      const fbp_cookie_or_param = getCookie('_fbp') || getUrlParameter('fbp');
-      // Validar/Gerar o FBP - A função validateFbp agora garante que sempre teremos um FBP válido
-      const fbp = validateFbp(fbp_cookie_or_param); 
-      const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
+  // Função auxiliar para enviar dados brutos para o backend /track
+  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}) {
+    console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
+    const eventId = generateUUID(); // Gerar ID único para este envio
 
-      // Obter informações adicionais do usuário
-      const userData = await getUserData();
+    // Combinar dados de usuário gerais com PII (se houver)
+    const finalUserData = {
+        ...rawUserData, // Contém external_id, fbp, fbc, visitorId, PII, etc.
+    };
 
-      // --- Envio para o Backend /track PRIMEIRO para obter eventId ---
-      const eventDataForBackend = {
+    const payload = {
         eventName: eventName,
-        userData: {
-          userAgent: client_user_agent_raw, // Enviar não hasheado para o backend
-          language: navigator.language || 'pt-BR',
-          fbp: fbp,
-          fbc: fbc,
-          visitorId: visitorId, // <-- Enviar o ID do cookie first-party
-          userId: window.metaTrackingUserId || null, // Enviar ID de usuário logado se existir
-          referrer: document.referrer,
-          ...userData // Adiciona geo (country, state, city, zip) e outros se coletados
-        },
+        eventId: eventId,
+        sourceUrl: window.location.href,
+        referrer: document.referrer || '',
+        userData: finalUserData,
         customData: {
-          ...customData, // Adiciona dados específicos do evento (conteúdo, valor, etc.)
-          sourceUrl: window.location.href
+            ...specificCustomData,
+            language: navigator.language || 'pt-BR',
+            app: 'meta-tracking'
         }
-      };
+    };
 
-      // Enviar para a API backend e obter resposta (incluindo eventId)
-      const backendResponse = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventDataForBackend)
-      });
+    // Remover chaves nulas/undefined do payload para limpeza
+    Object.keys(payload.userData).forEach(key => payload.userData[key] == null && delete payload.userData[key]);
+    Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
 
-      if (!backendResponse.ok) {
-        console.error(`Erro na resposta do backend /track: ${backendResponse.status}`);
-        // Considerar se deve continuar com o envio do pixel mesmo com erro no backend
-      } else {
-        const backendResult = await backendResponse.json();
-        if (backendResult && backendResult.eventId) {
-          backendEventId = backendResult.eventId; // <-- Capturar o eventId do backend
-          console.log(`Backend respondeu com eventId: ${backendEventId}`);
-        } else {
-          console.warn('Backend não retornou eventId');
+    // Enviar para /track
+    try {
+        console.log('[Frontend Script] Enviando payload bruto para /track:', JSON.stringify(payload).substring(0, 500) + '...'); // Log truncado
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            keepalive: true // Importante para enviar em unload/pagehide
+        });
+        if (!response.ok) {
+            console.error(`[Frontend Script] Erro ao enviar evento ${eventName} para backend: ${response.status} ${response.statusText}`);
         }
-      }
-
-      // --- Construção e Envio do Pixel Manual (Usando eventId do backend) ---
-
-      // Inicializar o pixel (pode ser redundante se já inicializado, mas garante)
-      fbq('init', PIXEL_ID);
-
-      // Construir URL do Pixel manualmente
-      const pixelUrl = 'https://www.facebook.com/tr/';
-      const baseParams = new URLSearchParams({
-        id: PIXEL_ID,
-        ev: eventName, // Usar nome original do evento
-        dl: document.location.href,
-        rl: document.referrer,
-        if: false,
-        ts: Date.now(),
-        // v: '2.9.194', // Versão pode ser omitida ou atualizada
-        r: 'stable',
-        // Usar o eventId recebido do backend se disponível, senão gerar um fallback
-        eid: backendEventId || ('meta_tracking_fe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8))
-      });
-
-      // Adicionar Advanced Matching (hasheado) para o Pixel
-      const idToHashForPixel = window.metaTrackingUserId || visitorId;
-      const externalIdHashed = await hashSHA256(idToHashForPixel);
-      baseParams.append('ud[external_id]', externalIdHashed);
-      baseParams.append('ud[client_user_agent]', client_user_agent_hashed);
-      baseParams.append('ud[fbp]', fbp);
-      if (fbc) {
-        baseParams.append('ud[fbc]', fbc);
-      }
-
-      // Função interna para adicionar dados hasheados ao baseParams
-      const addHashedDataToPixel = async (name, value) => {
-        if (value) {
-          try {
-            // Normalizar e Hashear para o Pixel
-            let normalizedValue = String(value).toLowerCase().trim();
-            
-            // Tratamento especial para CEP no Brasil
-            if (name === 'zp' && userData.country && userData.country.toLowerCase() === 'br') {
-              normalizedValue = normalizeBrazilianZipCode(normalizedValue, userData.country);
-            }
-            
-            // Remove caracteres não alfanuméricos para alguns campos
-            if (['em', 'ph', 'zp'].includes(name)) {
-              normalizedValue = normalizedValue.replace(/[^a-z0-9]/g, '');
-            }
-            
-            // Calcular o hash SHA-256
-            const hashedValue = await hashSHA256(normalizedValue);
-            baseParams.append(`ud[${name}]`, hashedValue);
-          } catch (error) {
-            console.warn(`Erro ao hashear ${name}:`, error);
-          }
-        }
-      };
-
-      // Adicionar geo e PII hasheados para o Pixel
-      await addHashedDataToPixel('country', userData.country);
-      await addHashedDataToPixel('st', userData.state);
-      await addHashedDataToPixel('ct', userData.city);
-      await addHashedDataToPixel('zp', userData.zip);
-      await addHashedDataToPixel('em', userData.email);
-      await addHashedDataToPixel('ph', userData.phone);
-      await addHashedDataToPixel('fn', userData.firstName);
-      await addHashedDataToPixel('ln', userData.lastName);
-      await addHashedDataToPixel('ge', userData.gender);
-      await addHashedDataToPixel('db', userData.dateOfBirth);
-
-      // Adicionar custom data (não hasheado) para o Pixel
-      const customDataForPixel = {
-          ...customData,
-          app: 'meta-tracking',
-          language: navigator.language || 'pt-BR',
-          referrer: document.referrer
-          // Não precisa adicionar sourceUrl, etc., pois já estão nos parâmetros base (dl, rl)
-      };
-
-      Object.entries(customDataForPixel).forEach(([key, value]) => {
-        if (value !== null && value !== undefined) {
-          if (typeof value === 'object') {
-            baseParams.append(`cd[${key}]`, JSON.stringify(value));
-          } else {
-            baseParams.append(`cd[${key}]`, value);
-          }
-        }
-      });
-
-      // Enviar o pixel manualmente usando um image request
-      const pixelImg = new Image();
-      pixelImg.src = `${pixelUrl}?${baseParams.toString()}`;
-      console.log(`Pixel ${eventName} enviado manualmente (ID: ${baseParams.get('eid')})`);
-
-      // Retornar o resultado do backend
-      if (backendEventId) {
-          return { eventId: backendEventId }; // Retornar o ID do backend se sucesso
-      }
-
+        // const responseData = await response.json(); // Opcional
+        // console.log('Resposta do backend:', responseData);
     } catch (error) {
-      console.error('Erro geral ao enviar evento:', error);
-      return null;
+        console.error(`[Frontend Script] Falha na requisição fetch para ${eventName}:`, error);
     }
   }
 
-  // Função para monitorar rolagem da página
+  // Função principal para disparar eventos (simplificada)
+  async function sendEvent(eventName, customData = {}) {
+    try {
+      console.log(`[Frontend Script] Disparando evento: ${eventName}`);
+
+      // 1. Coletar IDs e Dados do Usuário (sem hash)
+      const visitorId = getOrCreateVisitorId();
+      const externalId = getExternalId();
+      const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
+      const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+
+      // Coleta dados como email, telefone, nome, etc. do localStorage (sem hash)
+      const localStorageUserData = {
+          em: localStorage.getItem('meta_tracking_email'),
+          ph: localStorage.getItem('meta_tracking_phone'),
+          fn: localStorage.getItem('meta_tracking_first_name'),
+          ln: localStorage.getItem('meta_tracking_last_name'),
+          ge: localStorage.getItem('meta_tracking_gender'),
+          db: localStorage.getItem('meta_tracking_dob'),
+          ct: localStorage.getItem('meta_tracking_city'),
+          st: localStorage.getItem('meta_tracking_state'),
+          zp: localStorage.getItem('meta_tracking_zip'),
+          country: localStorage.getItem('meta_tracking_country')
+      };
+
+      // Combinar todos os dados do usuário para envio ao backend
+      const allRawUserData = {
+          external_id: externalId,
+          visitorId: visitorId,
+          fbp: fbp,
+          fbc: fbc,
+          ...localStorageUserData
+      };
+
+      // 2. Enviar para o Pixel do Facebook (fbq)
+      // Prepara parâmetros para fbq (dados sem hash)
+      const fbqParams = { ...customData }; // Inclui value, currency, content_name, etc.
+
+      // Chamar fbq('track') - Não precisa passar dados de usuário aqui,
+      // pois já foram enviados no fbq('init')
+      if (typeof fbq === 'function') {
+          fbq('track', eventName, fbqParams);
+          console.log(`[Frontend Script] fbq('track', '${eventName}') chamado com:`, fbqParams);
+      } else {
+          console.warn('[Frontend Script] fbq não definido ao tentar rastrear evento.');
+      }
+
+      // 3. Enviar dados brutos para o Backend (/track)
+      // Passa os dados de usuário coletados e os dados customizados do evento
+      await sendEventToBackend(eventName, allRawUserData, customData);
+
+    } catch (error) {
+      console.error(`[Frontend Script] Erro geral na função sendEvent para ${eventName}:`, error);
+    }
+  }
+  // >>> FIM DA SEÇÃO MODIFICADA <<<
+
+  // Função para adicionar dados hasheados ao pixel (REMOVER ou REVISAR)
+  // Esta função parece redundante/incorreta na nova abordagem
+  // const addHashedDataToPixel = async (name, value) => {
+  // ... (manter comentado ou remover completamente) ...
+  // };
+
+  // --- Funções de Configuração de Rastreamento (Scroll, Timer, Video, Lead) ---
+  // Estas funções provavelmente chamam sendEvent e precisam ser verificadas
+  // se estão passando os dados corretos para sendEvent.
+
   function setupScrollTracking() {
     let maxScrollPercentage = 0;
     
@@ -1569,17 +1453,14 @@
     // Verificar após o carregamento da página
     window.addEventListener('load', checkScrollDepth);
   }
-  
-  // Função para iniciar timer de 1 minuto
+
   function setupTimerTracking() {
     setTimeout(function() {
       if (!sentEvents.timer_1min) {
+        console.log('Timer 1min reached');
+        // Passar dados customizados mínimos para o evento de timer
+        sendEvent('Timer_1min', { time_on_page: 60 });
         sentEvents.timer_1min = true;
-        sendEvent('Timer_1min', {
-          timeOnPage: 60, // segundos
-          pageUrl: window.location.href,
-          contentName: document.title
-        });
       }
     }, 60000); // 60 segundos = 1 minuto
   }

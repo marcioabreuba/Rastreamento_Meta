@@ -4,21 +4,26 @@
 
 import { app } from './app';
 import logger from './utils/logger';
-import { initGeoIP } from './utils/geoip';
-import { initQueue } from './utils/queue';
+import { Reader } from '@maxmind/geoip2-node';
+import * as GeoIPService from './App/Core/GeoIPService';
 import config from './config';
+import fs from 'fs';
 
 const PORT = config.port || 10000;
 
 // Função assíncrona para inicializar todos os componentes antes de iniciar o servidor
 const startServer = async () => {
   try {
-    // Inicializar a fila de eventos
-    await initQueue();
-    
     // Inicializar o serviço GeoIP
-    await initGeoIP();
-    
+    if (fs.existsSync(config.geoipDbPath)) {
+        const geoipReader = await Reader.open(config.geoipDbPath);
+        GeoIPService.setGeoIPReaderInstance(geoipReader);
+        logger.info('Banco de dados GeoIP carregado e injetado no GeoIPService.');
+    } else {
+        logger.warn(`Banco de dados GeoIP não encontrado em ${config.geoipDbPath}. GeoIPService não funcionará.`);
+        // Considerar lançar erro ou sair se GeoIP for crítico?
+    }
+
     // Iniciar o servidor HTTP
     app.listen(PORT, () => {
       logger.info(`Servidor rodando na porta ${PORT}`);
