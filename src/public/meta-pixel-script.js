@@ -389,8 +389,8 @@
         contentIds: finalProductId ? [finalProductId] : [], 
         contentName: productName || document.title, 
           contentType: 'product',
-        value: finalPrice, // Usa preço final
-        currency: finalCurrency // Usa moeda final
+        value: Math.round(finalPrice), // Arredonda para o inteiro mais próximo
+        currency: finalCurrency // Usa moeda final corrigida
     };
     // Adicionar category apenas se encontrada
     if (finalCategory) {
