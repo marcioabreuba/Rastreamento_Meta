@@ -12,9 +12,10 @@ export interface CompleteRegistrationEventData {
  * Extrai dados específicos para o evento CompleteRegistration a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {CompleteRegistrationEventData} Dados específicos do evento CompleteRegistration.
  */
-export function handleCompleteRegistration(rawUserData: any = {}, rawCustomData: any = {}): CompleteRegistrationEventData {
+export function handleCompleteRegistration(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): CompleteRegistrationEventData {
   const specificUserData: Partial<WebUserData> = {
     // Dados PII (em, ph, fn, ln) são geralmente enviados aqui e tratados no NormalizationService
   };

@@ -12,9 +12,10 @@ export interface AddPaymentInfoEventData {
  * Extrai dados específicos para o evento AddPaymentInfo a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {AddPaymentInfoEventData} Dados específicos do evento AddPaymentInfo.
  */
-export function handleAddPaymentInfo(rawUserData: any = {}, rawCustomData: any = {}): AddPaymentInfoEventData {
+export function handleAddPaymentInfo(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): AddPaymentInfoEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

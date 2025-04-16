@@ -12,9 +12,10 @@ export interface ViewContentEventData {
  * Extrai dados específicos para o evento ViewContent a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName O nome original do evento.
  * @returns {ViewContentEventData} Dados específicos do evento ViewContent.
  */
-export function handleViewContent(rawUserData: any = {}, rawCustomData: any = {}): ViewContentEventData {
+export function handleViewContent(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): ViewContentEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

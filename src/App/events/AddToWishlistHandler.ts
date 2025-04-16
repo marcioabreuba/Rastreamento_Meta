@@ -12,9 +12,10 @@ export interface AddToWishlistEventData {
  * Extrai dados específicos para o evento AddToWishlist a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {AddToWishlistEventData} Dados específicos do evento AddToWishlist.
  */
-export function handleAddToWishlist(rawUserData: any = {}, rawCustomData: any = {}): AddToWishlistEventData {
+export function handleAddToWishlist(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): AddToWishlistEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

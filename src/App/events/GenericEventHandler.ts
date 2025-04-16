@@ -15,9 +15,10 @@ export interface GenericEventData {
  * Pode ser usado para PageView, ViewHome, ViewCart, ViewCategory, Timer, Scroll, etc.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName O nome original do evento.
  * @returns {GenericEventData} Dados brutos para processamento posterior.
  */
-export function handleGenericEvent(rawUserData: any = {}, rawCustomData: any = {}): GenericEventData {
+export function handleGenericEvent(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): GenericEventData {
   // Neste handler, não extraímos nada de muito específico.
   // Apenas garantimos que a estrutura básica seja retornada.
   const specificUserData: Partial<WebUserData> = {

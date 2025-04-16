@@ -12,9 +12,10 @@ export interface SearchEventData {
  * Extrai dados específicos para o evento Search a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {SearchEventData} Dados específicos do evento Search.
  */
-export function handleSearch(rawUserData: any = {}, rawCustomData: any = {}): SearchEventData {
+export function handleSearch(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): SearchEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

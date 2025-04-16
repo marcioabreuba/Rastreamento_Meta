@@ -12,9 +12,10 @@ export interface InitiateCheckoutEventData {
  * Extrai dados específicos para o evento InitiateCheckout a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {InitiateCheckoutEventData} Dados específicos do evento InitiateCheckout.
  */
-export function handleInitiateCheckout(rawUserData: any = {}, rawCustomData: any = {}): InitiateCheckoutEventData {
+export function handleInitiateCheckout(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): InitiateCheckoutEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

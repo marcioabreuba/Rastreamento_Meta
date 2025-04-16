@@ -12,9 +12,10 @@ export interface AddToCartEventData {
  * Extrai dados específicos para o evento AddToCart a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome do evento original.
  * @returns {AddToCartEventData} Dados específicos do evento AddToCart.
  */
-export function handleAddToCart(rawUserData: any = {}, rawCustomData: any = {}): AddToCartEventData {
+export function handleAddToCart(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): AddToCartEventData {
   const specificUserData: Partial<WebUserData> = {
     // Campos de UserData específicos (se houver)
   };

@@ -16,10 +16,15 @@ import { handleAddToWishlist } from '../events/AddToWishlistHandler';
 import { handleGenericEvent } from '../events/GenericEventHandler';
 // Importar CapiService
 // import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Tentativa anterior
-import { sendEvent as sendEventToCapi } from '../Http/CapiService'; // <<< Tentar caminho relativo diferente
+import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Usar import direto com alias
+// <<< ADICIONAR IMPORTAÇÕES DE TIPOS WEB >>>
+import { WebUserData, WebCustomData } from '../Model/WebEventParams';
 
-// Mapeamento de eventName para a função handler correspondente
-const eventHandlers: Record<string, Function> = {
+// Definir um tipo para a assinatura da função do handler
+type EventHandlerFunction = (rawUserData: any, rawCustomData: any, originalEventName?: string) => { userData: Partial<WebUserData>; customData: Partial<WebCustomData> };
+
+// Usar o tipo definido para o Record
+const eventHandlers: Record<string, EventHandlerFunction> = {
   'Purchase': handlePurchase,
   'ViewContent': handleViewContent,
   'AddToCart': handleAddToCart,
@@ -78,7 +83,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
     // 3. Selecionar e Executar Handler Específico do Evento
     const handler = eventHandlers[eventName] || handleGenericEvent;
-    const specificEventData = handler(userData, customData);
+    const specificEventData = handler(userData, customData, eventName);
 
     // 4. Preparar Input para Normalização
     const rawEventInput: RawEventInput = {

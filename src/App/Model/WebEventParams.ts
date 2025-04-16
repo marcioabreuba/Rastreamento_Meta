@@ -48,6 +48,8 @@ export interface WebCustomData {
   referrer?: string | null; // URL de referência
   app?: string | null;      // Identificador da aplicação (ex: 'meta-tracking')
   sourceUrl?: string | null;// URL da página atual
+
+  payment_method?: string | null;
 }
 
 export interface WebEventParams {

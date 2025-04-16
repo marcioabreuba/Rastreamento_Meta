@@ -12,9 +12,10 @@ export interface LeadEventData {
  * Extrai dados específicos para o evento Lead a partir dos dados brutos.
  * @param rawUserData Dados brutos do usuário da requisição.
  * @param rawCustomData Dados brutos personalizados da requisição.
+ * @param originalEventName Nome original do evento.
  * @returns {LeadEventData} Dados específicos do evento Lead.
  */
-export function handleLead(rawUserData: any = {}, rawCustomData: any = {}): LeadEventData {
+export function handleLead(rawUserData: any = {}, rawCustomData: any = {}, originalEventName?: string): LeadEventData {
   const specificUserData: Partial<WebUserData> = {
     // Dados PII (em, ph, fn, ln) são geralmente enviados aqui e tratados no NormalizationService
   };
