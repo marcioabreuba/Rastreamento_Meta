@@ -146,8 +146,12 @@
     // --- ETAPA 1: Definir fbq e fila (padrão FB) --- 
     if (window.fbq) {
         console.log('[Meta Tracking] FBQ já inicializado.');
-        // Não retornar, pois precisamos garantir que nossos dados sejam enviados
-        // A lógica do fbevents.js lida com múltiplas chamadas init para o mesmo pixel.
+        // Poderíamos tentar reenviar o init/track aqui se necessário, 
+        // mas geralmente não é preciso se já foi inicializado.
+        // Por segurança, vamos apenas retornar se já existir.
+        // Se houver problemas com múltiplas inicializações, revisar esta lógica.
+         // return; 
+         // Removido o return para garantir que nosso track explícito ocorra.
     }
     var n = window.fbq = function() {
       n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
@@ -169,9 +173,9 @@
     s.parentNode.insertBefore(t, s);
     console.log('[Meta Tracking] Script fbevents.js sendo carregado...');
 
-    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamada init --- 
+    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init/track --- 
 
-    const pageViewEventId = generateUUID(); // Gerar ID para backend e desduplicação CAPI
+    const pageViewEventId = generateUUID();
     const externalId = getExternalId();
     const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
     const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
@@ -197,21 +201,26 @@
     };
     Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
 
-    // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper, mas o FB usa internamente)
+    // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
     console.log(`[Meta Tracking] fbq('init') enfileirado.`, pixelParams);
 
-    // --- ETAPA 4: Enviar PageView para Backend ---
-    // Prepara os dados customizados básicos do PageView para o backend
-     const pageViewCustomDataForBackend = {
-        app: 'meta-tracking',
-        contentName: document.title || 'Page View',
-        contentType: 'page_view', // Usar um tipo consistente para backend
-        language: navigator.language || 'pt-BR',
-        referrer: document.referrer || ''
-     };
-    Object.keys(pageViewCustomDataForBackend).forEach(key => pageViewCustomDataForBackend[key] == null && delete pageViewCustomDataForBackend[key]);
+    // Montar parâmetros customizados para PageView explícito
+    const customParams = {
+      app: 'meta-tracking',
+      contentName: document.title || 'Page View',
+      contentType: 'page_view',
+      language: navigator.language || 'pt-BR',
+      referrer: document.referrer || ''
+    };
+    Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
 
+    // ENFILEIRAR PageView explícito COM eventID
+    const fbqOptions = { eventID: pageViewEventId };
+    fbq('track', 'PageView', customParams, fbqOptions);
+    console.log(`[Meta Tracking] fbq('track', 'PageView') enfileirado (ID: ${pageViewEventId})`, customParams);
+
+    // --- ETAPA 4: Enviar para Backend (pode ser chamado fora da fila, mas após enfileirar fbq) ---
     const allRawUserDataForInit = {
         external_id: externalId, visitorId: getOrCreateVisitorId(),
         fbp: fbp, fbc: fbc, em: email, ph: phone, fn: firstName, ln: lastName,
@@ -219,499 +228,871 @@
     };
     // Pequeno delay pode ajudar a garantir que IDs como fbp foram setados pelo init
     setTimeout(function() {
-         sendEventToBackend('PageView', allRawUserDataForInit, pageViewCustomDataForBackend, pageViewEventId);
+         sendEventToBackend('PageView', allRawUserDataForInit, customParams, pageViewEventId);
     }, 150); 
 
   }
 
   // Funções para encontrar elementos específicos na página
   function getProductDetails() {
-    // Tenta detectar informações de produtos
-    console.log('[Meta Tracking] getProductDetails chamado.');
+    // Tenta detectar informações de produtos - esta é uma implementação genérica
+    // Para um site específico, você pode ajustar os seletores ou lógica
 
-    let data = {
-      content_ids: [],
-      content_name: '',
-      content_category: '', // Usar string única ou primeira categoria
-      content_type: 'product',
-      value: 0,
-      currency: 'BRL', // Assumir BRL, ajustar se necessário
-      contents: [],
-      num_items: 1 // Para ViewContent, é sempre 1 item
+    // Nome do produto (título)
+    let productName = '';
+    const titleElement = document.querySelector('h1') || document.querySelector('.product-title');
+    if (titleElement) {
+      productName = titleElement.textContent.trim();
+    }
+
+    // Preço
+    let price = 0;
+    const priceElement = document.querySelector('.price') || document.querySelector('[data-product-price]');
+    if (priceElement) {
+      const priceText = priceElement.textContent.trim().replace(/[^0-9,.]/g, '');
+      price = parseFloat(priceText.replace(',', '.'));
+    }
+
+    return {
+      contentName: productName,
+      contentType: 'product',
+      value: price,
+      currency: 'BRL' // Pode ser detectado dinamicamente para sites multi-moeda
     };
-
-    let productId = null;
-    let productCategories = [];
-
-    // Prioridade 1: JSON-LD
-    const jsonLDElements = document.querySelectorAll('script[type="application/ld+json"]');
-    jsonLDElements.forEach(script => {
-      try {
-        const jsonData = JSON.parse(script.textContent);
-        const product = Array.isArray(jsonData)
-          ? jsonData.find(item => item['@type'] === 'Product')
-          : (jsonData['@type'] === 'Product' ? jsonData : null);
-
-        if (product) {
-          console.log('[Meta Tracking] Encontrado JSON-LD de Produto.');
-          if (product.productID) productId = product.productID;
-          else if (product.sku) productId = product.sku;
-          else if (product.mpn) productId = product.mpn;
-          else if (product.gtin) productId = product.gtin;
-          else if (product.offers && product.offers.sku) productId = product.offers.sku;
-          else if (product.offers && Array.isArray(product.offers) && product.offers[0] && product.offers[0].sku) productId = product.offers[0].sku;
-
-
-          if (product.name) data.content_name = product.name.trim();
-
-          if (product.category) {
-              if (typeof product.category === 'string') {
-                  productCategories = product.category.split('/').map(c => c.trim()).filter(c => c);
-              } else if (Array.isArray(product.category)) {
-                  productCategories = product.category.map(c => String(c).trim()).filter(c => c);
-              }
-          }
-
-          if (product.offers) {
-            const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
-            if (offer && offer.price) data.value = parseFloat(offer.price);
-            if (offer && offer.priceCurrency) data.currency = offer.priceCurrency;
-          }
-          // Parar se encontrou dados suficientes no JSON-LD
-          if (productId && data.content_name && data.value > 0) {
-               console.log('[Meta Tracking] Dados do Produto obtidos via JSON-LD.');
-              // return; // Não retorna, apenas preenche, pode haver mais fontes
-          }
-        }
-      } catch (e) {
-        console.warn('[Meta Tracking] Erro ao processar JSON-LD:', e);
-      }
-    });
-
-    // Prioridade 2: Seletores DOM (Fallback ou complemento)
-
-    // ID do produto (se não encontrado via JSON-LD)
-    if (!productId) {
-      // Tentar extrair do URL para Shopify ou similar (?variant=...)
-      const variantParam = new URLSearchParams(window.location.search).get('variant');
-      if (variantParam) {
-        productId = variantParam;
-      } else {
-         // Tentar seletores comuns (Inputs, data attributes) - AJUSTAR PARA SOLETERRA.COM.BR
-        const idElement = document.querySelector('input[name="id"], input[name="product-id"], input[name="variantId"], [data-product-id], [data-variant-id], form[action*="/cart/add"] [name="id"]');
-         if (idElement) {
-           productId = idElement.value || idElement.getAttribute('data-product-id') || idElement.getAttribute('data-variant-id');
-         }
-      }
-       console.log('[Meta Tracking] ID do Produto (DOM/URL Fallback):', productId);
-    }
-
-
-    // Nome do produto (se não encontrado via JSON-LD)
-    if (!data.content_name) {
-       // Tentar H1 ou título da página - AJUSTAR SELETOR H1 SE NECESSÁRIO
-       const h1 = document.querySelector('h1, .product-title, .product_title, .product--name');
-       if (h1) {
-         data.content_name = h1.textContent.trim();
-       } else if (document.title) {
-          // Evitar usar 'Show' ou títulos genéricos
-          const potentialTitle = document.title.split('|')[0].trim();
-          if (potentialTitle.toLowerCase() !== 'show' && potentialTitle.length > 3) {
-               data.content_name = potentialTitle;
-          }
-       }
-        console.log('[Meta Tracking] Nome do Produto (DOM/Title Fallback):', data.content_name);
-    }
-
-    // Categorias (se não encontrado via JSON-LD)
-     if (productCategories.length === 0) {
-         // Tentar breadcrumbs - AJUSTAR SELETORES PARA SOLETERRA.COM.BR
-         const breadcrumbs = document.querySelectorAll('.breadcrumb a, .breadcrumbs a, .breadcrumb-item a, nav[aria-label="breadcrumb"] a');
-         if (breadcrumbs.length > 0) {
-             // Pegar todos exceto o último (geralmente o produto) ou penúltimo se o último for o produto
-             let limit = breadcrumbs.length -1;
-             // Verificação se o último elemento do breadcrumb é igual ao nome do produto, para não incluí-lo como categoria
-             if (breadcrumbs[limit] && data.content_name && breadcrumbs[limit].textContent.trim().toLowerCase() === data.content_name.toLowerCase()) {
-                 limit = breadcrumbs.length - 2;
-             }
-             for (let i = 0; i <= limit; i++) {
-                 const category = breadcrumbs[i].textContent.trim();
-                 if (category && !['Home', 'Início', 'Principal', 'Produtos'].includes(category)) {
-                     productCategories.push(category.toLowerCase());
-                 }
-             }
-         }
-          console.log('[Meta Tracking] Categorias (Breadcrumb Fallback):', productCategories);
-     }
-     // Definir content_category como a última categoria encontrada (mais específica)
-     data.content_category = productCategories.length > 0 ? productCategories[productCategories.length - 1] : '';
-
-
-     // Preço (se não encontrado via JSON-LD)
-     if (data.value <= 0) {
-         // Tentar seletores comuns - AJUSTAR PARA SOLETERRA.COM.BR
-         const priceElement = document.querySelector('.price, .product-price, [itemprop="price"], .price__value, .product__price');
-         if (priceElement) {
-             let priceText = priceElement.getAttribute('content') || priceElement.textContent; // Priorizar 'content' se for meta tag
-             priceText = priceText.trim().replace(/[^0-9,.]/g, '');
-             // Lidar com separador decimal , ou .
-             if (priceText.includes(',') && priceText.includes('.')) { // Ex: 1.234,56
-                 priceText = priceText.replace('.', '').replace(',', '.');
-             } else { // Ex: 1234,56 ou 1234.56
-                priceText = priceText.replace(',', '.');
-             }
-             data.value = parseFloat(priceText) || 0;
-             console.log('[Meta Tracking] Preço (DOM Fallback):', data.value);
-         }
-     }
-
-     // Moeda (se não encontrada e o preço foi encontrado)
-     if (data.value > 0 && !data.currency) {
-          // Tentar encontrar no texto do preço ou elemento próximo - AJUSTAR
-         const currencySymbolElement = document.querySelector('.price__currency, .product-price__currency');
-          if (currencySymbolElement && currencySymbolElement.textContent.trim() === 'R$') {
-               data.currency = 'BRL';
-          } else {
-               data.currency = 'BRL'; // Default para BRL se não encontrar
-          }
-          console.log('[Meta Tracking] Moeda (DOM/Default Fallback):', data.currency);
-      }
-
-
-     // Montar dados finais
-     if (productId) {
-         data.content_ids = [String(productId)]; // Garantir que seja string
-         // Montar 'contents' para ViewContent
-         data.contents = [{
-             id: String(productId),
-             quantity: 1, // Sempre 1 para ViewContent
-             item_price: data.value // Preço unitário
-         }];
-     } else {
-          console.warn('[Meta Tracking] Não foi possível encontrar o ID do produto.');
-          // Se não há ID, talvez não enviar o evento ViewContent? Ou enviar sem ID?
-          // Por ora, enviará sem ID, mas idealmente deveria ter.
-           data.content_ids = [];
-           data.contents = [];
-           data.num_items = 0;
-     }
-
-
-     // Limpar dados nulos ou vazios antes de retornar
-     Object.keys(data).forEach(key => {
-         if (data[key] === null || data[key] === undefined || data[key] === '') {
-             // Permitir value 0? Geralmente não para produtos. Manter se for 0.
-             if (key !== 'value' && key !== 'num_items') {
-                delete data[key];
-             }
-         }
-          // Garantir que arrays vazios não sejam enviados onde não fazem sentido
-          if (Array.isArray(data[key]) && data[key].length === 0 && ['content_ids', 'contents'].includes(key)) {
-              delete data[key];
-          }
-     });
-
-     console.log('[Meta Tracking] Dados Finais getProductDetails:', data);
-     return data;
   }
 
   // Detecta o tipo de página
   function detectPageType() {
-    console.log('[Meta Tracking] detectPageType chamado para:', window.location.href);
     const path = window.location.pathname;
     const hostname = window.location.hostname;
     const search = window.location.search;
-
-    // 1. Página de Confirmação de Compra (Maior Prioridade)
-     // AJUSTAR SELETORES/LÓGICA PARA DETECTAR COMPRA FINALIZADA EM SOLETERRA.COM.BR
-    if (path.includes('/checkout/obrigado') || path.includes('/pedido/confirmado') || path.includes('/order/confirmation') || path.includes('/success') || path.includes('/thank_you') || document.querySelector('[data-order-summary]')) {
-         console.log('[Meta Tracking] Detectado: Página de Compra (Purchase)');
-         // TODO: Implementar extração de dados da compra (order_id, value, currency, contents)
-         // Geralmente requer acesso a dados do pedido (dataLayer, variáveis JS, ou DOM)
-         return {
-            type: 'purchase',
-            eventName: 'Purchase', // Nome Padrão FB
-            data: {
-               contentType: 'purchase',
-               contentName: 'Purchase Confirmation',
-               // Tentar obter ID do pedido da URL
-               orderId: getUrlParameter('order_id') || getUrlParameter('pedido')
-            }
-         };
-    }
     
-    // 2. Página de Checkout (Iniciar Checkout / Adicionar Info Pagamento)
-    // AJUSTAR PARA SOLETERRA.COM.BR
-    if (path.includes('/checkout') || path.includes('/carrinho/finalizar') || hostname.includes('checkout.')) {
-         // Diferenciar entre InitiateCheckout e AddPaymentInfo pode ser difícil sem mais contexto
-         // Vamos usar InitiateCheckout como padrão para qualquer página de checkout antes da confirmação
-         console.log('[Meta Tracking] Detectado: Página de Checkout (InitiateCheckout)');
-
-          // Tentar extrair dados do carrinho/checkout para InitiateCheckout
-          const checkoutData = extractCartData(true); // true indica que estamos no checkout
-
-          return {
-              type: 'checkout',
-              eventName: 'InitiateCheckout', // Nome Padrão FB
-              data: {
-                  contentType: 'checkout',
-                  contentName: 'Initiate Checkout',
-                  ...checkoutData // Inclui value, currency, content_ids, contents, num_items
-              }
-          };
-    }
-    
-    // 3. Página do Carrinho
-    // AJUSTAR PARA SOLETERRA.COM.BR
-    if (path === '/cart' || path === '/carrinho' || path.includes('/cart') || path.includes('/carrinho')) {
-        console.log('[Meta Tracking] Detectado: Página do Carrinho (InitiateCheckout)');
-        // Usar InitiateCheckout também para visualização do carrinho, pois é o início do funil
-        // Ou poderia ser um evento customizado 'ViewCart' se preferir separar
-        const cartData = extractCartData(); // Extrai dados do carrinho
-
+    // Detecção de resultados de pesquisa
+    if (search.includes('q=') || search.includes('query=') || search.includes('search=')) {
+      const searchQuery = new URLSearchParams(window.location.search).get('q') || 
+                         new URLSearchParams(window.location.search).get('query') || 
+                         new URLSearchParams(window.location.search).get('search') || '';
+      
+      if (searchQuery) {
         return {
-          type: 'cart',
-          eventName: 'InitiateCheckout', // Opção: Usar evento padrão FB (recomendado)
+          type: 'search_results',
+          eventName: 'ViewSearchResults',
           data: {
-            contentType: 'cart', // Manter contentType descritivo
-            contentName: 'View Cart',
-            ...cartData // Inclui value, currency, content_ids, contents, num_items
+            searchString: searchQuery,
+            contentType: 'search_results',
+            contentName: `Resultados para "${searchQuery}"`
           }
         };
+      }
     }
     
-    // 4. Página de Produto
-    // AJUSTAR PARA SOLETERRA.COM.BR (ex: /produto/, /item/)
-    if (path.includes('/product/') || path.includes('/produto/') || document.querySelector('body.template-product, body.produto')) {
-        console.log('[Meta Tracking] Detectado: Página de Produto (ViewContent)');
-        const productData = getProductDetails();
+    // Detecção específica para domínio de checkout
+    if (hostname.includes('seguro.') || hostname.includes('checkout.')) {
+      // Checkout específico do site seguro.soleterra.com.br
+      if (path.includes('/checkout') || path === '/' || path === '') {
         return {
-          type: 'product',
-          eventName: 'ViewContent', // Nome Padrão FB
-          data: productData // Já formatado por getProductDetails
+          type: 'checkout',
+          eventName: 'StartCheckout',
+          data: {
+            contentName: 'Checkout',
+            contentType: 'checkout'
+          }
         };
+      }
+      
+      // Página de pagamento
+      if (path.includes('/payment') || path.includes('/pagamento')) {
+        return {
+          type: 'payment',
+          eventName: 'AddPaymentInfo',
+          data: {
+            contentName: 'Payment Information',
+            contentType: 'payment'
+          }
+        };
+      }
+      
+      // Página de confirmação/sucesso
+      if (path.includes('/success') || path.includes('/sucesso') || path.includes('/confirmacao')) {
+        return {
+          type: 'purchase',
+          eventName: 'Purchase',
+          data: {
+            contentName: 'Purchase Confirmation',
+            contentType: 'purchase',
+            // Tentar obter ID do pedido da URL
+            orderId: getUrlParameter('order_id') || getUrlParameter('pedido')
+          }
+        };
+      }
     }
     
-    // 5. Página de Categoria
-    // AJUSTAR PARA SOLETERRA.COM.BR (ex: /categoria/, /colecao/, /departamento/)
-    if (path.includes('/category/') || path.includes('/categoria/') || path.includes('/collection/') || path.includes('/colecao/') || path.includes('/collections/') || path.includes('/departamento/') || document.querySelector('body.template-collection, body.categoria')) {
-         console.log('[Meta Tracking] Detectado: Página de Categoria (ViewCategory)');
-         let categoryData = {
-             content_ids: [],
-             contentCategory: [],
-             contentNames: []
-         };
-         
-         // Tentar obter o nome da coleção da URL
-         const pathParts = path.split('/');
-         const lastSegment = pathParts[pathParts.length - 1];
-         
-         if (lastSegment && lastSegment !== 'collection' && lastSegment !== 'colecao' && lastSegment !== 'categoria') {
-             // Converter formato da URL para um nome legível (ex: "mens-shoes" -> "Mens Shoes")
-             categoryData.contentCategory.push(lastSegment
-               .replace(/-/g, ' ')
-               .replace(/_/g, ' ')
-               .replace(/\b\w/g, l => l.toUpperCase()));
-         } else if (document.querySelector('h1')) {
-             // Se não conseguir extrair da URL, tentar pegar do título da página
-             const h1Text = document.querySelector('h1').textContent.trim();
-             
-             // Padrão comum em lojas: "Coleção: Nome da Coleção"
-             if (h1Text.includes('Coleção:')) {
-               categoryData.contentNames.push(h1Text.split('Coleção:')[1].trim());
-             } else if (h1Text.includes('Coleção')) {
-               categoryData.contentNames.push(h1Text.split('Coleção')[1].trim());
-             } else if (h1Text.includes(':')) {
-               categoryData.contentNames.push(h1Text.split(':')[1].trim());
-             } else {
-               categoryData.contentNames.push(h1Text);
-             }
-         } else if (document.title) {
-             // Ou do título do documento
-             categoryData.contentNames.push(document.title.split('|')[0].trim());
-             
-             // Remover prefixos comuns: "Coleção: ", "Categoria: ", etc.
-             if (categoryData.contentNames[0].includes('Coleção:')) {
-               categoryData.contentNames[0] = categoryData.contentNames[0].split('Coleção:')[1].trim();
-             } else if (categoryData.contentNames[0].includes('Coleção')) {
-               categoryData.contentNames[0] = categoryData.contentNames[0].split('Coleção')[1].trim();
-             }
-         }
-         
-         // Se estamos na página específica da loja Soleterra, verificar se é uma das coleções conhecidas
-         if (hostname.includes('soleterra.com.br')) {
-             // Coleções conhecidas da Soleterra
-             const knownCollections = ['Palha', 'Crochê', 'Couro', 'Festa'];
-             
-             // Verificar se o último segmento do path corresponde a uma coleção conhecida
-             if (knownCollections.includes(lastSegment)) {
-               categoryData.contentNames.push(lastSegment);
-             }
-             
-             // Verificar se há um H1 ou título que contenha uma das coleções conhecidas
-             for (const collection of knownCollections) {
-               if (document.body.innerHTML.includes(`Coleção: ${collection}`)) {
-                 categoryData.contentNames.push(collection);
-                 break;
-               }
-             }
-         }
-         
-         // 6. Tentar obter categoria a partir do último caminho da URL referenciadora
-         if (categoryData.contentCategory.length === 0 && document.referrer) {
-             try {
-               const referrerUrl = new URL(document.referrer);
-               const referrerPath = referrerUrl.pathname;
-               if (referrerPath.includes('/collection') || referrerPath.includes('/categoria') || referrerPath.includes('/collections')) {
-                 const referrerParts = referrerPath.split('/');
-                 const lastReferrerSegment = referrerParts[referrerParts.length - 1];
-                 if (lastReferrerSegment && !['collection', 'collections', 'categoria'].includes(lastReferrerSegment)) {
-                   categoryData.contentCategory.push(lastReferrerSegment
-                     .replace(/-/g, ' ')
-                     .replace(/_/g, ' ')
-                     .toLowerCase());
-                 }
-               }
-             } catch (e) {
-               console.error('Erro ao processar URL de referência:', e);
-             }
-         }
-         
-         // 7. Solução específica para site Soleterra
-         if (hostname.includes('soleterra.com.br')) {
-             // Coleções conhecidas da Soleterra
-             const knownCollections = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
-             
-             // Verificar se o produto está em uma categoria conhecida
-             if (categoryData.contentNames.length > 0) {
-               categoryData.contentNames.forEach(title => {
-                 const titleLower = title.toLowerCase();
-                 for (const collection of knownCollections) {
-                   if (titleLower.includes(collection)) {
-                     categoryData.contentCategory.push(collection);
-                     break;
-                   }
-                 }
-               });
-             }
-             
-             // Tentar extrair o ID do produto usando a convenção da Soleterra
-             if (!categoryData.content_ids.length && lastSegment) {
-               // Verificar se há algum número no final do último segmento
-               const matches = lastSegment.match(/\d+/g);
-               if (matches && matches.length > 0) {
-                 categoryData.content_ids.push(matches[matches.length - 1]);
-               }
-             }
-             
-             // Verificações específicas para o site Soleterra
-             if (!categoryData.content_ids.length) {
-               // Método 1: Procurar botões de adição ao carrinho que contêm IDs de produtos
-               const addToCartButtons = document.querySelectorAll('button[name="add"], [data-product-id], .add-to-cart, [data-button-action="add-to-cart"]');
-               for (const button of addToCartButtons) {
-                 const btnProductId = button.getAttribute('data-product-id') || button.getAttribute('data-id') || button.getAttribute('id');
-                 if (btnProductId && /^\d+$/.test(btnProductId)) {
-                   categoryData.content_ids.push(btnProductId);
-                   break;
-                 }
-               }
-               
-               // Método 2: Procurar nos formulários de produto
-               const productForms = document.querySelectorAll('form[action*="/cart/add"]');
-               for (const form of productForms) {
-                 const idInput = form.querySelector('input[name="id"]');
-                 if (idInput && idInput.value) {
-                   categoryData.content_ids.push(idInput.value);
-                   break;
-                 }
-               }
-               
-               // Método 3: Procurar no HTML completo da página (último recurso)
-               if (!categoryData.content_ids.length) {
-                 const bodyHTML = document.body.innerHTML;
-                 // Procurar padrões como product_id=12345 ou variant_id=12345
-                 const idMatches = bodyHTML.match(/product_id[=:"']+(\d+)/i) || 
-                                  bodyHTML.match(/variant_id[=:"']+(\d+)/i) ||
-                                  bodyHTML.match(/productId[=:"']+(\d+)/i) ||
-                                  bodyHTML.match(/variantId[=:"']+(\d+)/i);
-                 
-                 if (idMatches && idMatches[1]) {
-                   categoryData.content_ids.push(idMatches[1]);
-                 }
-               }
-             }
-         }
-         
-         // Se ainda não temos um ID de produto, tentar extrair qualquer número da URL como último recurso
-         if (!categoryData.content_ids.length && window.location.pathname.includes('/products/')) {
-           const anyNumberMatch = window.location.pathname.match(/\d+/);
-           if (anyNumberMatch) {
-             categoryData.content_ids.push(anyNumberMatch[0]);
-           }
-         }
-         
-         // Se ainda não encontramos o ID, verificar um padrão específico na URL do Shopify
-         if (!categoryData.content_ids.length && window.location.pathname.includes('/products/')) {
-           // Extrair nome do produto da URL e usá-lo para buscar no HTML
-           const productSlug = window.location.pathname.split('/products/')[1].split('?')[0];
-           const cleanSlug = productSlug.replace(/[^\w\s]/gi, '');
-           
-           // Buscar no HTML da página por correspondências com o slug
-           const bodyHTML = document.body.innerHTML;
-           const slugMatches = bodyHTML.match(new RegExp(`product[_\\s\\-]*id[^\\d]*(\\d+)[^\\d]*${cleanSlug}`, 'i')) ||
-                              bodyHTML.match(new RegExp(`${cleanSlug}[^\\d]*(\\d+)`, 'i'));
-                               
-           if (slugMatches && slugMatches[1]) {
-             categoryData.content_ids.push(slugMatches[1]);
-           }
-         }
-         
-         console.log('Product ID detectado:', categoryData.content_ids);
-         console.log('Categorias detectadas:', categoryData.contentCategory);
-         
-         return {
-           type: 'category',
-           eventName: 'ViewCategory', // Nome Padrão FB
-           data: categoryData
-         };
-    }
-    
-    if (path.includes('/search') || path.includes('/busca')) {
-      const searchQuery = new URLSearchParams(window.location.search).get('q') || '';
-      console.log('[Meta Tracking] Detectado: Resultados de Pesquisa (Search)');
-       // TODO: Idealmente, extrair content_ids e contents dos resultados, similar a ViewCategory
+    // Continue com as detecções padrão
+    if (path === '/' || path === '/home' || path === '/index.html' || path.includes('index')) {
       return {
-        type: 'search_results',
-        eventName: 'Search', // Nome Padrão FB
+        type: 'home',
+        eventName: 'ViewHome',
         data: {
-          search_string: searchQuery, // Parâmetro padrão
-          contentType: 'search_results',
-          contentNames: [searchQuery]
+          contentName: 'Home Page',
+          contentType: 'home_page'
         }
       };
     }
     
-    // 7. Página Home
-    if (path === '/' || path === '' || path === '/home' || path === '/index.html') {
-      console.log('[Meta Tracking] Detectado: Home Page (Usando PageView)');
-      // Para a Home Page, o evento PageView já é suficiente.
-      // Podemos adicionar parâmetros customizados específicos se necessário,
-      // mas geralmente não se envia um evento separado como 'ViewHome'.
-      // Retornar null ou um tipo 'home' para que 'init' saiba que é a home, mas sem disparar evento extra.
-      // O PageView já foi enviado pelo initFacebookPixel.
+    if (path.includes('/product') || path.includes('/produto')) {
+      // Extrair informações do produto
+      let productId = null;
+      let productTitle = '';
+      let productCategories = [];
+      
+      // 1. Tentar extrair ID do produto da URL
+      // URLs típicas: /products/product-name-123456789
+      const pathParts = path.split('/');
+      const lastSegment = pathParts[pathParts.length - 1];
+      const idMatch = lastSegment.match(/\d+$/);
+      if (idMatch) {
+        productId = idMatch[0];
+      }
+      
+      // 2. Tentar obter o ID do produto via metatags ou JSON-LD
+      const jsonLDElements = document.querySelectorAll('script[type="application/ld+json"]');
+      jsonLDElements.forEach(script => {
+        try {
+          const data = JSON.parse(script.textContent);
+          
+          // Para JSON-LD do tipo Product
+          if (data['@type'] === 'Product' || (Array.isArray(data) && data.some(item => item['@type'] === 'Product'))) {
+            const product = data['@type'] === 'Product' ? data : data.find(item => item['@type'] === 'Product');
+            
+            if (product) {
+              // Obter ID do produto
+              if (product.productID) {
+                productId = product.productID;
+              } else if (product.sku) {
+                productId = product.sku;
+              } else if (product.offers && product.offers.sku) {
+                productId = product.offers.sku;
+              } else if (product.offers && Array.isArray(product.offers) && product.offers[0] && product.offers[0].sku) {
+                productId = product.offers[0].sku;
+              } else if (product.mpn) {
+                productId = product.mpn;
+              } else if (product.gtin13) {
+                productId = product.gtin13;
+              } else if (product.gtin14) {
+                productId = product.gtin14;
+              } else if (product.gtin8) {
+                productId = product.gtin8;
+              } else if (product.gtin) {
+                productId = product.gtin;
+              }
+              
+              // Obter título do produto
+              if (product.name) {
+                productTitle = product.name;
+              }
+              
+              // Obter categorias do produto
+              if (product.category) {
+                if (typeof product.category === 'string') {
+                  productCategories = product.category.split('/').filter(c => c.trim() !== '');
+                } else if (Array.isArray(product.category)) {
+                  productCategories = product.category;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao processar JSON-LD:', e);
+        }
+      });
+      
+      // 3. Tentar obter ID e categoria de elementos DOM comuns
+      if (!productId) {
+        // Tentar extrair do URL para Shopify (formato típico: /products/nome-do-produto?variant=123456789)
+        const variantParam = new URLSearchParams(window.location.search).get('variant');
+        if (variantParam) {
+          productId = variantParam;
+        }
+        
+        // Procurar por input hidden ou data attributes com ID do produto
+        const idElement = document.querySelector('input[name="product_id"], [data-product-id], [id*="ProductJson-"], [data-section-id], [data-variant-id], form[action*="/cart/add"] [name="id"]');
+        if (idElement) {
+          productId = idElement.value || idElement.getAttribute('data-product-id') || idElement.getAttribute('data-variant-id') || idElement.getAttribute('data-section-id');
+        }
+        
+        // Procurar em meta tags específicas
+        const metaTags = document.querySelectorAll('meta');
+        metaTags.forEach(tag => {
+          const property = tag.getAttribute('property') || tag.getAttribute('name');
+          if (property === 'product:id' || property === 'product:retailer_item_id' || property === 'og:product:id') {
+            productId = tag.getAttribute('content');
+          }
+        });
+        
+        // Tentar encontrar scripts Shopify com dados do produto
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+          const content = script.textContent || '';
+          if (content.includes('var meta') && content.includes('product')) {
+            try {
+              // Extrair ID do produto de scripts Shopify
+              const idMatch = content.match(/\"id\":(\d+)/);
+              if (idMatch && idMatch[1]) {
+                productId = idMatch[1];
+                break;
+              }
+            } catch (e) { /* Ignorar erros */ }
+          }
+          
+          if (content.includes('product_') && content.includes('variant_')) {
+            try {
+              // Extrair ID do produto de scripts de produtos
+              const idMatch = content.match(/product_(\d+)/);
+              if (idMatch && idMatch[1]) {
+                productId = idMatch[1];
+                break;
+              }
+            } catch (e) { /* Ignorar erros */ }
+          }
+        }
+      }
+      
+      // 4. Tentar obter título do produto do H1 ou título da página
+      if (!productTitle) {
+        const h1 = document.querySelector('h1');
+        if (h1) {
+          productTitle = h1.textContent.trim();
+        } else if (document.title) {
+          productTitle = document.title.split('|')[0].trim();
+        }
+      }
+      
+      // 5. Tentar obter categorias do breadcrumb
+      if (productCategories.length === 0) {
+        const breadcrumbs = document.querySelectorAll('.breadcrumb a, .breadcrumbs a, .breadcrumb-item a, nav[aria-label="breadcrumb"] a');
+        if (breadcrumbs.length > 0) {
+          // Geralmente o último item é o produto atual, então pegamos os anteriores
+          for (let i = 0; i < breadcrumbs.length - 1; i++) {
+            const category = breadcrumbs[i].textContent.trim();
+            if (category && !['Home', 'Início', 'Principal'].includes(category)) {
+              productCategories.push(category.toLowerCase());
+            }
+          }
+        }
+      }
+      
+      // 6. Tentar obter categoria a partir do último caminho da URL referenciadora
+      if (productCategories.length === 0 && document.referrer) {
+        try {
+          const referrerUrl = new URL(document.referrer);
+          const referrerPath = referrerUrl.pathname;
+          if (referrerPath.includes('/collection') || referrerPath.includes('/categoria') || referrerPath.includes('/collections')) {
+            const referrerParts = referrerPath.split('/');
+            const lastReferrerSegment = referrerParts[referrerParts.length - 1];
+            if (lastReferrerSegment && !['collection', 'collections', 'categoria'].includes(lastReferrerSegment)) {
+              const categoryName = lastReferrerSegment
+                .replace(/-/g, ' ')
+                .replace(/_/g, ' ')
+                .toLowerCase();
+              productCategories.push(categoryName);
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao processar URL de referência:', e);
+        }
+      }
+      
+      // 7. Solução específica para site Soleterra
+      if (hostname.includes('soleterra.com.br')) {
+        // Coleções conhecidas da Soleterra
+        const knownCollections = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+        
+        // Verificar se o produto está em uma categoria conhecida
+        if (productTitle) {
+          const productTitleLower = productTitle.toLowerCase();
+          for (const collection of knownCollections) {
+            if (productTitleLower.includes(collection)) {
+              // Adicionar a categoria, mas apenas se ainda não existir
+              if (!productCategories.includes(collection)) {
+                productCategories.push(collection);
+              }
+              break;
+            }
+          }
+        }
+        
+        // Tentar extrair o ID do produto usando a convenção da Soleterra
+        if (!productId && lastSegment) {
+          // Verificar se há algum número no final do último segmento
+          const matches = lastSegment.match(/\d+/g);
+          if (matches && matches.length > 0) {
+            productId = matches[matches.length - 1];
+          }
+        }
+        
+        // Verificações específicas para o site Soleterra
+        if (!productId) {
+          // Método 1: Procurar botões de adição ao carrinho que contêm IDs de produtos
+          const addToCartButtons = document.querySelectorAll('button[name="add"], [data-product-id], .add-to-cart, [data-button-action="add-to-cart"]');
+          for (const button of addToCartButtons) {
+            const btnProductId = button.getAttribute('data-product-id') || button.getAttribute('data-id') || button.getAttribute('id');
+            if (btnProductId && /^\d+$/.test(btnProductId)) {
+              productId = btnProductId;
+              break;
+            }
+          }
+          
+          // Método 2: Procurar nos formulários de produto
+          const productForms = document.querySelectorAll('form[action*="/cart/add"]');
+          for (const form of productForms) {
+            const idInput = form.querySelector('input[name="id"]');
+            if (idInput && idInput.value) {
+              productId = idInput.value;
+              break;
+            }
+          }
+          
+          // Método 3: Procurar no HTML completo da página (último recurso)
+          if (!productId) {
+            const bodyHTML = document.body.innerHTML;
+            // Procurar padrões como product_id=12345 ou variant_id=12345
+            const idMatches = bodyHTML.match(/product_id[=:"']+(\d+)/i) || 
+                             bodyHTML.match(/variant_id[=:"']+(\d+)/i) ||
+                             bodyHTML.match(/productId[=:"']+(\d+)/i) ||
+                             bodyHTML.match(/variantId[=:"']+(\d+)/i);
+            
+            if (idMatches && idMatches[1]) {
+              productId = idMatches[1];
+            }
+          }
+        }
+      }
+      
+      // Se ainda não temos um ID de produto, tentar extrair qualquer número da URL como último recurso
+      if (!productId && window.location.pathname.includes('/products/')) {
+        const anyNumberMatch = window.location.pathname.match(/\d+/);
+        if (anyNumberMatch) {
+          productId = anyNumberMatch[0];
+        }
+      }
+      
+      // Se ainda não encontramos o ID, verificar um padrão específico na URL do Shopify
+      if (!productId && window.location.pathname.includes('/products/')) {
+        // Extrair nome do produto da URL e usá-lo para buscar no HTML
+        const productSlug = window.location.pathname.split('/products/')[1].split('?')[0];
+        const cleanSlug = productSlug.replace(/[^\w\s]/gi, '');
+        
+        // Buscar no HTML da página por correspondências com o slug
+        const bodyHTML = document.body.innerHTML;
+        const slugMatches = bodyHTML.match(new RegExp(`product[_\\s\\-]*id[^\\d]*(\\d+)[^\\d]*${cleanSlug}`, 'i')) ||
+                           bodyHTML.match(new RegExp(`${cleanSlug}[^\\d]*(\\d+)`, 'i'));
+                           
+        if (slugMatches && slugMatches[1]) {
+          productId = slugMatches[1];
+        }
+      }
+      
+      console.log('Product ID detectado:', productId);
+      console.log('Categorias detectadas:', productCategories);
+      
       return {
-          type: 'home',
-          eventName: null, // Não dispara evento adicional além do PageView
-          data: {}
+        type: 'product',
+        eventName: 'ViewContent',
+        data: {
+          contentName: productTitle || document.title.split('|')[0].trim(),
+          contentType: 'product',
+          contentCategory: productCategories,
+          contentIds: productId ? [productId] : null,
+          value: extractPrice() || 0
+        }
       };
     }
     
-    console.log('[Meta Tracking] Detectado: Página Genérica (Usando PageView)');
-     // O PageView já foi enviado pelo initFacebookPixel.
+    if (path.includes('/cart') || path.includes('/carrinho')) {
+      // Extrair dados do carrinho
+      let cartItems = [];
+      let cartValue = 0;
+      let numItems = 0;
+      let cartCategories = [];
+      
+      // Função para extrair dados do carrinho
+      function extractCartData() {
+        try {
+          // 1. Tentar obter dados do carrinho de objetos JSON em scripts
+          const scripts = document.querySelectorAll('script');
+          for (const script of scripts) {
+            const content = script.textContent || '';
+            
+            // 1.1 Verificar scripts do Shopify que contêm dados do carrinho
+            if (content.includes('cart') && (content.includes('items') || content.includes('line_items'))) {
+              try {
+                // Procurar padrões específicos do Shopify
+                // window.ShopifyAnalytics.meta.product
+                if (content.includes('ShopifyAnalytics')) {
+                  // Tentar extrair produtos pelo padrão ShopifyAnalytics
+                  const shopifyMetaMatch = content.match(/ShopifyAnalytics[\s\S]*?meta\s*=\s*(\{[\s\S]*?\});/);
+                  if (shopifyMetaMatch && shopifyMetaMatch[1]) {
+                    try {
+                      const shopifyMeta = JSON.parse(shopifyMetaMatch[1]);
+                      if (shopifyMeta.cart && shopifyMeta.cart.items && Array.isArray(shopifyMeta.cart.items)) {
+                        console.log('Encontrado dados do carrinho em ShopifyAnalytics');
+                        return processCartItems(shopifyMeta.cart.items, true);
+                      }
+                    } catch (e) {
+                      console.error('Erro ao processar meta do ShopifyAnalytics:', e);
+                    }
+                  }
+                }
+                
+                // Tentar encontrar e extrair objeto de carrinho JSON
+                const cartMatch = content.match(/\{[^{]*"items"[\s\S]*?\}/);
+                if (cartMatch) {
+                  const cartData = JSON.parse(cartMatch[0]);
+                  if (cartData.items && Array.isArray(cartData.items)) {
+                    console.log('Encontrado dados do carrinho em script JSON');
+                    return processCartItems(cartData.items, true);
+                  }
+                }
+                
+                // Tentar extrair do objeto window.cart
+                const windowCartMatch = content.match(/window\.cart\s*=\s*(\{[\s\S]*?\});/);
+                if (windowCartMatch) {
+                  const cartData = JSON.parse(windowCartMatch[1]);
+                  if (cartData.items && Array.isArray(cartData.items)) {
+                    console.log('Encontrado dados do carrinho em window.cart');
+                    return processCartItems(cartData.items, true);
+                  }
+                }
+                
+                // Padrão específico para Shopify
+                const shopifyCartMatch = content.match(/window\.__INITIAL_STATE__[\s\S]*?items":\s*(\[[\s\S]*?\])/);
+                if (shopifyCartMatch) {
+                  const cartItems = JSON.parse(shopifyCartMatch[1]);
+                  if (Array.isArray(cartItems) && cartItems.length > 0) {
+                    console.log('Encontrado dados do carrinho em __INITIAL_STATE__');
+                    return processCartItems(cartItems, true);
+                  }
+                }
+              } catch (e) {
+                console.error('Erro ao processar script de carrinho:', e);
+              }
+            }
+          }
+          
+          // 2. Verificar se há objetos Shopify globais disponíveis
+          if (window.Shopify && window.Shopify.theme && window.Shopify.theme.cart) {
+            if (window.Shopify.theme.cart.items && Array.isArray(window.Shopify.theme.cart.items)) {
+              console.log('Encontrado dados do carrinho em window.Shopify.theme.cart');
+              return processCartItems(window.Shopify.theme.cart.items, true);
+            }
+          }
+          
+          // 3. Se ainda não encontrou, procurar elementos DOM de carrinho
+          const cartItemElements = document.querySelectorAll('.cart-item, .cart__item, [data-cart-item], [id*="CartItem"], .line-item, [data-line-item]');
+          if (cartItemElements.length > 0) {
+            const items = [];
+            cartItemElements.forEach(item => {
+              try {
+                const itemId = item.getAttribute('data-product-id') || 
+                              item.getAttribute('data-variant-id') || 
+                              item.getAttribute('data-item-id') || 
+                              item.getAttribute('id')?.match(/\d+/)?.[0];
+                
+                // Tentar obter o título do produto              
+                const titleEl = item.querySelector('.cart-item__name, .cart-item__title, .product-title, [data-cart-item-title], .item-title');
+                const productTitle = titleEl ? titleEl.textContent.trim() : '';
+                
+                const quantityEl = item.querySelector('[data-quantity], [name*="quantity"], .quantity-selector, .cart-item__quantity');
+                const quantity = quantityEl ? 
+                  parseInt(quantityEl.value || quantityEl.textContent.trim()) : 1;
+                
+                const priceEl = item.querySelector('.price, [data-price], .cart-item__price, .product-price');
+                let price = 0;
+                if (priceEl) {
+                  const priceText = priceEl.textContent.trim().replace(/[^\d.,]/g, '').replace(',', '.');
+                  price = parseFloat(priceText);
+                }
+                
+                if (itemId) {
+                  items.push({
+                    id: itemId,
+                    quantity: quantity || 1,
+                    price: price || 0,
+                    title: productTitle // Adicionar título do produto
+                  });
+                }
+              } catch (e) {
+                console.error('Erro ao processar item do carrinho:', e);
+              }
+            });
+            
+            if (items.length > 0) {
+              console.log('Encontrado dados do carrinho nos elementos DOM');
+              return processCartItems(items);
+            }
+          }
+          
+          // 4. Se ainda não encontrou, tentar obter do HTML total da página
+          const bodyHTML = document.body.innerHTML;
+          
+          // 4.1 Tentar extrair JSON do carrinho incorporado na página
+          // Procurar por padrões como {"cart": {"items": [...]}}
+          const jsonMatches = bodyHTML.match(/\{[\s\S]*?"cart"[\s\S]*?"items"[\s\S]*?\}/g);
+          if (jsonMatches && jsonMatches.length > 0) {
+            for (const match of jsonMatches) {
+              try {
+                const cartData = JSON.parse(match);
+                if (cartData.cart && cartData.cart.items && Array.isArray(cartData.cart.items)) {
+                  console.log('Encontrado dados do carrinho em JSON embutido na página');
+                  return processCartItems(cartData.cart.items, true);
+                }
+              } catch (e) {
+                // Ignorar erros de parse
+              }
+            }
+          }
+          
+          // 4.2 Procurar padrões comuns que indicam valores de carrinho
+          // Para Shopify e outros sistemas de carrinho populares
+          const totalMatch = bodyHTML.match(/total[\s:"']*R?\$?\s*([\d.,]+)/i) || 
+                            bodyHTML.match(/cart[\s-]*total[\s:"']*R?\$?\s*([\d.,]+)/i) ||
+                            bodyHTML.match(/subtotal[\s:"']*R?\$?\s*([\d.,]+)/i);
+          
+          if (totalMatch && totalMatch[1]) {
+            cartValue = parseFloat(totalMatch[1].replace(',', '.'));
+          }
+          
+          // 4.3 Procurar padrões que indiquem quantidades
+          const itemCountMatch = bodyHTML.match(/(\d+)\s*ite(?:m|ns)/i) || 
+                               bodyHTML.match(/cart[\s-]*count[^\d]*(\d+)/i);
+          
+          if (itemCountMatch && itemCountMatch[1]) {
+            numItems = parseInt(itemCountMatch[1]);
+          }
+          
+          // 4.4 Procurar IDs de produtos no HTML
+          const productDataMatches = [];
+          
+          // Procurar por IDs e títulos de produtos
+          const productIdRegexes = [
+            /"product_id":\s*"?(\d+)"?/g,
+            /"variant_id":\s*"?(\d+)"?/g,
+            /"product":\s*\{"id":\s*"?(\d+)"?,\s*"title":\s*"([^"]+)"/g,
+            /"handle":\s*"([^"]+)"[\s\S]*?"id":\s*(\d+)/g
+          ];
+          
+          for (const regex of productIdRegexes) {
+            let match;
+            while ((match = regex.exec(bodyHTML)) !== null) {
+              let id, title;
+              
+              if (match.length >= 3) {
+                // Se temos ID e título
+                id = match[2] || match[1];
+                title = match[1] || '';
+              } else {
+                // Se temos apenas ID
+                id = match[1];
+                title = '';
+              }
+              
+              // Verificar se o ID já existe na lista
+              const existingIndex = productDataMatches.findIndex(item => item.id === id);
+              if (existingIndex === -1) {
+                productDataMatches.push({ id, title, quantity: 1 });
+              }
+            }
+          }
+          
+          if (productDataMatches.length > 0) {
+            cartItems = productDataMatches;
+          } else {
+            // 4.5 Como último recurso, procurar IDs numéricos no URL
+            const productIdMatches = Array.from(new Set(
+              (bodyHTML.match(/product_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/variant_id[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/productId[=:"']+(\d+)/ig) || [])
+                .concat(bodyHTML.match(/item_id[=:"']+(\d+)/ig) || [])
+            ));
+            
+            if (productIdMatches.length > 0) {
+              const uniqueIds = new Set();
+              productIdMatches.forEach(match => {
+                const id = match.match(/\d+/)[0];
+                uniqueIds.add(id);
+              });
+              
+              cartItems = Array.from(uniqueIds).map(id => ({ id, quantity: 1 }));
+            }
+          }
+          
+          // 4.6 Verificar categorias frequentes no HTML
+          const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa'];
+          knownCategories.forEach(category => {
+            if (bodyHTML.toLowerCase().includes(category)) {
+              cartCategories.push(category);
+            }
+          });
+          
+          return {
+            items: cartItems,
+            total: cartValue,
+            quantity: numItems || cartItems.length,
+            categories: cartCategories.length > 0 ? cartCategories : ['bolsa'], // Categoria padrão melhorada
+            itemNames: cartItems.map(item => item.title).filter(title => title)
+          };
+        } catch (e) {
+          console.error('Erro ao extrair dados do carrinho:', e);
+          return { items: [], total: 0, quantity: 0, categories: ['cart'], itemNames: [] };
+        }
+      }
+      
+      // Função para processar os itens do carrinho
+      function processCartItems(items, isShopify = false) {
+        try {
+          const processedItems = [];
+          let total = 0;
+          let quantity = 0;
+          const categories = new Set();
+          const itemNames = [];
+          
+          items.forEach(item => {
+            // Extrair ID no formato correto do Shopify
+            let id = '';
+            if (isShopify) {
+              // Se for do Shopify, priorizar product_id ou variant_id
+              id = item.product_id || item.variant_id || item.id || '';
+              // Se ainda não tiver ID e tiver handle, tentar extrair ID do handle
+              if (!id && item.handle && item.handle.match(/\d+$/)) {
+                id = item.handle.match(/\d+$/)[0];
+              }
+            } else {
+              id = item.id || item.product_id || item.variant_id || item.sku || '';
+            }
+            
+            // Extrair quantidade
+            const qty = item.quantity || 1;
+            
+            // Extrair preço
+            let price = item.price || item.line_price || 0;
+            
+            // Se o preço for em centavos (comum em APIs), converter para reais
+            if (price > 1000 && !item.price_includes_taxes) {
+              price = price / 100;
+            }
+            
+            // Extrair título do produto
+            let productTitle = '';
+            if (item.title || item.product_title) {
+              productTitle = item.title || item.product_title;
+            } else if (item.product_title || item.name) {
+              productTitle = item.product_title || item.name;
+            }
+            
+            // Adicionar o título à lista se existir
+            if (productTitle) {
+              itemNames.push(productTitle);
+            }
+            
+            // Extrair categoria do produto, se disponível
+            if (item.product_type) {
+              categories.add(item.product_type.toLowerCase());
+            }
+            
+            if (item.categories || item.category) {
+              const cats = item.categories || item.category;
+              if (Array.isArray(cats)) {
+                cats.forEach(c => categories.add(c.toLowerCase()));
+              } else if (typeof cats === 'string') {
+                categories.add(cats.toLowerCase());
+              }
+            }
+            
+            // Se o título do produto contiver uma categoria conhecida, adicioná-la
+            if (productTitle) {
+              const titleLower = productTitle.toLowerCase();
+              const knownCategories = ['palha', 'croche', 'crochê', 'couro', 'festa', 'bolsa', 'bag', 'cesto'];
+              for (const cat of knownCategories) {
+                if (titleLower.includes(cat)) {
+                  categories.add(cat === 'bag' ? 'bolsa' : cat);
+                  break;
+                }
+              }
+            }
+            
+            if (id) {
+              processedItems.push({
+                id,
+                quantity: qty,
+                item_price: price / qty
+              });
+              
+              total += price;
+              quantity += qty;
+            }
+          });
+          
+          // Determinar a categoria mais apropriada
+          // Preferência: bolsa > palha > crochê > couro > festa > cart
+          let primaryCategory = 'bolsa'; // Usar 'bolsa' como padrão para a Soleterra
+          if (categories.size > 0) {
+            const categoryPriority = ['bolsa', 'palha', 'croche', 'crochê', 'couro', 'festa', 'cart'];
+            for (const cat of categoryPriority) {
+              if (categories.has(cat)) {
+                primaryCategory = cat;
+                break;
+              }
+            }
+          }
+          
+          return {
+            items: processedItems,
+            total,
+            quantity,
+            categories: [primaryCategory], // Usar apenas a categoria principal
+            itemNames: itemNames.length > 0 ? itemNames : null
+          };
+        } catch (e) {
+          console.error('Erro ao processar itens do carrinho:', e);
+          return {
+            items: [],
+            total: 0,
+            quantity: 0,
+            categories: ['bolsa'], // Manter bolsa como padrão
+            itemNames: []
+          };
+        }
+      }
+      
+      // Extrair dados do carrinho
+      const cartData = extractCartData();
+      console.log('Dados do carrinho detectados:', cartData);
+      
+      // Verificar se o carrinho está vazio
+      if (cartData.items.length === 0 && cartData.total === 0) {
+        // Carrinho vazio
+      return {
+        type: 'cart', 
+        eventName: 'ViewCart',
+        data: {
+            contentName: 'Carrinho Vazio',
+            contentType: 'cart',
+            contentCategory: ['cart'],
+            value: 0,
+            numItems: 0
+          }
+        };
+      }
+      
+      // Criar array de content_ids a partir dos items
+      const contentIds = cartData.items.map(item => item.id);
+      
+      return {
+        type: 'cart',
+        eventName: 'ViewCart',
+        data: {
+          contentName: cartData.itemNames || 'Shopping Cart',
+          contentType: 'cart',
+          contentCategory: cartData.categories,
+          contentIds: contentIds,
+          contents: cartData.items,
+          value: cartData.total,
+          numItems: cartData.quantity,
+          currency: 'BRL'
+        }
+      };
+    }
+    
+    if (path.includes('/collection') || path.includes('/colecao') || path.includes('/categoria')) {
+      // Extrair o nome da coleção da URL
+      let categoryName = 'category';
+      
+      // Tentar obter o nome da coleção da URL
+      const pathParts = path.split('/');
+      const lastSegment = pathParts[pathParts.length - 1];
+      
+      if (lastSegment && lastSegment !== 'collection' && lastSegment !== 'colecao' && lastSegment !== 'categoria') {
+        // Converter formato da URL para um nome legível (ex: "mens-shoes" -> "Mens Shoes")
+        categoryName = lastSegment
+          .replace(/-/g, ' ')
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+      } else if (document.querySelector('h1')) {
+        // Se não conseguir extrair da URL, tentar pegar do título da página
+        const h1Text = document.querySelector('h1').textContent.trim();
+        
+        // Padrão comum em lojas: "Coleção: Nome da Coleção"
+        if (h1Text.includes('Coleção:')) {
+          categoryName = h1Text.split('Coleção:')[1].trim();
+        } else if (h1Text.includes('Coleção')) {
+          categoryName = h1Text.split('Coleção')[1].trim();
+        } else if (h1Text.includes(':')) {
+          categoryName = h1Text.split(':')[1].trim();
+        } else {
+          categoryName = h1Text;
+        }
+      } else if (document.title) {
+        // Ou do título do documento
+        categoryName = document.title.split('|')[0].trim();
+        
+        // Remover prefixos comuns: "Coleção: ", "Categoria: ", etc.
+        if (categoryName.includes('Coleção:')) {
+          categoryName = categoryName.split('Coleção:')[1].trim();
+        } else if (categoryName.includes('Coleção')) {
+          categoryName = categoryName.split('Coleção')[1].trim();
+        }
+      }
+      
+      // Se estamos na página específica da loja Soleterra, verificar se é uma das coleções conhecidas
+      if (hostname.includes('soleterra.com.br')) {
+        // Coleções conhecidas da Soleterra
+        const knownCollections = ['Palha', 'Crochê', 'Couro', 'Festa'];
+        
+        // Verificar se o último segmento do path corresponde a uma coleção conhecida
+        if (knownCollections.includes(lastSegment)) {
+          categoryName = lastSegment;
+        }
+        
+        // Verificar se há um H1 ou título que contenha uma das coleções conhecidas
+        for (const collection of knownCollections) {
+          if (document.body.innerHTML.includes(`Coleção: ${collection}`)) {
+            categoryName = collection;
+            break;
+          }
+        }
+      }
+      
+      return {
+        type: 'collection',
+        eventName: 'ViewCategory',
+        data: {
+          contentName: 'Category Page',
+          contentType: 'category',
+          contentCategory: categoryName
+        }
+      };
+    }
+    
+    if (path.includes('/search') || path.includes('/busca')) {
+      const searchQuery = new URLSearchParams(window.location.search).get('q') || '';
+      return {
+        type: 'search',
+        eventName: 'Pesquisar',
+        data: {
+          searchString: searchQuery,
+          contentType: 'search'
+        }
+      };
+    }
+    
+    // Tipo de página desconhecido
     return {
-        type: 'generic',
-        eventName: null, // Não dispara evento adicional
-        data: {}
+      type: 'other',
+      eventName: 'PageView',
+      data: {
+        contentName: document.title,
+        contentType: 'other'
+      }
     };
   }
 
@@ -1206,33 +1587,104 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    console.log('[Meta Tracking] Inicializando script v1.5...');
-    initFacebookPixel(); // Carrega FBQ, envia init e PageView para backend
+    // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
+    initFacebookPixel();
+    
+    // Detecta o tipo de página
+    const pageInfo = detectPageType();
+    if (pageInfo && pageInfo.eventName !== 'PageView') {
+      // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
+      // pois o PageView já foi enviado na inicialização do pixel
+      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
+      setTimeout(() => {
+        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
+        sendEvent(pageInfo.eventName, pageInfo.data); 
+      }, 750); // Atraso de 750 milissegundos
+    } else if (!pageInfo) {
+      // Se nenhum tipo específico for detectado, não enviamos PageView novamente como fallback
+      // pois o PageView já foi enviado na inicialização do pixel
+      console.log('Nenhum tipo de página específico detectado. PageView já foi enviado na inicialização.');
+    }
 
-    // Detectar tipo de página APÓS o init ter sido enfileirado
-    // Adicionar um pequeno delay para garantir que o DOM esteja mais estável
-    setTimeout(() => {
-         const pageInfo = detectPageType();
-
-         if (pageInfo && pageInfo.eventName) {
-             // Se detectou um evento específico (ViewContent, ViewCategory, InitiateCheckout, etc.)
-             // que não seja o PageView básico, envia esse evento.
-             console.log(`[Meta Tracking] Enviando evento detectado: ${pageInfo.eventName}`);
-             sendEvent(pageInfo.eventName, pageInfo.data);
-         } else if (pageInfo) {
-              // Se pageInfo existe mas eventName é null (ex: home, generic)
-              console.log(`[Meta Tracking] Tipo de página: ${pageInfo.type}. Nenhum evento adicional enviado via sendEvent (PageView tratado no init).`);
-         } else {
-              // Se pageInfo for null/undefined (erro na detecção?)
-              console.warn('[Meta Tracking] pageInfo não retornado por detectPageType.');
-         }
-
-          // Configurar rastreamentos adicionais (scroll, timer, etc.)
-          setupScrollTracking();
-          setupTimerTracking();
-          setupVideoTracking();
-          setupLeadTracking();
-    }, 100); // Atraso de 100 milissegundos
+    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
+    setupScrollTracking();
+    setupTimerTracking();
+    setupVideoTracking();
+    setupLeadTracking();
+    
+    // Função para testar o envio completo de todos os parâmetros
+    function testCompleteEvent() {
+      // Apenas executar em desenvolvimento
+      if (window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')) {
+        console.log('Enviando evento de teste com todos os parâmetros para verificar consistência');
+        
+        // Exemplo de produto completo com todos os parâmetros necessários
+        const completeProductData = {
+          contentName: 'Bolsa de palha trama',
+          contentType: 'product_group',
+          contentCategory: ['bolsa'],
+          contentIds: ['9068696764659'],
+          contents: [{ id: '9068696764659', quantity: 1 }],
+          numItems: 1, 
+          currency: 'BRL',
+          value: 289
+        };
+        
+        // Enviar evento completo para testar
+        sendEvent('ViewContent', completeProductData);
+      }
+    }
+    
+    // Descomentar a linha abaixo apenas para teste
+    // testCompleteEvent();
+    
+    // Verificar se precisamos passar parâmetros para links externos de checkout
+    function addCheckoutParams(e) {
+      const link = e.currentTarget;
+      if (!link) return;
+      
+      const href = link.getAttribute('href');
+      if (!href) return;
+      
+      // Verificar se o link é para o domínio de checkout
+      if (href.includes('seguro.soleterra.com.br') || 
+          href.includes('checkout.') || 
+          href.includes('/checkout')) {
+        
+        // Obter os parâmetros que vamos passar
+        const external_id = getExternalId();
+        const fbp = getCookie('_fbp');
+        const fbc = getCookie('_fbc');
+        
+        // Criar a URL com os parâmetros
+        let newHref = href;
+        const hasParams = href.includes('?');
+        const paramPrefix = hasParams ? '&' : '?';
+        
+        // Adicionar external_id
+        newHref += `${paramPrefix}external_id=${encodeURIComponent(external_id)}`;
+        
+        // Adicionar fbp se disponível
+        if (fbp) {
+          newHref += `&fbp=${encodeURIComponent(fbp)}`;
+        }
+        
+        // Adicionar fbc se disponível
+        if (fbc) {
+          newHref += `&fbc=${encodeURIComponent(fbc)}`;
+        }
+        
+        // Atualizar o link
+        link.setAttribute('href', newHref);
+      }
+    }
+    
+    // Adicionar listener para links de checkout
+    document.querySelectorAll('a[href*="seguro."], a[href*="checkout."], a[href*="/checkout"]')
+      .forEach(link => {
+        link.addEventListener('click', addCheckoutParams);
+        link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
+      });
   }
 
   // Inicializar quando o DOM estiver pronto
@@ -1335,235 +1787,4 @@
       return null;
     }
   }
-
-  // Função para extrair dados do carrinho (Refatorada)
-  // isCheckout: boolean indica se estamos na página de checkout (pode ter estrutura diferente)
-  function extractCartData(isCheckout = false) {
-    console.log(`[Meta Tracking] extractCartData chamado (isCheckout: ${isCheckout})`);
-    let cartData = {
-        content_ids: [],
-        contents: [],
-        value: 0,
-        currency: 'BRL', // Assumir BRL
-        num_items: 0
-    };
-    let totalValue = 0;
-    let itemCount = 0;
-
-    // Tentar encontrar itens do carrinho - AJUSTAR SELETORES PARA SOLETERRA.COM.BR
-    // Seletores comuns para itens no carrinho ou resumo do checkout
-    const itemSelectors = [
-        '.cart-item',        // Genérico
-        '.cart__item',       // Shopify
-        'tr.cart-row',       // Tabelas
-        '.checkout-product-item', // Checkout genérico
-        '.product-table tbody tr', // Checkout VTEX
-        '.order-summary__section__content .product' // Checkout Shopify
-    ];
-    let cartItems = [];
-    try {
-         cartItems = document.querySelectorAll(itemSelectors.join(', '));
-    } catch (e) {
-         console.error("[Meta Tracking] Erro ao buscar itens do carrinho com seletores:", itemSelectors.join(', '), e);
-         return cartData; // Retorna dados vazios se seletores falharem
-    }
-
-
-    console.log(`[Meta Tracking] Itens encontrados (${itemSelectors.join(', ')}): ${cartItems.length}`);
-
-    if (cartItems.length > 0) {
-        cartItems.forEach((item, index) => {
-            let productId = null;
-            let productVariantId = null; // Útil para distinguir variantes
-            let productName = `Item ${index + 1}`; // Fallback name
-            let quantity = 1; // Fallback quantity
-            let itemPrice = 0; // Preço unitário
-
-            // --- Extração de Dados do Item (AJUSTAR SELETORES) ---
-            try {
-                // 1. ID (Produto/Variante)
-                // Priorizar data attributes ou inputs específicos
-                let idElement = item.querySelector('[data-variant-id], input[name*="variant_id"], [data-product-id], input[name*="product_id"], input[name*="id"]');
-                if (idElement) {
-                     productVariantId = idElement.getAttribute('data-variant-id') || (idElement.tagName === 'INPUT' && idElement.name && idElement.name.includes('variant') ? idElement.value : null);
-                     productId = idElement.getAttribute('data-product-id') || (idElement.tagName === 'INPUT' ? idElement.value : null); // Pegar value de input
-                     // Se pegamos um ID de variante no 'productId' e não havia um específico
-                     if (!productVariantId && productId && productId !== item.getAttribute('data-product-id')) {
-                          productVariantId = productId;
-                          // Tentar pegar o ID do produto pai se possível
-                           const productAncestor = item.closest('[data-product-id]');
-                           productId = productAncestor ? productAncestor.getAttribute('data-product-id') : productId;
-                     }
-                     // Usar ID da variante se disponível, senão ID do produto
-                     productId = productVariantId || productId;
-                } else {
-                     // Fallback: Tentar extrair de um link dentro do item
-                     const linkElement = item.querySelector('a[href*="/product"], a[href*="/produto"]');
-                     if (linkElement) {
-                         // Extrai o último segmento numérico da URL como ID (pode ser produto ou variante)
-                         const matches = linkElement.href.match(/[/=](\d+)(\?|$)/);
-                         if (matches && matches[1]) {
-                             productId = matches[1];
-                         } else {
-                              // Fallback se não houver número: usar o handle
-                              productId = linkElement.href.split('/').pop().split('?')[0];
-                         }
-                     }
-                }
-
-                // 2. Nome do Produto
-                const nameElement = item.querySelector('.product-name, .product__description__name, .cart-item__name, .product-title, .item-title, strong'); // Adicionado strong como fallback
-                if (nameElement && nameElement.textContent.trim()) {
-                    productName = nameElement.textContent.trim();
-                } else {
-                     // Fallback: Tentar alt text de imagem
-                     const imgElement = item.querySelector('img[alt]');
-                     if (imgElement && imgElement.alt.trim()) {
-                         productName = imgElement.alt.trim();
-                     }
-                }
-                 // Remover "Show" se aparecer
-                 if (productName.toLowerCase() === 'show') productName = `Item ${index + 1}`;
-
-
-                // 3. Quantidade
-                const quantityElement = item.querySelector('input[name*="quantity"], input[type="number"], .quantity__input, .cart-item__quantity-input, [data-item-quantity]');
-                if (quantityElement) {
-                    quantity = parseInt(quantityElement.value || quantityElement.textContent.trim(), 10) || 1;
-                } else {
-                     // Fallback: Procurar por texto indicando quantidade (ex: "Qty: 2", "2x")
-                     const qtyTextElement = item.querySelector('.product-quantity, .cart-item__quantity, .item-qty');
-                      if (qtyTextElement) {
-                           const qtyMatch = qtyTextElement.textContent.match(/(\d+)/);
-                           if (qtyMatch && qtyMatch[1]) {
-                               quantity = parseInt(qtyMatch[1], 10) || 1;
-                           }
-                      } else {
-                           quantity = 1; // Default se nada for encontrado
-                      }
-                }
-                 // Garantir que quantidade seja no mínimo 1
-                 if (quantity < 1) quantity = 1;
-
-
-                // 4. Preço Unitário
-                 // Tentar do resumo do pedido no checkout primeiro (geralmente mostra preço total do item)
-                 if (isCheckout) {
-                       const linePriceElement = item.querySelector('.product__price .order-summary__emphasis, .product-price, .line-item-total');
-                        if (linePriceElement) {
-                             let priceText = linePriceElement.textContent.trim().replace(/[^0-9,.]/g, '');
-                             if (priceText.includes(',') && priceText.includes('.')) { priceText = priceText.replace('.', '').replace(',', '.'); }
-                             else { priceText = priceText.replace(',', '.'); }
-                             const linePrice = parseFloat(priceText) || 0;
-                             if (linePrice > 0 && quantity > 0) {
-                                 itemPrice = linePrice / quantity; // Calcular preço unitário
-                             }
-                        }
-                 }
-                 // Se não encontrou no checkout ou não está no checkout, ou preço zero, procurar preço unitário
-                 if (itemPrice <= 0) {
-                     const priceElement = item.querySelector('.price, .product-price, .cart-item__price, [data-item-price]');
-                     if (priceElement) {
-                         let priceText = priceElement.getAttribute('data-item-price') || priceElement.textContent.trim().replace(/[^0-9,.]/g, '');
-                         if (priceText.includes(',') && priceText.includes('.')) { priceText = priceText.replace('.', '').replace(',', '.'); }
-                         else { priceText = priceText.replace(',', '.'); }
-                         itemPrice = parseFloat(priceText) || 0;
-                     }
-                 }
-
-                 // Se ainda não tem preço, tentar um seletor mais genérico dentro do item
-                  if (itemPrice <= 0) {
-                     const genericPriceElement = item.querySelector('[class*="price"], [class*="preco"], [class*="valor"]');
-                     if (genericPriceElement) {
-                         let priceText = genericPriceElement.textContent.trim().replace(/[^0-9,.]/g, '');
-                          if (priceText.includes(',') && priceText.includes('.')) { priceText = priceText.replace('.', '').replace(',', '.'); }
-                          else { priceText = priceText.replace(',', '.'); }
-                          // Verificar se é um preço de linha (alto) e dividir pela quantidade
-                          const potentialLinePrice = parseFloat(priceText);
-                          if (potentialLinePrice > 0 && quantity > 0 && potentialLinePrice / quantity > 1) { // Evita dividir centavos
-                               itemPrice = potentialLinePrice / quantity;
-                          } else if (potentialLinePrice > 0) {
-                               itemPrice = potentialLinePrice;
-                          }
-                     }
-                  }
-
-            } catch (error) {
-                console.error(`[Meta Tracking] Erro ao extrair dados do item ${index}:`, error, item);
-                // Continuar para o próximo item mesmo se um falhar
-                return; // Pula para o próximo item no forEach
-            }
-            // --- Fim da Extração ---
-
-            if (productId && quantity > 0) {
-                const currentItemId = String(productId);
-                cartData.content_ids.push(currentItemId);
-                cartData.contents.push({
-                    id: currentItemId,
-                    quantity: quantity,
-                    item_price: parseFloat(itemPrice.toFixed(2)) // Preço unitário formatado
-                });
-                totalValue += itemPrice * quantity;
-                itemCount += quantity;
-
-                 console.log(`[Meta Tracking] Item Carrinho ${index}: ID=${currentItemId}, Nome=${productName}, Qtd=${quantity}, PreçoUnit=${itemPrice.toFixed(2)}`);
-            } else {
-                 console.warn(`[Meta Tracking] Item Carrinho ${index}: Falha ao extrair ID ou Quantidade.`, {itemElement: item});
-            }
-        });
-
-        cartData.value = parseFloat(totalValue.toFixed(2));
-        cartData.num_items = itemCount;
-
-        // Tentar obter a moeda do total do carrinho se possível - AJUSTAR
-        const totalElement = document.querySelector('.cart-total__price, .order-total-price, #total-price, .summary-total');
-        if (totalElement && totalElement.textContent.includes('R$')) {
-            cartData.currency = 'BRL';
-        } else {
-             // Tentar encontrar em algum item
-             const priceTextSample = document.querySelector('.price, .product-price, .cart-item__price');
-              if (priceTextSample && priceTextSample.textContent.includes('R$')) {
-                   cartData.currency = 'BRL';
-              } else {
-                   cartData.currency = 'BRL'; // Default
-              }
-        }
-
-         // Pode ser necessário ajustar o valor total se ele estiver disponível diretamente no DOM
-         if (totalElement) {
-              let totalText = totalElement.textContent.trim().replace(/[^0-9,.]/g, '');
-               if (totalText.includes(',') && totalText.includes('.')) { totalText = totalText.replace('.', '').replace(',', '.'); }
-               else { totalText = totalText.replace(',', '.'); }
-               const domTotalValue = parseFloat(totalText);
-               if (domTotalValue && Math.abs(domTotalValue - cartData.value) > 0.01) { // Comparar com alguma margem
-                   console.warn(`[Meta Tracking] Total calculado (${cartData.value}) diferente do total DOM (${domTotalValue}). Usando total do DOM.`);
-                   cartData.value = domTotalValue;
-               }
-         }
-
-    } else {
-        console.warn('[Meta Tracking] Nenhum item encontrado no carrinho/checkout com os seletores atuais.');
-         // Tentar obter o total diretamente se os itens não foram encontrados
-         const totalElement = document.querySelector('.cart-total__price, .order-total-price, #total-price, .summary-total');
-          if (totalElement) {
-              let totalText = totalElement.textContent.trim().replace(/[^0-9,.]/g, '');
-               if (totalText.includes(',') && totalText.includes('.')) { totalText = totalText.replace('.', '').replace(',', '.'); }
-               else { totalText = totalText.replace(',', '.'); }
-               cartData.value = parseFloat(totalText) || 0;
-                if (totalElement.textContent.includes('R$')) cartData.currency = 'BRL';
-          }
-    }
-
-     // Limpar dados vazios
-     Object.keys(cartData).forEach(key => {
-         if (key === 'value' && cartData[key] === 0 && cartData.num_items > 0) return; // Manter valor 0 se houver itens
-         if (key === 'num_items' && cartData[key] === 0) return; // Manter num_items 0
-         if (cartData[key] == null || cartData[key] === '' || (Array.isArray(cartData[key]) && cartData[key].length === 0)) {
-             delete cartData[key];
-         }
-     });
-
-    console.log('[Meta Tracking] Dados Finais extractCartData:', cartData);
-    return cartData;
-}
 })(); 
