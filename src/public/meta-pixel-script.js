@@ -882,42 +882,34 @@
   // Adiciona listener para o evento AddToCart
   function setupAddToCartListener() {
     console.log('[Meta Tracking Debug] Configurando listener AddToCart...');
-    // Seletores comuns para botões AddToCart (ajustar se necessário para soleterra.com.br)
-    const addToCartSelectors = [
-      'form[action*="/cart/add"] button[type="submit"]',
-      'button[name="add"]',
-      '[data-add-to-cart]',
-      '.add-to-cart-button',
-      'button[id*="AddToCart"]',
-      'button[class*="add_to_cart"]',
-      'button[data-button-action="add-to-cart"]'
-    ];
+    // Seletor específico baseado no HTML fornecido
+    const specificSelector = 'button[name="add"]';
+    const formSelector = 'form[action*="/cart/add"] button[name="add"]'; // Alternativa mais específica
 
-    let buttonFound = false;
-    addToCartSelectors.forEach(selector => {
-      if (buttonFound) return; // Sai se já encontrou e adicionou o listener
-      const button = document.querySelector(selector);
-      if (button) {
-        buttonFound = true;
-        console.log('[Meta Tracking Debug] Botão AddToCart encontrado com seletor:', selector, button);
-        button.addEventListener('click', (event) => {
-          // Pode ser necessário um pequeno delay ou verificar se o clique foi bem-sucedido
-          // antes de disparar o evento, mas por enquanto vamos disparar imediatamente.
-          console.log('[Meta Tracking Debug] Evento de clique AddToCart disparado!');
-          // Obter os dados do produto ATUAL da página
-          const productData = getProductDetails(); 
-          // Remover dados que não são padrão do AddToCart se necessário (como contentCategory)
-          // delete productData.contentCategory; 
-          console.log('[Meta Tracking Debug] Dados do produto para AddToCart:', productData);
-          sendEvent('AddToCart', productData);
-        });
-      } else {
-        console.log('[Meta Tracking Debug] Seletor AddToCart não encontrado:', selector);
-      }
-    });
+    let button = document.querySelector(specificSelector);
+    let usedSelector = specificSelector;
 
-    if (!buttonFound) {
-       console.warn('[Meta Tracking Debug] Nenhum botão AddToCart encontrado com os seletores padrão.');
+    if (!button) {
+        console.log('[Meta Tracking Debug] Seletor AddToCart (button[name="add"]) não encontrado, tentando seletor de formulário...');
+        button = document.querySelector(formSelector);
+        usedSelector = formSelector;
+    }
+
+    if (button) {
+      console.log('[Meta Tracking Debug] Botão AddToCart encontrado com seletor:', usedSelector, button);
+      button.addEventListener('click', (event) => {
+        // Pode ser necessário um pequeno delay ou verificar se o clique foi bem-sucedido
+        // antes de disparar o evento, mas por enquanto vamos disparar imediatamente.
+        console.log('[Meta Tracking Debug] Evento de clique AddToCart disparado!');
+        // Obter os dados do produto ATUAL da página
+        const productData = getProductDetails(); 
+        // Remover dados que não são padrão do AddToCart se necessário (como contentCategory)
+        // delete productData.contentCategory; 
+        console.log('[Meta Tracking Debug] Dados do produto para AddToCart:', productData);
+        sendEvent('AddToCart', productData);
+      });
+    } else {
+      console.warn('[Meta Tracking Debug] Nenhum botão AddToCart encontrado com os seletores específicos (button[name="add"] ou via formulário).');
     }
   }
 
@@ -1196,19 +1188,22 @@
         if (itemElements.length > 0) {
             itemElements.forEach((item, index) => {
                 console.log(`[Meta Tracking Debug] extractCartData - DOM: Processando item ${index + 1}`);
-                const idElement = item.querySelector('[data-variant-id]') || item.querySelector('[data-id]') || item.querySelector('input[name="id"]'); // Adicionado input[name="id"] comum
-                const qtyElement = item.querySelector('.quantity input') || item.querySelector('[data-quantity]') || item.querySelector('input[name*="quantity"]');
-                const priceElement = item.querySelector('.price') || item.querySelector('[data-price]') || item.querySelector('.product-price'); // Adicionado .product-price
-                const currencySymbolElement = document.querySelector('.cart-currency-symbol'); // Exemplo
+                // CORREÇÃO: Usar seletor específico para ID baseado no HTML fornecido
+                const idElement = item.querySelector('input.quantity__input[data-quantity-variant-id]');
+                const qtyElement = item.querySelector('.quantity__input'); // O mesmo input tem a quantidade no 'value'
+                const priceElement = item.querySelector('.price--end'); // Usar price--end que parece conter o preço final do item
+                const currencySymbolElement = document.querySelector('.cart-currency-symbol'); // Tentar encontrar símbolo da moeda (pode não existir)
                 if (currencySymbolElement && currency === 'BRL') currency = currencySymbolElement.textContent.trim() === 'R$' ? 'BRL' : 'USD';
 
-                const id = idElement ? idElement.value || idElement.getAttribute('data-variant-id') || idElement.getAttribute('data-id') : null;
-                const quantity = qtyElement ? parseInt(qtyElement.value || qtyElement.textContent, 10) : 1;
+                // CORREÇÃO: Obter ID do atributo data-quantity-variant-id
+                const id = idElement ? idElement.getAttribute('data-quantity-variant-id') : null;
+                // CORREÇÃO: Obter quantidade do valor do input
+                const quantity = qtyElement ? parseInt(qtyElement.value || qtyElement.getAttribute('data-cart-quantity') || '1', 10) : 1;
                 const priceText = priceElement ? priceElement.textContent : '0';
                 const price = parseFloat(priceText.replace(/[^0-9.,]/g, '').replace('.', '').replace(',', '.')) || 0;
 
-                console.log('[Meta Tracking Debug] extractCartData - DOM Item Data:', { idElement, qtyElement, priceElement });
-                console.log('[Meta Tracking Debug] extractCartData - DOM Item Parsed:', { id, quantity, priceText, price });
+                console.log('[Meta Tracking Debug] extractCartData - DOM Item Data Elements:', { idElement, qtyElement, priceElement });
+                console.log('[Meta Tracking Debug] extractCartData - DOM Item Parsed Values:', { id, quantity, priceText, price });
 
                 if (id) {
                     contentIds.push(String(id));
