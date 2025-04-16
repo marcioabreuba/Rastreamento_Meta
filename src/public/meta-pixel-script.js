@@ -190,13 +190,19 @@
     const country = '__GEO_COUNTRY__';  // Placeholder será substituído por string JSON (ex: "br" ou null)
     // --- FIM DA MODIFICAÇÃO ---
 
-    console.log('[Meta Tracking Debug] Dados PII/Geo coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country });
+    // --- ADICIONADO: Capturar IP injetado ---
+    const clientIpAddress = '__CLIENT_IP__'; // Placeholder será substituído por string JSON (ex: "123.45.67.89" ou null)
+    // --- FIM DA ADIÇÃO ---
+
+    console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress }); // Adicionado IP ao log
 
     // Montar parâmetros para init (sem hash)
     const pixelParams = {
       external_id: externalId, fbp: fbp, fbc: fbc,
-      // Não enviamos IP do cliente aqui, o Meta coleta automaticamente no navegador
+      // --- MODIFICADO: Adicionar client_ip_address e remover comentário antigo ---
+      client_ip_address: clientIpAddress, // Adiciona o IP obtido do backend
       client_user_agent: navigator.userAgent, // User Agent é seguro enviar
+      // --- FIM DA MODIFICAÇÃO ---
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
@@ -616,7 +622,11 @@
     const country = '__GEO_COUNTRY__';  // Placeholder será substituído por string JSON (ex: "br" ou null)
     // --- FIM DA MODIFICAÇÃO ---
 
-    console.log('[Meta Tracking Debug] Dados PII/Geo coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country });
+    // --- ADICIONADO: Capturar IP injetado ---
+    const clientIpAddress = '__CLIENT_IP__'; // Placeholder será substituído por string JSON (ex: "123.45.67.89" ou null)
+    // --- FIM DA ADIÇÃO ---
+
+    console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress }); // Adicionado IP ao log
 
     // Montar UserData para backend e Advanced Matching para fbq
     const rawUserData = {

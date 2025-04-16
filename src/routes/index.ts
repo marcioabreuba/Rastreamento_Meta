@@ -46,6 +46,7 @@ router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
     scriptContent = scriptContent.replace(/['"`]?__GEO_STATE__['"`]?/g, JSON.stringify(geoData?.region?.code?.toLowerCase() ?? null)); // Garantir lowercase
     scriptContent = scriptContent.replace(/['"`]?__GEO_ZIP__['"`]?/g, JSON.stringify(geoData?.postal ?? null)); // Já normalizado no GeoIPService
     scriptContent = scriptContent.replace(/['"`]?__GEO_COUNTRY__['"`]?/g, JSON.stringify(geoData?.country?.code?.toLowerCase() ?? null)); // Garantir lowercase
+    scriptContent = scriptContent.replace(/['"`]?__CLIENT_IP__['"`]?/g, JSON.stringify(ip ?? null)); // Usar o IP obtido do req.ip
 
     // Enviar script modificado
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
