@@ -375,9 +375,13 @@
         contentName: productName || document.title, 
         contentType: 'product',
         value: finalPrice, // Usa preço final
-        contentCategory: finalCategory ? finalCategory : '', // Usa categoria final
         currency: finalCurrency // Usa moeda final
     };
+    // Adicionar category apenas se encontrada
+    if (finalCategory) {
+      details.contentCategory = finalCategory;
+    }
+
      console.log('[Meta Tracking Debug] getProductDetails - Resultado Final Combinado:', details); 
     return details;
   }
