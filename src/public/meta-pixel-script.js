@@ -299,9 +299,9 @@
     const details = { 
         contentIds: productId ? [productId] : [], 
         contentName: productName || document.title, // Fallback para título da página
-        contentType: 'product', 
+        contentType: 'product',
         value: price,
-        contentCategory: category ? [category] : [],
+        contentCategory: category ? category : '',
         currency: currency
     };
      console.log('[Meta Tracking Debug] getProductDetails - Resultado Final:', details); // Log resultado final
@@ -334,11 +334,11 @@
        const categoryName = document.title.split('–')[0].trim() || 'Category Page'; // Tenta extrair do título
        const categoryData = { 
            contentName: categoryName, 
-           contentType: 'product_group', // Ou 'product_group' dependendo da preferência
-           contentCategory: categoryName // Adiciona o nome da categoria aqui também
+           contentType: 'product_group',
+           contentCategory: categoryName
        };
        console.log('[Meta Tracking Debug] detectPageType - Dados Categoria (para ViewContent):', categoryData);
-       return { type: 'ViewContent', data: categoryData }; // Mantém ViewContent por enquanto, será mapeado
+       return { type: 'ViewContent', data: categoryData };
     }
     if (path.includes('/cart') || bodyClasses.includes('template-cart') || document.getElementById('CartDrawer')) { // Adiciona verificação de CartDrawer comum no Shopify
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Cart');
