@@ -282,8 +282,8 @@
          console.log('[Meta Tracking Debug] getProductDetails - Tentando JSON-LD...');
          const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
          jsonLdScripts.forEach(script => {
-            try {
-              const data = JSON.parse(script.textContent);
+        try {
+          const data = JSON.parse(script.textContent);
               const productData = (data['@type'] === 'Product') ? data : (Array.isArray(data) && data.find(item => item['@type'] === 'Product'));
               if (productData) {
                  console.log('[Meta Tracking Debug] getProductDetails - Encontrado JSON-LD @type Product:', productData);
@@ -373,7 +373,7 @@
     const details = { 
         contentIds: finalProductId ? [finalProductId] : [], 
         contentName: productName || document.title, 
-        contentType: 'product',
+          contentType: 'product',
         value: finalPrice, // Usa preço final
         currency: finalCurrency // Usa moeda final
     };
@@ -414,7 +414,7 @@
        const categoryData = { 
            contentName: categoryName, 
            contentType: 'product_group', 
-           contentCategory: categoryName 
+          contentCategory: categoryName
        };
        console.log('[Meta Tracking Debug] detectPageType - Dados Categoria (para ViewList):', categoryData);
        // Retorna o tipo interno 'ViewCategory' que será mapeado para 'ViewList'
@@ -591,11 +591,11 @@
     const eventId = generateUUID();
 
     // Coletar dados comuns
-    const externalId = getExternalId();
+      const externalId = getExternalId();
     const visitorId = getOrCreateVisitorId();
-    const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-    const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
-    
+      const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
+      const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+
     // Coletar PII novamente (pode ter sido atualizado desde o init)
     const email = localStorage.getItem('meta_tracking_email');
     const phone = localStorage.getItem('meta_tracking_phone');
@@ -634,7 +634,7 @@
             // Se o customData específico tinha um valor, não apague
             if (customData.hasOwnProperty(key) && customData[key] != null) {
                  // não faz nada, mantém o valor do customData
-            } else {
+      } else {
                  delete finalCustomData[key]; // Remove null/undefined gerais
             }
         }
