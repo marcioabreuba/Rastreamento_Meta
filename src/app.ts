@@ -21,11 +21,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(httpLogger);
 
-// Servir arquivos estáticos da pasta public
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Configurar rotas
+// Configurar rotas PRIMEIRO
 app.use('/', routes);
+
+// Servir arquivos estáticos da pasta public DEPOIS
+// Se nenhuma rota customizada corresponder, tenta servir arquivos estáticos
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Exportar a aplicação configurada
 export { app }; 
