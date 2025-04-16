@@ -1261,9 +1261,9 @@
   // >>> INÍCIO DA SEÇÃO MODIFICADA <<<
 
   // Função auxiliar para enviar dados brutos para o backend /track
-  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}) {
-    console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
-    const eventId = generateUUID(); // Gerar ID único para este envio
+  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, eventId) {
+    console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
+    // const eventId = generateUUID(); // <<< REMOVER geração aqui, já vem como parâmetro
 
     // Combinar dados de usuário gerais com PII (se houver)
     const finalUserData = {
@@ -1272,7 +1272,7 @@
 
     const payload = {
         eventName: eventName,
-        eventId: eventId,
+        eventId: eventId, // <<< Usar o eventId recebido
         sourceUrl: window.location.href,
         referrer: document.referrer || '',
         userData: finalUserData,
@@ -1313,13 +1313,15 @@
     try {
       console.log(`[Frontend Script] Disparando evento: ${eventName}`);
 
-      // 1. Coletar IDs e Dados do Usuário (sem hash)
+      // --- ETAPA 1: Gerar eventID ANTES --- 
+      const eventId = generateUUID(); // Gerar ID único para este evento
+
+      // --- ETAPA 2: Coletar IDs e Dados do Usuário (sem hash) ---
       const visitorId = getOrCreateVisitorId();
       const externalId = getExternalId();
       const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
       const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
 
-      // Coleta dados como email, telefone, nome, etc. do localStorage (sem hash)
       const localStorageUserData = {
           em: localStorage.getItem('meta_tracking_email'),
           ph: localStorage.getItem('meta_tracking_phone'),
@@ -1333,7 +1335,6 @@
           country: localStorage.getItem('meta_tracking_country')
       };
 
-      // Combinar todos os dados do usuário para envio ao backend
       const allRawUserData = {
           external_id: externalId,
           visitorId: visitorId,
@@ -1342,22 +1343,21 @@
           ...localStorageUserData
       };
 
-      // 2. Enviar para o Pixel do Facebook (fbq)
-      // Prepara parâmetros para fbq (dados sem hash)
-      const fbqParams = { ...customData }; // Inclui value, currency, content_name, etc.
+      // --- ETAPA 3: Enviar para o Pixel do Facebook (fbq) com eventID ---
+      const fbqParams = { ...customData }; 
+      const fbqOptions = { eventID: eventId }; // <-- Objeto de opções com eventID
 
-      // Chamar fbq('track') - Não precisa passar dados de usuário aqui,
-      // pois já foram enviados no fbq('init')
       if (typeof fbq === 'function') {
-          fbq('track', eventName, fbqParams);
-          console.log(`[Frontend Script] fbq('track', '${eventName}') chamado com:`, fbqParams);
+          // <<< Passar fbqOptions como TERCEIRO argumento >>>
+          fbq('track', eventName, fbqParams, fbqOptions); 
+          console.log(`[Frontend Script] fbq('track', '${eventName}') chamado com eventID: ${eventId}`, fbqParams);
       } else {
           console.warn('[Frontend Script] fbq não definido ao tentar rastrear evento.');
       }
 
-      // 3. Enviar dados brutos para o Backend (/track)
-      // Passa os dados de usuário coletados e os dados customizados do evento
-      await sendEventToBackend(eventName, allRawUserData, customData);
+      // --- ETAPA 4: Enviar dados brutos para o Backend (/track) com o MESMO eventID ---
+      // A função sendEventToBackend já recebe e usa o eventId gerado no passo 1
+      await sendEventToBackend(eventName, allRawUserData, customData, eventId);
 
     } catch (error) {
       console.error(`[Frontend Script] Erro geral na função sendEvent para ${eventName}:`, error);
