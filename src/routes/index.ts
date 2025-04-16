@@ -2,13 +2,60 @@
  * Definição das rotas da aplicação
  */
 
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { handleTrackRequest } from '../App/Http/TrackController';
 import config from '../config';
 import fs from 'fs';
 import path from 'path';
+import * as GeoIPService from '../App/Core/GeoIPService';
+import { GeoData } from '../types';
+import logger from '../utils/logger';
 
 const router = express.Router();
+
+// Nova Rota para servir o script dinamicamente com GeoIP injetado
+router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
+  const scriptPath = path.join(__dirname, '../public/meta-pixel-script.js');
+
+  try {
+    if (!fs.existsSync(scriptPath)) {
+      logger.error(`[GeoScript] Arquivo de script não encontrado: ${scriptPath}`);
+      return res.status(404).send('// Script not found.');
+    }
+
+    let scriptContent = fs.readFileSync(scriptPath, 'utf8');
+    let geoData: GeoData | null = null;
+
+    // Obter GeoIP
+    const ip = req.ip;
+    if (ip) {
+        try {
+            geoData = await GeoIPService.getGeoData(ip);
+        } catch (geoError: any) {
+            logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
+            // Continuar sem dados GeoIP
+        }
+    } else {
+        logger.warn('[GeoScript] Não foi possível obter o IP do requisitante.');
+    }
+
+    // Substituir placeholders
+    // Usar `?? null` para garantir que null seja injetado se o dado não existir
+    // Usar JSON.stringify para lidar corretamente com strings e null
+    scriptContent = scriptContent.replace(/['"`]?__GEO_CITY__['"`]?/g, JSON.stringify(geoData?.city ?? null));
+    scriptContent = scriptContent.replace(/['"`]?__GEO_STATE__['"`]?/g, JSON.stringify(geoData?.region?.code?.toLowerCase() ?? null)); // Garantir lowercase
+    scriptContent = scriptContent.replace(/['"`]?__GEO_ZIP__['"`]?/g, JSON.stringify(geoData?.postal ?? null)); // Já normalizado no GeoIPService
+    scriptContent = scriptContent.replace(/['"`]?__GEO_COUNTRY__['"`]?/g, JSON.stringify(geoData?.country?.code?.toLowerCase() ?? null)); // Garantir lowercase
+
+    // Enviar script modificado
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.status(200).send(scriptContent);
+
+  } catch (error: any) {
+    logger.error(`[GeoScript] Erro ao servir o script dinâmico: ${error.message}`, { stack: error.stack });
+    res.status(500).send('// Error processing script.');
+  }
+});
 
 // Rota Principal de Rastreamento
 router.post('/track', handleTrackRequest);

@@ -182,16 +182,21 @@
     const lastName = localStorage.getItem('meta_tracking_last_name');
     const gender = localStorage.getItem('meta_tracking_gender');
     const dob = localStorage.getItem('meta_tracking_dob');
-    const city = localStorage.getItem('meta_tracking_city');
-    const state = localStorage.getItem('meta_tracking_state');
-    const zip = localStorage.getItem('meta_tracking_zip');
-    const country = localStorage.getItem('meta_tracking_country');
-    console.log('[Meta Tracking Debug] Dados PII coletados (localStorage):', { email, phone, firstName, lastName, gender, dob, city, state, zip, country });
+
+    // --- MODIFICADO: Usar placeholders injetados pelo backend para GeoIP ---
+    const city = '__GEO_CITY__';       // Placeholder será substituído por string JSON (ex: "sao paulo" ou null)
+    const state = '__GEO_STATE__';      // Placeholder será substituído por string JSON (ex: "sp" ou null)
+    const zip = '__GEO_ZIP__';          // Placeholder será substituído por string JSON (ex: "01000000" ou null)
+    const country = '__GEO_COUNTRY__';  // Placeholder será substituído por string JSON (ex: "br" ou null)
+    // --- FIM DA MODIFICAÇÃO ---
+
+    console.log('[Meta Tracking Debug] Dados PII/Geo coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country });
 
     // Montar parâmetros para init (sem hash)
     const pixelParams = {
       external_id: externalId, fbp: fbp, fbc: fbc,
-      client_user_agent: navigator.userAgent,
+      // Não enviamos IP do cliente aqui, o Meta coleta automaticamente no navegador
+      client_user_agent: navigator.userAgent, // User Agent é seguro enviar
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
@@ -223,7 +228,7 @@
     const allRawUserDataForInit = {
         external_id: externalId, visitorId: getOrCreateVisitorId(),
         fbp: fbp, fbc: fbc, em: email, ph: phone, fn: firstName, ln: lastName,
-        ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
+        ge: gender, db: dob, ct: city, st: state, zp: zip, country: country // Usar variáveis com placeholders
     };
     // Pequeno delay pode ajudar a garantir que IDs como fbp foram setados pelo init
     setTimeout(function() {
@@ -600,17 +605,24 @@
     const email = localStorage.getItem('meta_tracking_email');
     const phone = localStorage.getItem('meta_tracking_phone');
     const firstName = localStorage.getItem('meta_tracking_first_name');
-    // ... (outros PII) ...
-    const city = localStorage.getItem('meta_tracking_city');
-    const state = localStorage.getItem('meta_tracking_state');
-    const zip = localStorage.getItem('meta_tracking_zip');
-    const country = localStorage.getItem('meta_tracking_country');
+    const lastName = localStorage.getItem('meta_tracking_last_name');
+    const gender = localStorage.getItem('meta_tracking_gender');
+    const dob = localStorage.getItem('meta_tracking_dob');
 
+    // --- MODIFICADO: Usar placeholders injetados pelo backend para GeoIP ---
+    const city = '__GEO_CITY__';       // Placeholder será substituído por string JSON (ex: "sao paulo" ou null)
+    const state = '__GEO_STATE__';      // Placeholder será substituído por string JSON (ex: "sp" ou null)
+    const zip = '__GEO_ZIP__';          // Placeholder será substituído por string JSON (ex: "01000000" ou null)
+    const country = '__GEO_COUNTRY__';  // Placeholder será substituído por string JSON (ex: "br" ou null)
+    // --- FIM DA MODIFICAÇÃO ---
+
+    console.log('[Meta Tracking Debug] Dados PII/Geo coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country });
 
     // Montar UserData para backend e Advanced Matching para fbq
     const rawUserData = {
       external_id: externalId, visitorId: visitorId, fbp: fbp, fbc: fbc,
-      em: email, ph: phone, fn: firstName, /* ... outros ... */ city, state, zip, country
+      em: email, ph: phone, fn: firstName, ln: lastName,
+      ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
     Object.keys(rawUserData).forEach(key => rawUserData[key] == null && delete rawUserData[key]);
 
