@@ -14,8 +14,9 @@ import { handleCompleteRegistration } from '../events/CompleteRegistrationHandle
 import { handleAddPaymentInfo } from '../events/AddPaymentInfoHandler';
 import { handleAddToWishlist } from '../events/AddToWishlistHandler';
 import { handleGenericEvent } from '../events/GenericEventHandler';
-// Importar CapiService (a ser criado)
-import * as CapiService from './CapiService'; // Ajustar nome/caminho se necessário
+// Importar CapiService
+// import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Tentativa anterior
+import { sendEvent as sendEventToCapi } from '../Http/CapiService'; // <<< Tentar caminho relativo diferente
 
 // Mapeamento de eventName para a função handler correspondente
 const eventHandlers: Record<string, Function> = {
@@ -44,6 +45,17 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
   const requestStartTime = Date.now();
   const { eventName, userData, customData, eventId, sourceUrl, referrer, ...rest } = req.body;
 
+  // Loga os dados brutos recebidos APENAS se LOG_LEVEL=debug
+  logger.debug(`[TrackController] Raw event received: ${eventName}`, {
+      receivedEventName: eventName,
+      receivedEventId: eventId, // Event ID gerado pelo frontend (se houver)
+      receivedSourceUrl: sourceUrl,
+      receivedReferrer: referrer,
+      receivedUserData: userData, // Dados do usuário COMO CHEGARAM
+      receivedCustomData: customData, // Dados customizados COMO CHEGARAM
+      receivedOtherParams: rest // Outros parâmetros no body
+  });
+
   if (!eventName) {
     logger.warn('[TrackController] Requisição recebida sem eventName.', { body: req.body });
     res.status(400).json({ success: false, error: 'Event name is required' });
@@ -52,9 +64,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
   try {
     // 1. Obter Dados da Requisição (IP, UserAgent)
-    // Prioriza X-Forwarded-For se disponível (comum em proxies/load balancers)
     const ipHeader = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
-    // Pega o primeiro IP se houver múltiplos em X-Forwarded-For
     const clientIp = typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : null;
     const userAgent = req.headers['user-agent'] || null;
 
@@ -92,13 +102,14 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
     // 6. Enviar para CAPI (se válido)
     if (serverEvent) {
-      logger.info(`[TrackController] Evento ${serverEvent.event_name} normalizado. Enviando para CAPI...`, {
+      logger.info(`[TrackController] Processing event ${serverEvent.event_name}`, {
           eventId: serverEvent.event_id,
+          clientIp: clientIp, // Adicionar IP ao log INFO
           actionSource: serverEvent.action_source
       });
 
-      // Chamar CapiService de forma assíncrona (não esperar pela resposta da Meta)
-      CapiService.sendEvent(serverEvent).catch(error => {
+      // Chamar CapiService de forma assíncrona
+      sendEventToCapi(serverEvent).catch(error => { // <<< Usar a função importada diretamente
           logger.error(`[TrackController] Erro assíncrono ao enviar evento ${serverEvent.event_id} para CAPI: ${error.message}`, { error });
       });
 
