@@ -1001,36 +1001,54 @@
 
   // Adiciona listener para o evento AddToCart
   function setupAddToCartListener() {
-    console.log('[Meta Tracking Debug] Configurando listener AddToCart...');
-    // Seletor específico baseado no HTML fornecido
-    const specificSelector = 'button[name="add"]';
-    const formSelector = 'form[action*="/cart/add"] button[name="add"]'; // Alternativa mais específica
+    console.log('[Meta Tracking Debug] Configurando listener AddToCart via DELEGAÇÃO...');
+    
+    // O seletor alvo para o botão
+    const buttonSelector = 'button[name="add"]'; 
 
-    let button = document.querySelector(specificSelector);
-    let usedSelector = specificSelector;
+    // Adicionar listener ao body 
+    document.body.addEventListener('click', function(event) {
+      
+      // Verificar se o elemento clicado ou um de seus pais corresponde ao seletor do botão
+      const button = event.target.closest(buttonSelector);
 
-    if (!button) {
-        console.log('[Meta Tracking Debug] Seletor AddToCart (button[name="add"]) não encontrado, tentando seletor de formulário...');
-        button = document.querySelector(formSelector);
-        usedSelector = formSelector;
-    }
+      // Se o clique foi no botão AddToCart ou em um elemento dentro dele
+      if (button) {
+        console.log('[Meta Tracking Debug] Clique detectado no botão AddToCart (ou seu filho) via delegação:', button);
+        
+        // Prevenção simples contra múltiplos cliques rápidos (opcional)
+        if (button.dataset.processingAddToCart === 'true') {
+            console.log('[Meta Tracking Debug] AddToCart já em processamento, ignorando clique.');
+            return;
+        }
+        button.dataset.processingAddToCart = 'true';
 
-    if (button) {
-      console.log('[Meta Tracking Debug] Botão AddToCart encontrado com seletor:', usedSelector, button);
-      button.addEventListener('click', (event) => {
-        // Pode ser necessário um pequeno delay ou verificar se o clique foi bem-sucedido
-        // antes de disparar o evento, mas por enquanto vamos disparar imediatamente.
-        console.log('[Meta Tracking Debug] Evento de clique AddToCart disparado!');
-        // Obter os dados do produto ATUAL da página
-        const productData = getProductDetails(); 
-        // Remover dados que não são padrão do AddToCart se necessário (como contentCategory)
-        // delete productData.contentCategory; 
-        console.log('[Meta Tracking Debug] Dados do produto para AddToCart:', productData);
-        sendEvent('AddToCart', productData);
-      });
-    } else {
-      console.warn('[Meta Tracking Debug] Nenhum botão AddToCart encontrado com os seletores específicos (button[name="add"] ou via formulário).');
-    }
+        // Pequeno delay para dar tempo a outras ações do navegador/tema ocorrerem
+        setTimeout(() => {
+          console.log('[Meta Tracking Debug] Executando lógica AddToCart após delay...');
+          try {
+            // Obter os dados do produto ATUAL da página
+            const productData = getProductDetails(); 
+            console.log('[Meta Tracking Debug] Dados do produto para AddToCart:', productData);
+            
+            // Verificar se temos dados essenciais antes de enviar
+            if (productData && productData.contentIds && productData.contentIds.length > 0 && productData.value > 0) {
+               sendEvent('AddToCart', productData); // Chama a função principal para enviar fbq e backend
+            } else {
+               console.warn('[Meta Tracking Debug] AddToCart: Dados essenciais do produto ausentes (contentIds/value). Evento não enviado.');
+            }
+          } catch (error) {
+             console.error('[Meta Tracking Debug] Erro ao processar o evento AddToCart:', error);
+          } finally {
+            // Liberar o botão para cliques futuros após processar
+            button.dataset.processingAddToCart = 'false';
+          }
+        }, 150); // Delay de 150ms (ajustar se necessário)
+
+      } 
+    }, true); // Usar fase de captura pode ajudar a pegar o evento antes de outros scripts
+
+    console.log('[Meta Tracking Debug] Listener AddToCart (delegação) configurado no body.');
   }
 
   // Função principal - detecta a página e envia os eventos
