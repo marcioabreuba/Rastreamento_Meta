@@ -26,11 +26,16 @@ router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
     let scriptContent = fs.readFileSync(scriptPath, 'utf8');
     let geoData: GeoData | null = null;
 
+    // --- MODIFICADO: Obter IP corretamente via x-forwarded-for ---
+    const ipHeader = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
+    const ip = typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : null;
+    // --- FIM DA MODIFICAÇÃO ---
+
     // Obter GeoIP
-    const ip = req.ip;
     if (ip) {
         try {
             geoData = await GeoIPService.getGeoData(ip);
+            logger.debug(`[GeoScript] GeoIP data for ${ip}:`, geoData); // Log extra
         } catch (geoError: any) {
             logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
             // Continuar sem dados GeoIP
@@ -38,6 +43,9 @@ router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
     } else {
         logger.warn('[GeoScript] Não foi possível obter o IP do requisitante.');
     }
+
+    // Adicionar log antes da substituição
+    logger.debug(`[GeoScript] Data before replacement: ip=${ip}, city=${geoData?.city}, state=${geoData?.region?.code}`);
 
     // Substituir placeholders
     // Usar `?? null` para garantir que null seja injetado se o dado não existir
