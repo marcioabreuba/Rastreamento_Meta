@@ -2,6 +2,32 @@
 
 **Última Atualização:** [Data Atual]
 
+**Leia Isto Primeiro!** Este documento resume o essencial sobre o projeto Meta-Tracking. Consulte-o *antes* de qualquer análise ou modificação para entender o contexto crítico e evitar erros passados. Use-o como fonte primária de verdade sobre o contexto do projeto.
+
+---
+
+## 🎯 Objetivo Central do Projeto
+
+- **O quê:** Receber eventos de rastreamento de sites clientes (via script JS simples), enriquecê-los (GeoIP, normalização) e enviá-los para a API de Conversões do Meta (CAPI).
+- **Por quê:** Melhorar a qualidade da correspondência de eventos no Meta Ads e permitir rastreamento server-side, superando limitações de rastreamento no navegador.
+- **Como:** Aplicação Node.js/TypeScript (`meta-tracking`) hospedada no Render, servindo um script JS (`meta-pixel-script.js`) e processando eventos via API REST (`/track`).
+
+---
+
+## 🏗️ Visão Geral da Arquitetura
+
+1.  **Frontend (Cliente):** **APENAS UMA LINHA!**
+    ```html
+    <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
+    ```
+    *   **Ponto Chave:** Nenhuma lógica adicional no cliente. Toda a inteligência de rastreamento no navegador está no script `meta-pixel-script.js` servido pelo backend.
+
+    **Backend (Servidor - `meta-tracking`):**
+    *   **Linguagem/Stack:** Node.js / TypeScript
+    *   **Repositório:** [https://github.com/marcioabreuba/Rastreamento_Meta.git](https://github.com/marcioabreuba/Rastreamento_Meta.git)
+    *   **Hospedagem:** Render.com (deploy automático do branch `master`)
+    *   **URL Base:** `https://rastreamento-meta.onrender.com/`
+
 ## 🎯 Objetivo e Papel no Sistema
 
 Este documento descreve a funcionalidade e estrutura esperada para o script `src/public/meta-pixel-script.js`. Este script é o único componente instalado diretamente nos sites dos clientes e atua como a ponte entre o navegador do usuário, o Pixel do Facebook e o nosso backend (`/track`).
