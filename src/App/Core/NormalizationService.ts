@@ -25,16 +25,16 @@ export const EVENT_NAME_MAPPING: Record<string, string> = {
   'AddToWishlist': 'AddToWishlist',
 
   // Mapeamentos Específicos (onde o nome interno difere do padrão Meta ou não há padrão)
-  'ViewHome': 'PageView',        // Mapear ViewHome para PageView no servidor
-  'ViewList': 'ViewContent',     // Lista de produtos é um tipo de ViewContent
-  'ViewCart': 'ViewContent',     // Carrinho também é um tipo de ViewContent
-  'ViewCategory': 'ViewContent', // Página de categoria é um tipo de ViewContent
+  'ViewHome': 'PageView',        
+  'ViewList': 'ViewList',     
+  'ViewCart': 'ViewCart',     
+  'ViewCategory': 'ViewCategory', 
   'Pesquisar': 'Search',         // Alias
-  'ViewSearchResults': 'Search', // Alias
+  'ViewSearchResults': 'ViewSearchResults', // Alias
   'StartCheckout': 'InitiateCheckout', // Alias
   'RegisterDone': 'CompleteRegistration', // Alias
-  'ShippingLoaded': 'AddPaymentInfo',   // Mapeado para evento de pagamento
-  'AddCoupon': 'AddToCart',          // Cupom geralmente relacionado ao carrinho/adição
+  'ShippingLoaded': 'AddPaymentInfo',   
+  'AddCoupon': 'AddToCart',          
   'Ver conteúdo': 'ViewContent', // Alias
   'Adicionar ao carrinho': 'AddToCart', // Alias
   'Adicionar informações de pagamento': 'AddPaymentInfo', // Alias
