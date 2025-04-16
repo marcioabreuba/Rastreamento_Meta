@@ -1206,104 +1206,33 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
-    initFacebookPixel();
-    
-    // Detecta o tipo de página
-    const pageInfo = detectPageType();
-    if (pageInfo && pageInfo.eventName !== 'PageView') {
-      // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
-      // pois o PageView já foi enviado na inicialização do pixel
-      console.log(`Atrasando envio do evento inicial "${pageInfo.eventName}" por 750ms para permitir a inicialização de cookies.`);
-      setTimeout(() => {
-        console.log(`Enviando evento inicial "${pageInfo.eventName}" após atraso.`);
-        sendEvent(pageInfo.eventName, pageInfo.data); 
-      }, 750); // Atraso de 750 milissegundos
-    } else if (!pageInfo) {
-      // Se nenhum tipo específico for detectado, não enviamos PageView novamente como fallback
-      // pois o PageView já foi enviado na inicialização do pixel
-      console.log('Nenhum tipo de página específico detectado. PageView já foi enviado na inicialização.');
-    }
+    console.log('[Meta Tracking] Inicializando script v1.5...');
+    initFacebookPixel(); // Carrega FBQ, envia init e PageView para backend
 
-    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
-    setupScrollTracking();
-    setupTimerTracking();
-    setupVideoTracking();
-    setupLeadTracking();
-    
-    // Função para testar o envio completo de todos os parâmetros
-    function testCompleteEvent() {
-      // Apenas executar em desenvolvimento
-      if (window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')) {
-        console.log('Enviando evento de teste com todos os parâmetros para verificar consistência');
-        
-        // Exemplo de produto completo com todos os parâmetros necessários
-        const completeProductData = {
-          contentName: 'Bolsa de palha trama',
-          contentType: 'product_group',
-          contentCategory: ['bolsa'],
-          contentIds: ['9068696764659'],
-          contents: [{ id: '9068696764659', quantity: 1 }],
-          numItems: 1, 
-          currency: 'BRL',
-          value: 289
-        };
-        
-        // Enviar evento completo para testar
-        sendEvent('ViewContent', completeProductData);
-      }
-    }
-    
-    // Descomentar a linha abaixo apenas para teste
-    // testCompleteEvent();
-    
-    // Verificar se precisamos passar parâmetros para links externos de checkout
-    function addCheckoutParams(e) {
-      const link = e.currentTarget;
-      if (!link) return;
-      
-      const href = link.getAttribute('href');
-      if (!href) return;
-      
-      // Verificar se o link é para o domínio de checkout
-      if (href.includes('seguro.soleterra.com.br') || 
-          href.includes('checkout.') || 
-          href.includes('/checkout')) {
-        
-        // Obter os parâmetros que vamos passar
-        const external_id = getExternalId();
-        const fbp = getCookie('_fbp');
-        const fbc = getCookie('_fbc');
-        
-        // Criar a URL com os parâmetros
-        let newHref = href;
-        const hasParams = href.includes('?');
-        const paramPrefix = hasParams ? '&' : '?';
-        
-        // Adicionar external_id
-        newHref += `${paramPrefix}external_id=${encodeURIComponent(external_id)}`;
-        
-        // Adicionar fbp se disponível
-        if (fbp) {
-          newHref += `&fbp=${encodeURIComponent(fbp)}`;
-        }
-        
-        // Adicionar fbc se disponível
-        if (fbc) {
-          newHref += `&fbc=${encodeURIComponent(fbc)}`;
-        }
-        
-        // Atualizar o link
-        link.setAttribute('href', newHref);
-      }
-    }
-    
-    // Adicionar listener para links de checkout
-    document.querySelectorAll('a[href*="seguro."], a[href*="checkout."], a[href*="/checkout"]')
-      .forEach(link => {
-        link.addEventListener('click', addCheckoutParams);
-        link.addEventListener('mousedown', addCheckoutParams); // Para capturar clique do meio/direito
-      });
+    // Detectar tipo de página APÓS o init ter sido enfileirado
+    // Adicionar um pequeno delay para garantir que o DOM esteja mais estável
+    setTimeout(() => {
+         const pageInfo = detectPageType();
+
+         if (pageInfo && pageInfo.eventName) {
+             // Se detectou um evento específico (ViewContent, ViewCategory, InitiateCheckout, etc.)
+             // que não seja o PageView básico, envia esse evento.
+             console.log(`[Meta Tracking] Enviando evento detectado: ${pageInfo.eventName}`);
+             sendEvent(pageInfo.eventName, pageInfo.data);
+         } else if (pageInfo) {
+              // Se pageInfo existe mas eventName é null (ex: home, generic)
+              console.log(`[Meta Tracking] Tipo de página: ${pageInfo.type}. Nenhum evento adicional enviado via sendEvent (PageView tratado no init).`);
+         } else {
+              // Se pageInfo for null/undefined (erro na detecção?)
+              console.warn('[Meta Tracking] pageInfo não retornado por detectPageType.');
+         }
+
+          // Configurar rastreamentos adicionais (scroll, timer, etc.)
+          setupScrollTracking();
+          setupTimerTracking();
+          setupVideoTracking();
+          setupLeadTracking();
+    }, 100); // Atraso de 100 milissegundos
   }
 
   // Inicializar quando o DOM estiver pronto
