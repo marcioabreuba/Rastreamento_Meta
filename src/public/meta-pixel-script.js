@@ -251,6 +251,10 @@
     // Para um site específico, você pode ajustar os seletores ou lógica
     console.log('[Meta Tracking Debug] Tentando getProductDetails()...'); // Log início da função
 
+    // --- ADICIONADO: Definir moeda padrão ---
+    let currency = 'BRL'; // Definir padrão inicial
+    // --- FIM DA ADIÇÃO ---
+
     // Nome do produto (título)
     let productName = '';
     const titleElement = document.querySelector('h1') || document.querySelector('.product-title');
@@ -320,13 +324,13 @@
                        console.log('[Meta Tracking Debug] getProductDetails - Preço do JSON-LD:', shopifyPrice);
                     }
                  }
-                  if (!shopifyCurrency && productData.offers) {
-                    const offer = Array.isArray(productData.offers) ? productData.offers[0] : productData.offers;
-                    if (offer && offer.priceCurrency) {
-                       shopifyCurrency = offer.priceCurrency;
-                       console.log('[Meta Tracking Debug] getProductDetails - Moeda do JSON-LD:', shopifyCurrency);
-                    }
-                 }
+                  if (offer && offer.priceCurrency) {
+                    shopifyCurrency = offer.priceCurrency;
+                    // --- ADICIONADO: Atualizar 'currency' se encontrado no JSON-LD ---
+                    currency = shopifyCurrency; // Atualiza a variável principal
+                    // --- FIM DA ADIÇÃO ---
+                    console.log('[Meta Tracking Debug] getProductDetails - Moeda do JSON-LD:', shopifyCurrency);
+                  }
               }
             } catch(e) { console.warn('[Meta Tracking Debug] getProductDetails - Erro ao processar JSON-LD:', e); }
          });
@@ -371,8 +375,8 @@
     const finalPrice = shopifyPrice !== null ? shopifyPrice : price;
     console.log('[Meta Tracking Debug] getProductDetails - finalPrice Definido:', finalPrice);
 
-    // Moeda Final (Prioridade: Shopify/JSON-LD > DOM)
-    const finalCurrency = shopifyCurrency || currency;
+    // Moeda Final (Prioridade: Shopify/JSON-LD > Padrão) - AGORA USA A VARIÁVEL 'currency' DEFINIDA
+    const finalCurrency = shopifyCurrency || currency; // 'currency' agora está definida
     console.log('[Meta Tracking Debug] getProductDetails - finalCurrency Definida:', finalCurrency);
 
     // LOG: Verificar objetos globais comuns do Shopify
