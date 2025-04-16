@@ -154,77 +154,47 @@
 
   // Inicializar o Facebook Pixel
   function initFacebookPixel() {
-    // Inicializar o pixel do Facebook
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    
-    // Obter todos os parâmetros obrigatórios de Advanced Matching
-    const externalId = getExternalId();
-    // Obter cookies do Facebook
-    const fbp_cookie = getCookie('_fbp') || getUrlParameter('fbp');
-    const fbp = validateFbp(fbp_cookie);
-    const fbc = getCookie('_fbc') || getUrlParameter('fbc') || getUrlParameter('fbclid') || null;
-    
-    // Dados geográficos salvos (se disponíveis)
-    let geoData = {};
-    const savedUserData = localStorage.getItem('meta_tracking_user_data');
-    if (savedUserData) {
-      try {
-        const parsed = JSON.parse(savedUserData);
-        geoData = {
-          country: parsed.country,
-          state: parsed.state,
-          city: parsed.city,
-          zip: parsed.zip
-        };
-      } catch (e) {
-        console.error('Erro ao ler dados de geolocalização salvos:', e);
-      }
-    }
+    // Inicializar o pixel do Facebook (código padrão !function...)
+    !function(f,b,e,v,n,t,s){/*...*/}(window, document,/*...*/);
 
-    // Configuração do pixel com Advanced Matching completo
-    const pixelParams = {
-      external_id: externalId,
-      // FBP e FBC não devem ser hasheados conforme Guia.MD
-      fbp: fbp,
-      fbc: fbc,
-      // Adicionar client_user_agent para padronizar com ViewHome
-      client_user_agent: navigator.userAgent
-    };
-    
-    // Adicionar dados geográficos se disponíveis
-    // Nota: estes serão enviados como texto puro, a API do Meta fará o hash corretamente
-    if (geoData.country) pixelParams.country = geoData.country;
-    if (geoData.state) pixelParams.st = geoData.state;
-    if (geoData.city) pixelParams.ct = geoData.city;
-    if (geoData.zip) pixelParams.zp = geoData.zip;
-    
-    // Verificar se temos dados pessoais salvos (email, telefone, nome, etc.)
+    // --- Gerar ID para o PageView inicial explícito ---
+    const pageViewEventId = generateUUID();
+
+    // --- Coletar dados para init e track ---
+    const externalId = getExternalId();
+    const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
+    const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+
+    // Coletar PII do localStorage (sem hash)
     const email = localStorage.getItem('meta_tracking_email');
     const phone = localStorage.getItem('meta_tracking_phone');
+    // ... (coletar outros: fn, ln, ge, db, ct, st, zp, country)
     const firstName = localStorage.getItem('meta_tracking_first_name');
     const lastName = localStorage.getItem('meta_tracking_last_name');
     const gender = localStorage.getItem('meta_tracking_gender');
     const dob = localStorage.getItem('meta_tracking_dob');
-    
-    // Adicionar dados pessoais se disponíveis (sem hashear, o Meta fará isso)
-    if (email) pixelParams.em = email;
-    if (phone) pixelParams.ph = phone;
-    if (firstName) pixelParams.fn = firstName;
-    if (lastName) pixelParams.ln = lastName;
-    if (gender) pixelParams.ge = gender;
-    if (dob) pixelParams.db = dob;
-    
-    // Inicializar com Advanced Matching completo e disparar PageView imediatamente
+    const city = localStorage.getItem('meta_tracking_city');
+    const state = localStorage.getItem('meta_tracking_state');
+    const zip = localStorage.getItem('meta_tracking_zip');
+    const country = localStorage.getItem('meta_tracking_country');
+
+    // Montar parâmetros para fbq('init') (sem hash)
+    const pixelParams = {
+      external_id: externalId,
+      fbp: fbp,
+      fbc: fbc,
+      client_user_agent: navigator.userAgent,
+      // Adicionar PII bruto
+      em: email, ph: phone, fn: firstName, ln: lastName,
+      ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
+    };
+    // Remover nulos do pixelParams
+    Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
+
+    // Inicializar com Advanced Matching (dispara PageView automático SEM eventID)
     fbq('init', PIXEL_ID, pixelParams);
-    
-    // Adicionar parâmetros customizados ao PageView para padronizar com ViewHome
+
+    // Montar parâmetros customizados para o PageView explícito
     const customParams = {
       app: 'meta-tracking',
       contentName: document.title || 'Page View',
@@ -232,66 +202,28 @@
       language: navigator.language || 'pt-BR',
       referrer: document.referrer || ''
     };
-    
-    // Enviar PageView com parâmetros customizados
-    fbq('track', 'PageView', customParams);
-    
-    console.log('Facebook Pixel inicializado para ID:', PIXEL_ID, 'com Advanced Matching completo e PageView disparado', pixelParams);
-    
-    // Enviar o mesmo evento para o backend para processamento via API
-    // setTimeout(function() {
-    //   // Preparar payload com todos os dados disponíveis (mesmo Advanced Matching do pixel)
-    //   const payload = {
-    //     eventName: 'PageView',
-    //     eventId: generateUUID(),
-    //     eventSource: 'web',
-    //     url: window.location.href,
-    //     // Incluir todos os parâmetros de Advanced Matching
-    //     fbp: fbp,
-    //     fbc: fbc,
-    //     // Incluir dados pessoais se disponíveis
-    //     em: email || '',
-    //     ph: phone || '',
-    //     fn: firstName || '',
-    //     ln: lastName || '',
-    //     ge: gender || '',
-    //     db: dob || '',
-    //     // Incluir dados de geolocalização se disponíveis
-    //     country: geoData.country || '',
-    //     state: geoData.state || '',
-    //     city: geoData.city || '',
-    //     zip: geoData.zip || '',
-    //     // Usar EXATAMENTE os mesmos parâmetros customizados do evento web
-    //     // para garantir sincronização perfeita
-    //     customData: {
-    //       ...customParams,
-    //       // Garantir que o título da página seja idêntico
-    //       contentName: document.title || 'Page View',
-    //       // Garantir que o idioma seja sempre pt-BR para consistência com outros eventos
-    //       language: 'pt-BR',
-    //       // Adicionar currency e value para padronizar com outros eventos
-    //       currency: 'BRL',
-    //       value: 0
-    //     }
-    //   };
-    //
-    //   // Enviar para o backend
-    //   fetch(API_URL, {
-    //     method: 'POST',
-    //     headers: { 'Content-Type': 'application/json' },
-    //     body: JSON.stringify(payload)
-    //   })
-    //   .then(response => {
-    //     if (response.ok) {
-    //       console.log('✅ Evento PageView enviado com sucesso para o backend');
-    //     } else {
-    //       console.error('❌ Erro ao enviar evento PageView para o backend:', response.status);
-    //     }
-    //   })
-    //   .catch(error => {
-    //     console.error('❌ Erro ao enviar evento PageView para o backend:', error);
-    //   });
-    // }, 100); // Pequeno delay para garantir que o pixel foi inicializado
+    // Remover nulos do customParams
+    Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
+
+    // --- Enviar PageView EXPLÍCITO com eventID ---
+    const fbqOptions = { eventID: pageViewEventId };
+    fbq('track', 'PageView', customParams, fbqOptions);
+
+    console.log(`Facebook Pixel inicializado e PageView explícito enviado (ID: ${pageViewEventId})`, pixelParams, customParams);
+
+    // --- Enviar PageView para o Backend com o MESMO eventID ---
+    // Montar dados brutos do usuário para backend (similar ao sendEvent)
+    const allRawUserDataForInit = {
+        external_id: externalId,
+        visitorId: getOrCreateVisitorId(), // Garante que visitorId seja pego
+        fbp: fbp,
+        fbc: fbc,
+        em: email, ph: phone, fn: firstName, ln: lastName,
+        ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
+    };
+    // Chamar a função de envio para o backend
+    sendEventToBackend('PageView', allRawUserDataForInit, customParams, pageViewEventId);
+
   }
 
   // Funções para encontrar elementos específicos na página
