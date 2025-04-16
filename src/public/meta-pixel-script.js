@@ -18,26 +18,21 @@
   const VISITOR_COOKIE_NAME = '_mtVisitorId';
   const VISITOR_COOKIE_EXPIRATION_DAYS = 730; // 2 anos
   
-  // Mapeamento de eventos para o Facebook
+  // Mapeamento de eventos para o Facebook - AJUSTADO PARA IGUALAR TRACKLEAD
   const EVENT_MAPPING = {
-    'PageView': 'PageView',
-    'ViewHome': 'ViewContent',
-    'ViewList': 'ViewContent',
-    'ViewContent': 'ViewContent',
-    'AddToCart': 'AddToCart',
-    'ViewCart': 'ViewContent',
-    'StartCheckout': 'InitiateCheckout',
-    'RegisterDone': 'CompleteRegistration',
-    'ShippingLoaded': 'AddPaymentInfo',
-    'AddPaymentInfo': 'AddPaymentInfo',
-    'Purchase': 'Purchase',
-    'Purchase - credit_card': 'Purchase',
-    'Purchase - pix': 'Purchase',
-    'Purchase - billet': 'Purchase',
-    'Purchase - paid_pix': 'Purchase',
-    'Purchase - high_ticket': 'Purchase',
-    'ViewCategory': 'ViewContent',
-    'AddCoupon': 'AddToCart',
+    'PageView': 'PageView',         // Igual
+    'ViewHome': 'ViewHome',         // Alterado de ViewContent para ViewHome
+    'ViewList': 'ViewList',         // Mantido (Tracklead usa ViewList em Categoria)
+    'ViewContent': 'ViewContent',      // Igual (para páginas de produto)
+    'AddToCart': 'AddToCart',        // Igual (precisa ser implementado)
+    'ViewCart': 'ViewCart',         // Alterado de InitiateCheckout para ViewCart
+    'StartCheckout': 'InitiateCheckout', // Mapeamento padrão mantido, mas tracklead não parece usar StartCheckout
+    'CompleteRegistration': 'CompleteRegistration', // Mapeamento padrão
+    'AddPaymentInfo': 'AddPaymentInfo', // Mapeamento padrão
+    'Purchase': 'Purchase',         // Igual
+    // Manter outros mapeamentos específicos se necessário
+    'ViewCategory': 'ViewList',    // Mapear tipo interno 'ViewCategory' para 'ViewList' (Tracklead)
+    'Search': 'Search',           // Mapeamento padrão
     'Refused - credit_card': 'CustomEvent',
     'Pesquisar': 'Search',
     'ViewSearchResults': 'Search',
@@ -321,7 +316,8 @@
     // Lógica de detecção (Exemplos - Adicionar mais logs conforme necessário)
     if (path === '/' || bodyClasses.includes('template-index')) {
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Home');
-      return { type: 'ViewContent', data: { contentName: 'Home Page', contentType: 'home_page' } };
+      // Retorna o tipo interno 'ViewHome'
+      return { type: 'ViewHome', data: { contentName: 'Home Page', contentType: 'home_page' } };
     }
     if (path.includes('/products/') || bodyClasses.includes('template-product')) {
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Product');
@@ -334,17 +330,19 @@
        const categoryName = document.title.split('–')[0].trim() || 'Category Page'; // Tenta extrair do título
        const categoryData = { 
            contentName: categoryName, 
-           contentType: 'product_group',
-           contentCategory: categoryName
+           contentType: 'product_group', 
+           contentCategory: categoryName 
        };
-       console.log('[Meta Tracking Debug] detectPageType - Dados Categoria (para ViewContent):', categoryData);
-       return { type: 'ViewContent', data: categoryData };
+       console.log('[Meta Tracking Debug] detectPageType - Dados Categoria (para ViewList):', categoryData);
+       // Retorna o tipo interno 'ViewCategory' que será mapeado para 'ViewList'
+       return { type: 'ViewCategory', data: categoryData }; 
     }
     if (path.includes('/cart') || bodyClasses.includes('template-cart') || document.getElementById('CartDrawer')) { // Adiciona verificação de CartDrawer comum no Shopify
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Cart');
       const cartData = extractCartData(); // Chama a extração
-      console.log('[Meta Tracking Debug] detectPageType - Dados Carrinho (para InitiateCheckout):', cartData);
-      return { type: 'InitiateCheckout', data: cartData }; // Mantém InitiateCheckout por enquanto, será mapeado
+      console.log('[Meta Tracking Debug] detectPageType - Dados Carrinho (para ViewCart):', cartData);
+      // Retorna o tipo interno 'ViewCart' que será mapeado para 'ViewCart'
+      return { type: 'ViewCart', data: cartData }; 
     }
     // ... (outras detecções: checkout, search, etc.) ...
     
@@ -1023,7 +1021,7 @@
         const priceText = element.getAttribute('content') || element.textContent;
         if (priceText) {
           // Extrair apenas os números e ponto decimal do texto
-          const priceMatch = priceText.replace(/[^\d.,]/g, '').replace(',', '.');
+          const priceMatch = priceText.replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.');
           const price = parseFloat(priceMatch);
           if (!isNaN(price) && price > 0) {
             return price;
@@ -1081,5 +1079,131 @@
     } catch (e) {
       return null;
     }
+  }
+
+  // Função interna para extrair dados do carrinho
+  function extractCartData() {
+    console.log('[Meta Tracking Debug] Iniciando extractCartData()...'); // Log início extração carrinho
+    let cartItems = [];
+    let contentIds = [];
+    let contents = [];
+    let numItems = 0;
+    let totalValue = 0;
+    let currency = 'BRL'; // Default
+    let cartDataExtracted = null; // Variável para armazenar dados extraídos
+
+    // Tentativa 1: Estrutura Shopify AJAX API (se disponível)
+    console.log('[Meta Tracking Debug] extractCartData - Tentativa 1: #cart-json');
+    try {
+        const cartJsonElement = document.getElementById('cart-json');
+        const cartJsonText = cartJsonElement?.textContent;
+        if (cartJsonText) {
+             console.log('[Meta Tracking Debug] extractCartData - Encontrado #cart-json. Conteúdo (truncado):', cartJsonText.substring(0, 200));
+             const shopifyCart = JSON.parse(cartJsonText);
+             console.log('[Meta Tracking Debug] extractCartData - Conteúdo #cart-json parseado:', shopifyCart);
+             if (shopifyCart && shopifyCart.items) {
+                 currency = shopifyCart.currency || currency;
+                 totalValue = (shopifyCart.total_price / 100); // Shopify usa centavos
+                 numItems = shopifyCart.item_count;
+                 shopifyCart.items.forEach(item => {
+                    const itemId = String(item.variant_id || item.id);
+                    const itemPrice = (item.final_line_price / item.quantity / 100); // Preço unitário
+                    contentIds.push(itemId); 
+                    contents.push({
+                       id: itemId,
+                       quantity: item.quantity,
+                       item_price: itemPrice
+                    });
+                    console.log('[Meta Tracking Debug] extractCartData - Processado item JSON:', { id: itemId, quantity: item.quantity, item_price: itemPrice });
+                 });
+                 console.log('[Meta Tracking Debug] extractCartData - Dados FINAIS extraídos do #cart-json:', { contentIds, contents, numItems, totalValue, currency });
+                 // Armazena os dados formatados se encontrados via JSON
+                  cartDataExtracted = { 
+                    contentIds, 
+                    contents, 
+                    numItems, 
+                    value: parseFloat(totalValue.toFixed(2)), 
+                    currency, 
+                    contentType: 'cart', // ou 'product_group'
+                    contentName: 'Shopping Cart' 
+                  };
+             } else {
+                console.log('[Meta Tracking Debug] extractCartData - #cart-json parseado, mas sem shopifyCart.items');
+             }
+        } else {
+             console.log('[Meta Tracking Debug] extractCartData - Elemento #cart-json não encontrado ou sem texto.');
+        }
+    } catch (e) {
+         console.error('[Meta Tracking Debug] extractCartData - Erro ao processar #cart-json:', e);
+    }
+
+    // Tentativa 2: Extração DOM Genérica (Fallback) - APENAS SE A TENTATIVA 1 FALHAR
+    if (!cartDataExtracted) {
+        console.log('[Meta Tracking Debug] extractCartData - Tentativa 2: Extração DOM genérica como fallback...');
+        // Resetar variáveis para extração DOM
+        contentIds = [];
+        contents = [];
+        numItems = 0;
+        totalValue = 0;
+        currency = 'BRL'; // Reset currency
+        
+        const itemElements = document.querySelectorAll('.cart-item') || document.querySelectorAll('[data-cart-item]'); // Seletores genéricos
+        console.log('[Meta Tracking Debug] extractCartData - DOM: Elementos de item encontrados:', itemElements.length);
+        
+        if (itemElements.length > 0) {
+            itemElements.forEach((item, index) => {
+                console.log(`[Meta Tracking Debug] extractCartData - DOM: Processando item ${index + 1}`);
+                const idElement = item.querySelector('[data-variant-id]') || item.querySelector('[data-id]') || item.querySelector('input[name="id"]'); // Adicionado input[name="id"] comum
+                const qtyElement = item.querySelector('.quantity input') || item.querySelector('[data-quantity]') || item.querySelector('input[name*="quantity"]');
+                const priceElement = item.querySelector('.price') || item.querySelector('[data-price]') || item.querySelector('.product-price'); // Adicionado .product-price
+                const currencySymbolElement = document.querySelector('.cart-currency-symbol'); // Exemplo
+                if (currencySymbolElement && currency === 'BRL') currency = currencySymbolElement.textContent.trim() === 'R$' ? 'BRL' : 'USD';
+
+                const id = idElement ? idElement.value || idElement.getAttribute('data-variant-id') || idElement.getAttribute('data-id') : null;
+                const quantity = qtyElement ? parseInt(qtyElement.value || qtyElement.textContent, 10) : 1;
+                const priceText = priceElement ? priceElement.textContent : '0';
+                const price = parseFloat(priceText.replace(/[^0-9.,]/g, '').replace('.', '').replace(',', '.')) || 0;
+
+                console.log('[Meta Tracking Debug] extractCartData - DOM Item Data:', { idElement, qtyElement, priceElement });
+                console.log('[Meta Tracking Debug] extractCartData - DOM Item Parsed:', { id, quantity, priceText, price });
+
+                if (id) {
+                    contentIds.push(String(id));
+                    contents.push({ id: String(id), quantity: quantity, item_price: price });
+                    numItems += quantity;
+                    totalValue += price * quantity;
+                }
+            });
+             console.log('[Meta Tracking Debug] extractCartData - Dados FINAIS extraídos do DOM:', { contentIds, contents, numItems, totalValue, currency });
+             cartDataExtracted = { 
+                contentIds: contentIds.length > 0 ? contentIds : ['DOM_N/A'], // Indicador de fallback
+                contents: contents.length > 0 ? contents : [{id: 'DOM_N/A', quantity: 0, item_price: 0}],
+                numItems: numItems > 0 ? numItems : 0, 
+                value: parseFloat(totalValue.toFixed(2)) || 0, 
+                currency: currency, 
+                contentType: 'cart', 
+                contentName: 'Shopping Cart' 
+             };
+        } else {
+             console.log('[Meta Tracking Debug] extractCartData - DOM: Nenhum item encontrado via seletores genéricos.');
+        }
+    }
+    
+    // Fallback final se nada for encontrado
+    if (!cartDataExtracted) {
+        console.log('[Meta Tracking Debug] extractCartData - Nenhuma das tentativas (JSON ou DOM) extraiu dados. Usando fallback.');
+        cartDataExtracted = { 
+            contentIds: ['FALLBACK_N/A'], // Evita array vazio se falhar
+            contents: [{id: 'FALLBACK_N/A', quantity: 0, item_price: 0}],
+            numItems: 0, 
+            value: 0, 
+            currency: currency, 
+            contentType: 'cart', 
+            contentName: 'Shopping Cart (Fallback)' 
+        };
+    }
+    
+     console.log('[Meta Tracking Debug] extractCartData - Retornando Resultado Final:', cartDataExtracted);
+     return cartDataExtracted;
   }
 })(); 
