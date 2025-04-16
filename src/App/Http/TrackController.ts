@@ -125,7 +125,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
                 return logString || ' (None)';
             };
 
-            logger.debug(`[TrackController] Prepared CAPI Event (Pixel Helper Simulation):
+            logger.debug(`[TrackController] Prepared CAPI Event (Pixel Helper Server):
           Event Name: ${capiEvent.event_name}
           Pixel ID: ${config.fbPixelId}
           Event ID: ${capiEvent.event_id}
