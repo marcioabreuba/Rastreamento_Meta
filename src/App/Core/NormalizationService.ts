@@ -121,20 +121,29 @@ function normalizeBrazilianZipCode(zipCode: string | null, countryCode: string |
  */
 function validateFbp(fbp: string | null): string | null {
   if (!fbp) return null;
+
+  const trimmedFbp = fbp.trim(); // Garante que não há espaços extras
+
   // Formato correto: fb.1.timestamp.randomnumber
-  if (/^fb\.1\.\d+\.\d+$/.test(fbp)) {
-    return fbp;
+  if (/^fb\\.1\\.\\d+\\.\\d+$/.test(trimmedFbp)) {
+    return trimmedFbp;
   }
   // Tenta corrigir formatos comuns (ex: vindo de SDKs)
-  if (fbp.startsWith('fb.0.') || fbp.startsWith('fb.2.')) {
-      const parts = fbp.split('.');
-      if (parts.length === 4) {
-          return `fb.1.${parts[2]}.${parts[3]}`;
+  if (trimmedFbp.startsWith('fb.0.') || trimmedFbp.startsWith('fb.2.')) {
+      const parts = trimmedFbp.split('.');
+      if (parts.length === 4 && parts[2] && parts[3]) { // Verifica se as partes existem
+          // Tenta reconstruir para fb.1.
+          const correctedFbp = `fb.1.${parts[2]}.${parts[3]}`;
+          // Revalida o formato corrigido (opcional, mas seguro)
+          if (/^fb\\.1\\.\\d+\\.\\d+$/.test(correctedFbp)) {
+              logger.info(`[NormalizationService] FBP corrigido de ${trimmedFbp} para ${correctedFbp}`);
+              return correctedFbp;
+          }
       }
   }
-  // Se não for reconhecido, não retorna nada para evitar enviar inválido
-  logger.warn(`[NormalizationService] FBP inválido recebido: ${fbp}`);
-  return null;
+  // Se não for reconhecido ou corrigível, loga e retorna o original trimado
+  logger.warn(`[NormalizationService] FBP com formato inesperado recebido e mantido: ${trimmedFbp}`);
+  return trimmedFbp; // << ALTERADO: Retorna o valor original trimado em vez de null
 }
 
 /**
@@ -167,6 +176,10 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const countryCode = rawUserData?.country?.toLowerCase() || geoData?.country?.code?.toLowerCase() || null;
   const zipCode = normalizeBrazilianZipCode(rawUserData?.zp || geoData?.postal, countryCode);
 
+  // Normaliza external_id antes do hash
+  const externalIdInput = rawUserData?.external_id;
+  const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
+
   return {
     // Hashed
     em: hashData(rawUserData?.em, 'email'),
@@ -179,12 +192,12 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     st: hashData(rawUserData?.st || geoData?.region?.code, 'geo'),
     zp: hashData(zipCode, 'generic'), // CEP já normalizado (hash)
     country: hashData(countryCode, 'geo'),
-    external_id: hashData(rawUserData?.external_id, 'generic') || generateUserIdFallback(), // Hash do ID externo ou fallback
+    external_id: hashData(normalizedExternalIdForHash, 'generic') || generateUserIdFallback(), // << ALTERADO: Usa a variável normalizada
 
     // Non-Hashed
     client_ip_address: convertToIPv6Format(clientIp), // Garante formato IPv6
     client_user_agent: userAgent,
-    fbp: validateFbp(rawUserData?.fbp), // Valida FBP
+    fbp: validateFbp(rawUserData?.fbp), // Valida FBP (agora não retorna null facilmente)
     fbc: rawUserData?.fbc || null, // FBC não precisa de validação complexa
     subscription_id: rawUserData?.subscription_id || null,
     fb_login_id: rawUserData?.fb_login_id || null,
