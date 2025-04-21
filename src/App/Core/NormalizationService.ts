@@ -180,11 +180,7 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const externalIdInput = rawUserData?.external_id;
   const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
 
-  // +++ LOG FBC TEMPORÁRIO +++
-  logger.info(`[FBC DEBUG] NormalizationService - Input rawUserData.fbc: ${rawUserData?.fbc}`);
-  const finalFbc = rawUserData?.fbc || null;
-  logger.info(`[FBC DEBUG] NormalizationService - Output serverUserData.fbc: ${finalFbc}`);
-  // +++ FIM LOG FBC +++
+  const finalFbc = rawUserData?.fbc || null; // Mantém a atribuição
 
   return {
     // Hashed
@@ -204,7 +200,7 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     client_ip_address: convertToIPv6Format(clientIp), // Garante formato IPv6
     client_user_agent: userAgent,
     fbp: validateFbp(rawUserData?.fbp), // Valida FBP (agora não retorna null facilmente)
-    fbc: finalFbc, // << ALTERADO: Usa a variável com log
+    fbc: finalFbc, // << ALTERADO: Usa a variável com log (mantido uso da variável)
     subscription_id: rawUserData?.subscription_id || null,
     fb_login_id: rawUserData?.fb_login_id || null,
     lead_id: rawUserData?.lead_id || null,

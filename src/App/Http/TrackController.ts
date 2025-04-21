@@ -51,6 +51,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
   const requestStartTime = Date.now();
   const { eventName, userData, customData, eventId, sourceUrl, referrer, ...rest } = req.body;
 
+  /* LOG FBC REMOVIDO
   // +++ LOG FBC TEMPORÁRIO +++
   if (userData) {
     logger.info(`[FBC DEBUG] TrackController - Received userData.fbc: ${userData.fbc}`);
@@ -58,6 +59,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
     logger.info(`[FBC DEBUG] TrackController - Received userData is null/undefined.`);
   }
   // +++ FIM LOG FBC +++
+  */
 
   // Loga os dados brutos recebidos APENAS se LOG_LEVEL=debug
   logger.debug(`[TrackController] Raw event received: ${eventName}`, {
