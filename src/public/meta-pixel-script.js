@@ -515,38 +515,30 @@
    * @returns {string|null} FBP válido ou null
    */
   function validateFbp(fbp) {
+    // --- LÓGICA SIMPLIFICADA --- 
+    // 1. Tentar ler o cookie _fbp diretamente
+    let fbpValue = getCookie('_fbp');
+    
+    // 2. Se não estiver no cookie, tentar ler o parâmetro da URL 'fbp'
+    if (!fbpValue) {
+      fbpValue = getUrlParameter('fbp');
+    }
+    
+    // 3. Retornar o valor encontrado (pode ser null)
+    // Não fazer validação, correção ou geração. Confiar no valor existente.
+    return fbpValue; 
+    // --- FIM DA LÓGICA SIMPLIFICADA ---
+    
+    /* LÓGICA ANTIGA REMOVIDA:
     // Se não existir ou for inválido, GERAR um novo FBP válido
-    if (!fbp || !/^fb\.[12]\.\d+\.\d+$/.test(fbp)) {
-      const timestamp = Date.now();
-      const random = Math.floor(Math.random() * 1000000000);
-      const newFbp = `fb.1.${timestamp}.${random}`;
-      
-      // Definir o cookie _fbp para uso futuro (90 dias)
-      // Verificar se a função setCookie está disponível antes de chamá-la
-      if (typeof setCookie === 'function') {
-        setCookie('_fbp', newFbp, 90); 
-      } else {
-        console.warn('Função setCookie não encontrada. Não foi possível salvar o _fbp gerado.');
-      }
-      
-      return newFbp; // Retorna o FBP recém-gerado
-    }
-    
+    // if (!fbp || !/^fb\.[12]\.\d+\.\d+$/.test(fbp)) { ... }
     // Verificar se já está no formato correto fb.1...
-    if (/^fb\.1\.\d+\.\d+$/.test(fbp)) {
-      return fbp;
-    }
-    
+    // if (/^fb\.1\.\d+\.\d+$/.test(fbp)) { ... }
     // Se começar com fb.2, corrigir para fb.1
-    if (fbp.startsWith('fb.2.')) {
-      return 'fb.1.' + fbp.substring(5);
-    }
-    
-    // Como a lógica inicial agora gera um FBP se for inválido,
-    // este fallback teoricamente não será mais alcançado, mas mantemos por segurança.
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000000000);
-    return `fb.1.${timestamp}.${random}`;
+    // if (fbp.startsWith('fb.2.')) { ... }
+    // Fallback final
+    // const timestamp = Date.now(); ... 
+    */
   }
 
   // >>> INÍCIO DA SEÇÃO MODIFICADA <<<
