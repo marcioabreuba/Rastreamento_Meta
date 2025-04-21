@@ -124,11 +124,12 @@ function validateFbp(fbp: string | null): string | null {
 
   const trimmedFbp = fbp.trim(); // Garante que não há espaços extras
 
-  // Formato correto: fb.1.timestamp.randomnumber
+  // 1. Verifica se já está no formato correto fb.1...
   if (/^fb\\.1\\.\\d+\\.\\d+$/.test(trimmedFbp)) {
     return trimmedFbp;
   }
-  // Tenta corrigir formatos comuns (ex: vindo de SDKs)
+
+  // 2. Tenta corrigir o formato fb.0 ou fb.2 para fb.1
   if (trimmedFbp.startsWith('fb.0.') || trimmedFbp.startsWith('fb.2.')) {
       const parts = trimmedFbp.split('.');
       if (parts.length === 4 && parts[2] && parts[3]) { // Verifica se as partes existem
@@ -138,12 +139,21 @@ function validateFbp(fbp: string | null): string | null {
           if (/^fb\\.1\\.\\d+\\.\\d+$/.test(correctedFbp)) {
               logger.info(`[NormalizationService] FBP corrigido de ${trimmedFbp} para ${correctedFbp}`);
               return correctedFbp;
+          } else {
+              // Se a correção falhar na revalidação, loga e retorna null
+              logger.warn(`[NormalizationService] FBP corrigido (${correctedFbp}) falhou na revalidação. Descartando.`);
+              return null;
           }
+      } else {
+           // Se as partes não estiverem corretas após split, loga e retorna null
+          logger.warn(`[NormalizationService] FBP com prefixo fb.0/fb.2 mas formato inválido (${trimmedFbp}). Descartando.`);
+          return null;
       }
   }
-  // Se não for reconhecido ou corrigível, loga e retorna o original trimado
-  logger.warn(`[NormalizationService] FBP com formato inesperado recebido e mantido: ${trimmedFbp}`);
-  return trimmedFbp; // << ALTERADO: Retorna o valor original trimado em vez de null
+
+  // 3. Se não for formato fb.1 nem corrigível de fb.0/fb.2, descarta
+  logger.warn(`[NormalizationService] FBP com formato inválido/não reconhecido (${trimmedFbp}). Descartando.`);
+  return null;
 }
 
 /**
