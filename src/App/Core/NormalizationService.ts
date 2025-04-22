@@ -129,9 +129,9 @@ function validateFbp(fbp: string | null): string | null {
       return trimmed;
   }
 
-  // Se a estrutura não for válida, loga e retorna null
-  logger.warn(`[NormalizationService] _fbp em formato inesperado ou inválido: ${trimmed}. Descartando.`);
-  return null;
+  // Se a estrutura não for válida, loga e GERA FALLBACK
+  logger.warn(`[NormalizationService] _fbp em formato inesperado ou inválido: ${trimmed}. Gerando fallback.`);
+  return generateFallbackFbp(); // <-- Chamar fallback em vez de retornar null
 }
 
 /**
@@ -168,7 +168,19 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const externalIdInput = rawUserData?.external_id;
   const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
 
-  const finalFbc = rawUserData?.fbc || null; // Mantém a atribuição
+  // Validar FBC antes de usar
+  let finalFbc = null;
+  const rawFbc = rawUserData?.fbc;
+  if (rawFbc) {
+    const trimmedFbc = String(rawFbc).trim();
+    // Regex similar ao FBP, mas permite caracteres não numéricos após o timestamp
+    if (/^fb\.[0-9]\.\d+\..+$/.test(trimmedFbc)) {
+        finalFbc = trimmedFbc;
+    } else {
+        logger.warn(`[NormalizationService] _fbc em formato inesperado ou inválido: ${trimmedFbc}. Descartando.`);
+        // Mantém finalFbc como null
+    }
+  } // Se rawFbc for null/undefined, finalFbc continua null
 
   return {
     // Hashed
@@ -187,8 +199,8 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     // Non-Hashed
     client_ip_address: convertToIPv6Format(clientIp), // Garante formato IPv6
     client_user_agent: userAgent,
-    fbp: validateFbp(rawUserData?.fbp), // Valida FBP (agora não retorna null facilmente)
-    fbc: finalFbc, // << ALTERADO: Usa a variável com log (mantido uso da variável)
+    fbp: validateFbp(rawUserData?.fbp), // Valida FBP (agora com fallback)
+    fbc: finalFbc, // Usa FBC validado (ou null)
     subscription_id: rawUserData?.subscription_id || null,
     fb_login_id: rawUserData?.fb_login_id || null,
     lead_id: rawUserData?.lead_id || null,
@@ -337,4 +349,17 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   };
 
   return serverEvent;
+}
+
+/**
+ * Gera um FBP fallback no formato padrão fb.1...
+ * @returns {string} FBP gerado.
+ */
+function generateFallbackFbp(): string {
+  const timestamp = Date.now();
+  // Gera um número aleatório grande o suficiente
+  const random = Math.floor(Math.random() * 1000000000000);
+  const fallbackFbp = `fb.1.${timestamp}.${random}`;
+  logger.info(`[NormalizationService] Gerando FBP fallback: ${fallbackFbp}`);
+  return fallbackFbp;
 } 
