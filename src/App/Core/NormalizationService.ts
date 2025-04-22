@@ -120,21 +120,18 @@ function normalizeBrazilianZipCode(zipCode: string | null, countryCode: string |
  * @returns {string | null} FBP válido ou null.
  */
 function validateFbp(fbp: string | null): string | null {
-  // --- REVERTIDO NOVAMENTE para a versão que apenas loga e mantém o valor original ---
+  // --- Lógica de validação de estrutura (sugerida) ---
   if (!fbp) return null;
+  const trimmed = fbp.trim();
 
-  const trimmedFbp = fbp.trim();
-
-  // Verifica se está no formato padrão fb.1
-  if (/^fb\.1\.\d+\.\d+$/.test(trimmedFbp)) {
-    return trimmedFbp; // Retorna se for fb.1...
+  // Aceita fb.0, fb.1, fb.2, fb.3 … desde que a estrutura esteja correta
+  if (/^fb\.[0-9]\.\d+\.\d+$/.test(trimmed)) {
+      return trimmed;
   }
 
-  // Se NÃO for formato fb.1 (pode ser fb.2... ou outro), 
-  // loga um aviso mas retorna o valor original trimado.
-  // Confiar que a CAPI pode lidar com fb.2... conforme recomendação Meta.
-  logger.warn(`[NormalizationService] FBP com formato não padrão fb.1 (${trimmedFbp}) recebido e mantido conforme recomendação Meta.`);
-  return trimmedFbp;
+  // Se a estrutura não for válida, loga e retorna null
+  logger.warn(`[NormalizationService] _fbp em formato inesperado ou inválido: ${trimmed}. Descartando.`);
+  return null;
 }
 
 /**
