@@ -80,6 +80,11 @@ function hashData(data: string | number | undefined | null, type: 'email' | 'pho
       break;
     case 'phone':
       normalizedData = normalizedData.replace(/\D/g, ''); // Manter apenas dígitos
+      // Se o número resultante tiver menos de 7 dígitos, é inválido para match
+      if (normalizedData.length < 7) {
+          logger.warn(`[NormalizationService] Número de telefone normalizado (${normalizedData}) muito curto (< 7 dígitos). Retornando null.`);
+          return null;
+      }
       break;
     case 'geo': // Para cidade, estado, país
       normalizedData = normalizedData.toLowerCase();
@@ -124,8 +129,9 @@ function validateFbp(fbp: string | null): string | null {
   if (!fbp) return null;
   const trimmed = fbp.trim();
 
-  // Aceita fb.0, fb.1, fb.2, fb.3 … desde que a estrutura esteja correta
-  if (/^fb\.[0-9]\.\d+\.\d+$/.test(trimmed)) {
+  // Aceita fb.0, fb.1, fb.2, fb.10 ... desde que a estrutura esteja correta
+  // Usa [0-9]+? para permitir múltiplos dígitos no sub-domain index
+  if (/^fb\.[0-9]+?\.\d+\.\d+$/.test(trimmed)) {
       return trimmed;
   }
 
@@ -173,8 +179,8 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const rawFbc = rawUserData?.fbc;
   if (rawFbc) {
     const trimmedFbc = String(rawFbc).trim();
-    // Regex similar ao FBP, mas permite caracteres não numéricos após o timestamp
-    if (/^fb\.[0-9]\.\d+\..+$/.test(trimmedFbc)) {
+    // Regex mais estrito para FBC: permite apenas alfanuméricos, _ e - após o último ponto
+    if (/^fb\.[0-9]+\.\d+\.[A-Za-z0-9_\-]+$/.test(trimmedFbc)) {
         finalFbc = trimmedFbc;
     } else {
         logger.warn(`[NormalizationService] _fbc em formato inesperado ou inválido: ${trimmedFbc}. Descartando.`);
@@ -357,8 +363,8 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
  */
 function generateFallbackFbp(): string {
   const timestamp = Date.now();
-  // Gera um número aleatório grande o suficiente
-  const random = Math.floor(Math.random() * 1000000000000);
+  // Gera um número aleatório grande e garante padding para 13 dígitos
+  const random = Math.floor(Math.random() * 1e12).toString().padStart(13, '0');
   const fallbackFbp = `fb.1.${timestamp}.${random}`;
   logger.info(`[NormalizationService] Gerando FBP fallback: ${fallbackFbp}`);
   return fallbackFbp;
