@@ -595,11 +595,16 @@
   // Função auxiliar para enviar dados brutos para o backend /track
   async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, eventId) {
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
-    // const eventId = generateUUID(); // <<< REMOVER geração aqui, já vem como parâmetro
+
+    // +++ RE-LER FBP AQUI +++
+    const currentFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
+    // +++ FIM RE-LEITURA FBP +++
 
     // Combinar dados de usuário gerais com PII (se houver)
     const finalUserData = {
-        ...rawUserData, // Contém external_id, fbp, fbc, visitorId, PII, etc.
+        ...rawUserData, // Contém external_id, visitorId, PII, etc.
+        fbp: currentFbp, // <<< USAR O VALOR RE-LIDO AQUI
     };
 
     const payload = {
@@ -655,10 +660,9 @@
     const eventId = generateUUID();
 
     // Coletar dados comuns
-      const externalId = getExternalId();
+    const externalId = getExternalId();
     const visitorId = getOrCreateVisitorId();
-      const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-      const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+    const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
 
     // Coletar PII novamente (pode ter sido atualizado desde o init)
     const email = localStorage.getItem('meta_tracking_email');
@@ -683,14 +687,18 @@
 
     // Montar UserData para backend e Advanced Matching para fbq
     const rawUserData = {
-      external_id: externalId, visitorId: visitorId, fbp: fbp, fbc: fbc,
+      external_id: externalId, visitorId: visitorId, fbc: fbc,
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
     Object.keys(rawUserData).forEach(key => rawUserData[key] == null && delete rawUserData[key]);
 
     // Montar Advanced Matching Params para fbq (sem hash)
-    const advancedMatchingParams = { ...rawUserData }; // Reutiliza os dados já coletados
+    const fbpForFbq = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    const advancedMatchingParams = { 
+        ...rawUserData, // Reutiliza os dados já coletados
+        fbp: fbpForFbq // <<< Adiciona fbp lido para o fbq
+    };
     // Adicionar userAgent que fbq usa
     advancedMatchingParams.client_user_agent = navigator.userAgent; 
     Object.keys(advancedMatchingParams).forEach(key => advancedMatchingParams[key] == null && delete advancedMatchingParams[key]);
