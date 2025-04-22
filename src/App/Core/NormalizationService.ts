@@ -120,35 +120,21 @@ function normalizeBrazilianZipCode(zipCode: string | null, countryCode: string |
  * @returns {string | null} FBP válido ou null.
  */
 function validateFbp(fbp: string | null): string | null {
+  // --- REVERTIDO NOVAMENTE para a versão que apenas loga e mantém o valor original ---
   if (!fbp) return null;
 
-  const trimmedFbp = fbp.trim(); // Garante que não há espaços extras
+  const trimmedFbp = fbp.trim();
 
-  // 1. Verifica se já está no formato correto fb.1...
+  // Verifica se está no formato padrão fb.1
   if (/^fb\.1\.\d+\.\d+$/.test(trimmedFbp)) {
-    return trimmedFbp;
+    return trimmedFbp; // Retorna se for fb.1...
   }
 
-  // 2. Tenta corrigir o formato fb.0 ou fb.2 para fb.1
-  if (trimmedFbp.startsWith('fb.0.') || trimmedFbp.startsWith('fb.2.')) {
-      const parts = trimmedFbp.split('.');
-      if (parts.length === 4 && parts[2] && parts[3]) { // Verifica se as partes existem
-          // Tenta reconstruir para fb.1.
-          const correctedFbp = `fb.1.${parts[2]}.${parts[3]}`;
-          // *** REMOVIDO: Revalidação com Regex ***
-          // Confia que a correção gerou um formato válido e retorna diretamente
-          logger.info(`[NormalizationService] FBP corrigido de ${trimmedFbp} para ${correctedFbp} (sem revalidação)`);
-          return correctedFbp;
-      } else {
-           // Se as partes não estiverem corretas após split, loga e retorna null
-          logger.warn(`[NormalizationService] FBP com prefixo fb.0/fb.2 mas formato inválido (${trimmedFbp}). Descartando.`);
-          return null;
-      }
-  }
-
-  // 3. Se não for formato fb.1 nem corrigível de fb.0/fb.2, descarta
-  logger.warn(`[NormalizationService] FBP com formato inválido/não reconhecido (${trimmedFbp}). Descartando.`);
-  return null;
+  // Se NÃO for formato fb.1 (pode ser fb.2... ou outro), 
+  // loga um aviso mas retorna o valor original trimado.
+  // Confiar que a CAPI pode lidar com fb.2... conforme recomendação Meta.
+  logger.warn(`[NormalizationService] FBP com formato não padrão fb.1 (${trimmedFbp}) recebido e mantido conforme recomendação Meta.`);
+  return trimmedFbp;
 }
 
 /**
