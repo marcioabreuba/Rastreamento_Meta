@@ -758,6 +758,20 @@
     console.log('[Meta Tracking Debug]   Raw User Data (para backend):', rawUserData);
     console.log('[Meta Tracking Debug]   Event ID:', eventId);
 
+    // +++ LOG WEB RAW +++
+    if (isDebugEnabled()) {
+      try {
+          // Agrupar para organização
+          console.groupCollapsed(`[LOG_WEB_RAW] Preparando Evento: ${eventName} (ID: ${eventId})`);
+          // Usar JSON.stringify com indentação
+          console.log('Raw User Data (para backend):', JSON.stringify(rawUserData, null, 2));
+          console.log('Specific Custom Data (para backend):', JSON.stringify(finalCustomData, null, 2)); // Logar `finalCustomData` que vai pro backend
+          console.groupEnd();
+      } catch (e) {
+          console.error('[LOG_WEB_RAW] Erro ao gerar log:', e);
+      }
+    }
+    // +++ FIM LOG WEB RAW +++
 
     // Enviar para o Facebook Pixel
     try {
