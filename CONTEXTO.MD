@@ -1,6 +1,6 @@
 # Especificação e Contexto Atualizado do Projeto: Meta-Tracking
 
-**Última Atualização:** [Data da Execução da Atualização]
+**Última Atualização:** [Data da Execução da Atualização - Inserir Data Atual]
 
 **Fonte da Verdade:** Este documento resume o estado atual, a arquitetura e as regras essenciais do projeto Meta-Tracking. Consulte-o para entender o contexto e o funcionamento do sistema.
 
@@ -25,8 +25,12 @@
         *   **Inicializa o Pixel:** Carrega `fbevents.js`, chama `fbq('init', PIXEL_ID, advancedMatchingParams)` usando dados PII e Geo (se disponíveis no `localStorage`) **sem hash**.
         *   **Envia PageView (Web):** Chama `fbq('track', 'PageView', customParams)` com um `eventID` único logo após o `init`.
         *   **Coleta Dados:** Obtém informações da página, navegador, IDs (`fbp`/`fbc`, `external_id` gerado/obtido, `visitorId` de cookie first-party) e dados PII/Geo do `localStorage`.
-        *   **Envia Eventos (Web):** Dispara outros eventos (`ViewContent`, `AddToCart`, etc.) via `fbq('track', eventName, eventData)`.
+        *   **Envia Eventos (Web):** Dispara outros eventos (`ViewContent`, `AddToCart`, etc.) via `fbq('track', eventName, eventData)` ou `fbq('trackCustom', eventName, eventData)`.
         *   **Comunica com Backend:** Envia um payload JSON **bruto e não hasheado** para o endpoint `/track` do backend via `POST` para cada evento (incluindo PageView).
+        *   **[NOVO] Logging Condicional (Debug):** Se o modo de debug estiver ativo (`?debug_meta=true` na URL ou `localStorage.setItem('meta_debug', 'true')`), o script logará no console:
+            *   `[LOG_WEB_RAW]`: Dados brutos preparados para envio ao backend.
+            *   `[LOG_WEB_FBQ]`: Dados enviados para `fbq('track'...)` ou `fbq('trackCustom'...)`.
+            *   `[LOG_SERVER_CAPI]`: O payload CAPI completo (hasheado) recebido na resposta do backend (`/track`).
 
 2.  **Backend (Servidor - `meta-tracking`):**
     *   **Stack:** Node.js / TypeScript, hospedado no Render.com.
@@ -36,11 +40,12 @@
         *   Servir o script dinâmico `/meta-pixel-script.js`.
         *   Receber dados brutos no endpoint `POST /track`.
         *   **Enriquecer:** Obter GeoIP do IP do requisitante (`GeoIPService`).
-        *   **Normalizar e Hashear:** Processar os dados recebidos e enriquecidos (`NormalizationService`), aplicando regras específicas (PII, CEP BR, etc.) e hashing SHA-256.
-        *   **Enviar para CAPI:** Enviar o evento formatado e hasheado para a API de Conversões do Meta (`CapiService`).
+        *   **Normalizar e Hashear:** Processar os dados recebidos e enriquecidos (`NormalizationService`), aplicando regras específicas (PII, CEP BR, etc.) e hashing SHA-256 para criar o `capiEvent`.
+        *   **Enviar para CAPI:** Enviar o `capiEvent` formatado e hasheado para a API de Conversões do Meta (`CapiService`).
+        *   **[MODIFICADO] Responder ao Frontend:** Enviar resposta 200 OK. Se o modo debug estiver ativo no frontend (detectado implicitamente pela requisição), a resposta **incluirá** o objeto `capiPayload` completo, o status do envio CAPI (`capiSendStatus`), e o `traceId` (se houver).
 
 3.  **Fluxo Simplificado:**
-    `Cliente carrega HTML` -> `HTML carrega /meta-pixel-script.js` -> `Script JS faz fbq('init') + fbq('track', 'PageView')` -> `Script JS envia dados BRUTOS para POST /track` -> `Backend /track recebe` -> `Backend obtém GeoIP` -> `Backend Normaliza/Hasheia (prioriza dados do POST, usa GeoIP como fallback)` -> `Backend envia para CAPI (async)` -> `Backend responde 200 OK para /track`.
+    `Cliente carrega HTML` -> `HTML carrega /meta-pixel-script.js` -> `Script JS faz fbq('init') + fbq('track', 'PageView')` -> `[Debug?] Script JS loga [LOG_WEB_RAW]` -> `[Debug?] Script JS loga [LOG_WEB_FBQ]` -> `Script JS envia dados BRUTOS para POST /track` -> `Backend /track recebe` -> `Backend obtém GeoIP` -> `Backend Normaliza/Hasheia (gera capiEvent)` -> `Backend envia capiEvent para CAPI (async)` -> `Backend responde 200 OK (com capiPayload se Debug?) para /track` -> `[Debug?] Script JS loga [LOG_SERVER_CAPI] da resposta`.
 
 ---
 
@@ -55,9 +60,11 @@
     *   Chama `GeoIPService.getGeoData()` para obter dados de geolocalização.
     *   Chama um Handler de Evento específico (ex: `PurchaseHandler`) ou o `GenericEventHandler` para pré-processar dados, se necessário.
     *   Prepara o `RawEventInput` com todos os dados brutos (request, geo, frontend).
-    *   Chama `NormalizationService.normalizeEventForCAPI()`.
-    *   Se a normalização for bem-sucedida, envia a resposta 200 OK para o cliente e chama `CapiService.sendEvent()` de forma assíncrona.
-    *   Loga erros e responde com 4xx/5xx apropriados.
+    *   Chama `NormalizationService.normalizeEventForCAPI()` para obter o `capiEvent`.
+    *   Chama `CapiService.sendEvent(capiEvent)` **e aguarda o resultado** (`capiResult`).
+    *   **[MODIFICADO] Monta a resposta JSON:** Inclui `success`, `serverEventId`, **`capiPayload`**, **`capiSendStatus`**, **`capiTraceId`**, etc.
+    *   Envia a resposta JSON ao frontend.
+    *   Loga erros e responde com 4xx/5xx apropriados (também com estrutura JSON padronizada).
 *   **`src/App/Core/GeoIPService.ts`:**
     *   Encapsula a interação com a biblioteca `@maxmind/geoip2-node`.
     *   Recebe a instância do `Reader` na inicialização.
@@ -81,7 +88,9 @@
             *   **Define `language`:** Padroniza para `'pt-BR'`.
         *   **Gera `event_id`:** Usa o `eventId` vindo do frontend ou gera um UUID v4 se ausente.
     *   **`hashData(...)`:** Função auxiliar para aplicar SHA-256 após normalização específica do tipo.
-*   **`src/App/Core/CapiService.ts` (Implícito):** Responsável por fazer a requisição HTTP POST para a API de Conversões do Meta (`graph.facebook.com/vX.X/PIXEL_ID/events`) com o payload `ServerEvent` normalizado.
+*   **`src/App/Http/CapiService.ts`:**
+    *   Responsável por fazer a requisição HTTP POST para a API de Conversões do Meta (`graph.facebook.com/vX.X/PIXEL_ID/events`) com o payload `ServerEvent` normalizado.
+    *   **[MODIFICADO]** Retorna um objeto `CapiSendResult` com `{ status: 'success' | 'error' | 'skipped', traceId?: string, error?: string }`.
 *   **`src/App/events/*Handler.ts`:** (Ex: `PurchaseHandler`, `GenericEventHandler`) Funções opcionais para extrair/formatar dados específicos de certos tipos de evento *antes* da normalização principal. O `GenericEventHandler` simplesmente repassa os dados.
 *   **`src/scripts/download-geoip.ts`:** Script auxiliar para baixar/atualizar o banco de dados `GeoLite2-City.mmdb` da MaxMind. Verifica idade, usa backups, etc.
 
@@ -144,6 +153,7 @@
       // dataProcessingOptions, etc. (opcional)
     }
     ```
+    *Observação: A resposta do backend para esta requisição agora contém dados adicionais (`capiPayload`, etc.) quando o debug está ativo no frontend.*
 
 ### Payload: Backend (`NormalizationService`) -> Meta CAPI (`ServerEvent`)
 
@@ -209,6 +219,18 @@
 
 ---
 
+## 🕵️ Depuração (Novo)
+
+*   **Ativação:** Para ativar os logs detalhados no console do navegador, adicione `?debug_meta=true` à URL do site ou execute `localStorage.setItem('meta_debug', 'true')` no console.
+*   **Logs Disponíveis (no Console do Navegador):**
+    *   **`[LOG_WEB_RAW]`:** Mostra os dados (`eventName`, `rawUserData`, `specificCustomData`) *antes* de serem enviados do script frontend para o endpoint `/track` do backend. Útil para ver os dados brutos coletados no navegador.
+    *   **`[LOG_WEB_FBQ]`:** Mostra os dados (`eventName`, `customData`, `options`) enviados diretamente para a função `fbq()` do Facebook Pixel (seja `track` ou `trackCustom`). Útil para verificar o que o Pixel está recebendo.
+    *   **`[LOG_SERVER_CAPI]`:** Mostra o payload completo (`capiPayload`) que o *backend* preparou para enviar à API de Conversões, incluindo dados hasheados e enriquecidos (como GeoIP). Este log aparece após o frontend receber a resposta do endpoint `/track`. Útil para comparar com os logs web e verificar o processamento do servidor.
+*   **Desativação:** Remova o parâmetro da URL ou execute `localStorage.removeItem('meta_debug')`. Nenhum dos logs `[LOG_...]` deve aparecer quando desativado.
+*   **Nota:** A ativação do debug **NÃO** altera os dados enviados para o Facebook Pixel ou CAPI, apenas exibe logs adicionais no console e modifica a resposta do backend para incluir o `capiPayload`.
+
+---
+
 ## ⚠️ Pontos Críticos & Normas Atuais (Atenção!)
 
 *   **Frontend Único:** O script `meta-pixel-script.js`, servido pelo backend, é o **único** código a ser instalado no site cliente. Nenhuma outra lógica de rastreamento deve ser adicionada manualmente no cliente.
@@ -221,6 +243,7 @@
 *   **Atualização GeoIP DB:** O banco de dados MaxMind (`GeoLite2-City.mmdb`) deve ser mantido atualizado (o script `download-geoip.ts` ajuda, mas pode requerer execução periódica ou automação no deploy).
 *   **Idioma e Moeda:** Padronize `language` para `'pt-BR'` e `currency` para `'BRL'` nos dados enviados à CAPI, a menos que haja uma razão forte para usar outros valores.
 *   **Múltiplos Pixels:** Esteja ciente de que o sistema é projetado para lidar com diferentes IDs de Pixel (embora a configuração atual possa ter um fixo), mas evite conflitos se outros sistemas de rastreamento estiverem presentes na mesma página.
+*   **Debug em Produção:** Evite ativar o modo de debug (`?debug_meta=true`) em ambiente de produção desnecessariamente, pois expõe logs detalhados no console.
 
 ---
 *Este documento reflete o estado atual do projeto Meta-Tracking.* 
