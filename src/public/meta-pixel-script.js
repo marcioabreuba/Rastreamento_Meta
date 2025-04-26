@@ -634,7 +634,9 @@
 
     // Enviar para /track
     try {
-        console.log('[Frontend Script] Enviando payload bruto para /track:', JSON.stringify(payload).substring(0, 500) + '...'); // Log truncado
+        // --- LOG BRUTO REMOVIDO DAQUI, SERÁ FEITO NA RESPOSTA ---
+        // console.log('[Frontend Script] Enviando payload bruto para /track:', JSON.stringify(payload).substring(0, 500) + '...');
+
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -643,13 +645,34 @@
             body: JSON.stringify(payload),
             keepalive: true // Importante para enviar em unload/pagehide
         });
-        if (!response.ok) {
-            console.error(`[Frontend Script] Erro ao enviar evento ${eventName} para backend: ${response.status} ${response.statusText}`);
+
+        // --- MODIFICADO: Processar resposta JSON e logar CAPI --- 
+        const responseData = await response.json(); // Processar sempre como JSON
+
+        if (isDebugEnabled() && responseData.capiPayload) {
+             // Usar JSON.stringify com indentação para melhor leitura
+            console.groupCollapsed(`[LOG_SERVER_CAPI] Evento: ${responseData.capiPayload.event_name} (ID: ${responseData.serverEventId})`);
+            console.log(JSON.stringify(responseData.capiPayload, null, 2));
+            console.log('Status CAPI:', responseData.capiSendStatus);
+            console.log('Trace ID CAPI:', responseData.capiTraceId);
+            if (responseData.capiError) {
+                 console.error('Erro CAPI:', responseData.capiError);
+            }
+            console.groupEnd();
+        } else if (isDebugEnabled()) {
+            // Logar se o debug está ativo mas não veio payload (pode indicar erro no backend)
+            console.warn('[LOG_SERVER_CAPI] Payload CAPI não encontrado na resposta do backend.', responseData);
         }
-        // const responseData = await response.json(); // Opcional
-        // console.log('Resposta do backend:', responseData);
+
+        if (!response.ok || !responseData.success) {
+            console.error(`[Frontend Script] Erro na resposta do backend /track para ${eventName}:`, { status: response.status, responseData });
+        } else {
+            console.log(`[Frontend Script] Resposta recebida do backend para ${eventName} (ID Servidor: ${responseData.serverEventId})`);
+        }
+        // --- FIM DA MODIFICAÇÃO ---
+
     } catch (error) {
-        console.error(`[Frontend Script] Falha na requisição fetch para ${eventName}:`, error);
+        console.error(`[Frontend Script] Falha na requisição fetch para /track (${eventName}) ou processamento JSON:`, error);
     }
   }
 
@@ -748,14 +771,29 @@
           if (EVENT_MAPPING[eventName] === 'CustomEvent') {
              customEventPayload.event = eventName; // Adiciona o nome original (ex: Timer_1min) 
              console.log('[Meta Tracking Debug] Enviando como trackCustom (CustomEvent): ', facebookEventName, customEventPayload, fbqOptions);
+             // ++ LOG FBQ ++ 
+             logTrackCustomIfNeeded(eventName, customEventPayload, fbqOptions);
              fbq('trackCustom', eventName, customEventPayload, fbqOptions); // Usa eventName original aqui
           } else {
              console.log('[Meta Tracking Debug] Enviando como trackCustom (Não Padrão): ', facebookEventName, finalCustomData, fbqOptions);
+             // ++ LOG FBQ ++ 
+             logTrackCustomIfNeeded(facebookEventName, finalCustomData, fbqOptions);
              fbq('trackCustom', facebookEventName, finalCustomData, fbqOptions);
           }
         } else {
           // Para eventos padrão (PageView, ViewContent, AddToCart, Purchase, etc.) usar track padrão
           console.log('[Meta Tracking Debug] Enviando como track (Padrão): ', facebookEventName, finalCustomData, fbqOptions);
+          // +++ LOG WEB FBQ (TRACK PADRÃO) +++
+          if (isDebugEnabled()) {
+              try {
+                  console.groupCollapsed(`[LOG_WEB_FBQ] fbq('track', '${facebookEventName}', ...) (ID: ${eventId})`);
+                  console.log('Custom Data:', JSON.stringify(finalCustomData, null, 2));
+                  console.log('Options:', JSON.stringify(fbqOptions, null, 2));
+                  console.groupEnd();
+              } catch (e) {
+                  console.error('[LOG_WEB_FBQ] Erro ao gerar log (track):', e);
+              }
+          }
           fbq('track', facebookEventName, finalCustomData, fbqOptions);
         }
         // console.log(`[Meta Tracking Debug] fbq('track...') enfileirado (ID: ${eventId})`); // Log genérico removido, logs específicos acima
@@ -1438,5 +1476,37 @@
     
      console.log('[Meta Tracking Debug] extractCartData - Retornando Resultado Final:', cartDataExtracted);
      return cartDataExtracted;
+  }
+
+  // +++ FUNÇÃO PARA VERIFICAR MODO DEBUG +++
+  function isDebugEnabled() {
+    try {
+      // Verifica parâmetro de URL ou localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugParam = urlParams.get('debug_meta');
+      const localStorageDebug = localStorage.getItem('meta_debug');
+      
+      // Retorna true se qualquer um for 'true' (string)
+      return debugParam === 'true' || localStorageDebug === 'true';
+    } catch (e) {
+      // Em caso de erro (ex: acesso negado ao localStorage em iframes), assume false
+      console.warn('[Meta Tracking Debug] Erro ao verificar modo debug:', e);
+      return false;
+    }
+  }
+  // +++ FIM DA FUNÇÃO +++
+
+  // --- Adicionar logs para trackCustom --- 
+  function logTrackCustomIfNeeded(facebookEventName, payload, options) {
+     if (isDebugEnabled()) {
+        try {
+           console.groupCollapsed(`[LOG_WEB_FBQ] fbq('trackCustom', '${facebookEventName}', ...) (ID: ${options.eventID})`);
+           console.log('Payload:', JSON.stringify(payload, null, 2));
+           console.log('Options:', JSON.stringify(options, null, 2));
+           console.groupEnd();
+        } catch (e) {
+           console.error('[LOG_WEB_FBQ] Erro ao gerar log (trackCustom):', e);
+        }
+     }
   }
 })(); 

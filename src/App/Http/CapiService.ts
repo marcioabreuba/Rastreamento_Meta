@@ -7,14 +7,23 @@ import logger from '../../utils/logger'; // Ajustar caminho para logger
 const CAPI_VERSION = config.fbApiVersion || 'v19.0'; // Exemplo: v19.0
 const CAPI_URL = `https://graph.facebook.com/${CAPI_VERSION}/${config.fbPixelId}/events`;
 
+// ++ Definir um tipo para o retorno da função ++
+export interface CapiSendResult {
+  status: 'success' | 'error' | 'skipped';
+  traceId?: string | null;
+  error?: string | null; // Mensagem de erro simplificada
+}
+
 /**
  * Envia um evento normalizado para a API de Conversões do Meta.
  * @param {ServerEvent} event - O objeto do evento formatado para CAPI.
+ * @returns {Promise<CapiSendResult>} - O resultado do envio.
  */
-export async function sendEvent(event: ServerEvent): Promise<void> {
+export async function sendEvent(event: ServerEvent): Promise<CapiSendResult> {
   if (!config.fbAccessToken || !config.fbPixelId) {
     logger.error('[CapiService] Pixel ID ou Access Token não configurados. Evento não enviado.', { eventId: event.event_id });
-    return; // Não pode enviar sem credenciais
+    // << RETORNAR STATUS SKIPPED
+    return { status: 'skipped', error: 'Missing Pixel ID or Access Token' };
   }
 
   const payload = {
@@ -49,6 +58,9 @@ export async function sendEvent(event: ServerEvent): Promise<void> {
         logger.debug('[CapiService] Resposta da CAPI:', { responseData: response.data });
     }
 
+    // << RETORNAR SUCESSO COM TRACE ID
+    return { status: 'success', traceId: response.data?.trace_id };
+
   } catch (error: any) {
     let errorMessage = error.message;
     let errorDetails = {};
@@ -73,5 +85,8 @@ export async function sendEvent(event: ServerEvent): Promise<void> {
 
     // Re-throw o erro se precisar ser tratado em outro lugar (embora o controller já trate com catch)
     // throw error;
+
+    // << RETORNAR ERRO
+    return { status: 'error', error: errorMessage };
   }
 } 

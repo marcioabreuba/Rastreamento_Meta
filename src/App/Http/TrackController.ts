@@ -17,7 +17,7 @@ import { handleAddToWishlist } from '../events/AddToWishlistHandler';
 import { handleGenericEvent } from '../events/GenericEventHandler';
 // Importar CapiService
 // import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Tentativa anterior
-import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Usar import direto com alias
+import { sendEvent as sendEventToCapi, CapiSendResult } from './CapiService';
 // <<< ADICIONAR IMPORTAÇÕES DE TIPOS WEB >>>
 import { WebUserData, WebCustomData } from '../Model/WebEventParams';
 
@@ -152,19 +152,46 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
         }
         // ++ Fim do Log Detalhado ++
 
-        // Enviar para CAPI de forma assíncrona
-        sendEventToCapi(capiEvent).catch(error => {
-          logger.error(`[TrackController] Erro assíncrono ao enviar evento ${capiEvent.event_id} para CAPI: ${error.message}`, { error });
-        });
+        // --- MODIFICAÇÃO: Enviar para CAPI e aguardar resultado --- 
+        let capiResult: CapiSendResult = { status: 'skipped', error: 'Send not attempted' };
+        try {
+            capiResult = await sendEventToCapi(capiEvent);
+            logger.info(`[TrackController] Resultado do envio CAPI para ${capiEvent.event_id}: ${capiResult.status}`, { traceId: capiResult.traceId });
+        } catch (capiError: any) {
+             logger.error(`[TrackController] Erro síncrono ao enviar evento ${capiEvent.event_id} para CAPI: ${capiError.message}`, { error: capiError });
+             capiResult = { status: 'error', error: capiError.message };
+        }
+        // --- FIM DA MODIFICAÇÃO ---
 
-        // Responder imediatamente ao cliente (sucesso na recepção e início do processamento)
+        // --- MODIFICAÇÃO: Montar e enviar a nova resposta JSON --- 
         const processingTime = Date.now() - requestStartTime;
-        logger.info(`[TrackController] Resposta 200 enviada para ${eventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
-        res.status(200).json({ success: true, eventId: capiEvent.event_id });
+        const responsePayload = {
+            success: true,
+            serverEventId: capiEvent.event_id,
+            capiPayload: capiEvent, // <<< Incluir payload CAPI
+            capiSendStatus: capiResult.status,
+            capiTraceId: capiResult.traceId || null,
+            capiError: capiResult.error || null,
+            message: `Evento ${eventName} processado. Status CAPI: ${capiResult.status}.`,
+            processingTimeMs: processingTime
+        };
+
+        logger.info(`[TrackController] Resposta 200 (com detalhes CAPI) enviada para ${eventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
+        res.status(200).json(responsePayload);
+        // --- FIM DA MODIFICAÇÃO ---
 
     } else {
       logger.error(`[TrackController] Falha ao normalizar evento ${eventName}. Evento descartado.`, { rawInput: rawEventInput });
-      res.status(400).json({ success: false, error: 'Failed to normalize event data. Check required parameters.' });
+      // << AJUSTAR RESPOSTA DE ERRO DE NORMALIZAÇÃO >>
+      res.status(400).json({
+           success: false,
+           serverEventId: eventId || null, // Usar ID original se houver
+           capiPayload: null,
+           capiSendStatus: 'skipped',
+           capiTraceId: null,
+           capiError: 'Failed to normalize event data. Check required parameters.',
+           message: `Falha ao normalizar evento ${eventName}.`
+      });
     }
 
   } catch (error: any) {
@@ -175,6 +202,15 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       body: req.body,
       processingTime
     });
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    // << AJUSTAR RESPOSTA DE ERRO INTERNO >>
+    res.status(500).json({
+         success: false,
+         serverEventId: eventId || null, // Usar ID original se houver
+         capiPayload: null,
+         capiSendStatus: 'error',
+         capiTraceId: null,
+         capiError: 'Internal server error during processing.',
+         message: `Erro interno no servidor ao processar ${eventName}.`
+     });
   }
 }; 
