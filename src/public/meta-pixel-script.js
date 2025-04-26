@@ -233,7 +233,9 @@
     // --- ETAPA 4: Enviar para Backend (pode ser chamado fora da fila, mas após enfileirar fbq) ---
     const allRawUserDataForInit = {
         external_id: externalId, visitorId: getOrCreateVisitorId(),
-        fbp: fbp, fbc: fbc, em: email, ph: phone, fn: firstName, ln: lastName,
+        fbp: fbp, // Adicionar fbp lido do cookie
+        fbc: fbc, // Adicionar fbc lido do cookie
+        em: email, ph: phone, fn: firstName, ln: lastName,
         ge: gender, db: dob, ct: city, st: state, zp: zip, country: country // Usar variáveis com placeholders
     };
     // Pequeno delay pode ajudar a garantir que IDs como fbp foram setados pelo init
