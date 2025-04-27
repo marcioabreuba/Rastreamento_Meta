@@ -132,12 +132,13 @@ function validateFbp(fbp: string | null): string | null {
   // Aceita fb.0, fb.1, fb.2, fb.10 ... desde que a estrutura esteja correta
   // Usa [0-9]+? para permitir múltiplos dígitos no sub-domain index
   if (/^fb\.[0-9]+?\.\d+\.\d+$/.test(trimmed)) {
+      logger.debug(`[NormalizationService] Usando _fbp validado: ${trimmed}`);
       return trimmed;
   }
 
-  // Se a estrutura não for válida, loga e GERA FALLBACK
-  logger.warn(`[NormalizationService] _fbp em formato inesperado ou inválido: ${trimmed}. Gerando fallback.`);
-  return generateFallbackFbp(); // <-- Chamar fallback em vez de retornar null
+  // Se a estrutura não for válida, loga e RETORNA NULL
+  logger.warn(`[NormalizationService] _fbp em formato inesperado ou inválido: ${trimmed}. Descartando.`);
+  return null;
 }
 
 /**
@@ -174,21 +175,44 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const externalIdInput = rawUserData?.external_id;
   const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
 
-  // Validar FBC antes de usar
-  let finalFbc = null;
-  const rawFbc = rawUserData?.fbc;
-  if (rawFbc) {
-    const trimmedFbc = String(rawFbc).trim();
-    // Regex mais estrito para FBC: permite apenas alfanuméricos, _ e - após o último ponto
-    if (/^fb\.[0-9]+\.\d+\.[A-Za-z0-9_\-]+$/.test(trimmedFbc)) {
-        finalFbc = trimmedFbc;
-    } else {
-        logger.warn(`[NormalizationService] _fbc em formato inesperado ou inválido: ${trimmedFbc}. Descartando.`);
-        // Mantém finalFbc como null
-    }
-  } // Se rawFbc for null/undefined, finalFbc continua null
+  // --- LÓGICA FBC REVISADA PARA CONFORMIDADE COM DOCS CAPI ---
+  let finalFbc: string | null = null;
+  const rawFbcInput = rawUserData?.fbc;
 
-  return {
+  if (rawFbcInput) {
+    const trimmedFbcInput = String(rawFbcInput).trim();
+    // Regex estrito para validar formato _fbc COMPLETO (fb.subdomain.timestamp.clickid)
+    const fbcRegex = /^fb\.[0-9]+\.\d+\.[A-Za-z0-9_\-]+$/;
+
+    if (fbcRegex.test(trimmedFbcInput)) {
+      // Se já está no formato correto, usar como está
+      finalFbc = trimmedFbcInput;
+      logger.debug(`[NormalizationService] Usando _fbc pré-formatado e validado: ${finalFbc}`);
+    } else {
+      // Se NÃO está no formato _fbc completo, verificar se parece ser um fbclid bruto
+      // Assumimos que qualquer string não vazia aqui pode ser um fbclid,
+      // pois o frontend envia o fbclid neste campo se o cookie _fbc não existir.
+      // Uma validação mais robusta do fbclid poderia ser adicionada se necessário.
+      if (trimmedFbcInput.length > 10) { // Checagem simples: fbclid geralmente é longo
+        const creationTime = Date.now(); // Timestamp em ms para formatação
+        // Formatar conforme documentação CAPI: fb.1.timestamp.fbclidValue
+        finalFbc = `fb.1.${creationTime}.${trimmedFbcInput}`;
+        logger.info(`[NormalizationService] Formatando fbclid bruto recebido para formato _fbc: ${finalFbc}`);
+      } else {
+        // Se não passou na validação de formato _fbc e não parece ser fbclid bruto
+        logger.warn(`[NormalizationService] Valor de fbc recebido ('${trimmedFbcInput}') não está no formato _fbc válido e não foi formatado como fbclid. Descartando.`);
+        finalFbc = null; // Garante que é null se inválido
+      }
+    }
+  } else {
+    // Se nenhum valor fbc/fbclid foi recebido
+    logger.debug(`[NormalizationService] Nenhum valor fbc/fbclid recebido.`);
+    finalFbc = null;
+  }
+  // --- FIM DA LÓGICA FBC REVISADA ---
+
+  // --- MODIFICADO: Construir objeto e adicionar fbc/fbp condicionalmente ---
+  const userData: ServerUserData = {
     // Hashed
     em: hashData(rawUserData?.em, 'email'),
     ph: hashData(rawUserData?.ph, 'phone'),
@@ -200,17 +224,29 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     st: hashData(rawUserData?.st || geoData?.region?.code, 'geo'),
     zp: hashData(zipCode, 'generic'), // CEP já normalizado (hash)
     country: hashData(countryCode, 'geo'),
-    external_id: hashData(normalizedExternalIdForHash, 'generic') || generateUserIdFallback(), // << ALTERADO: Usa a variável normalizada
+    external_id: hashData(normalizedExternalIdForHash, 'generic') || generateUserIdFallback(),
 
-    // Non-Hashed
+    // Non-Hashed (Inicial)
     client_ip_address: convertToIPv6Format(clientIp), // Garante formato IPv6
     client_user_agent: userAgent,
-    fbp: validateFbp(rawUserData?.fbp), // Valida FBP (agora com fallback)
-    fbc: finalFbc, // Usa FBC validado (ou null)
     subscription_id: rawUserData?.subscription_id || null,
     fb_login_id: rawUserData?.fb_login_id || null,
     lead_id: rawUserData?.lead_id || null,
   };
+
+  // Adicionar fbp somente se for válido
+  const finalFbp = validateFbp(rawUserData?.fbp);
+  if (finalFbp) {
+    userData.fbp = finalFbp;
+  }
+
+  // Adicionar fbc somente se for válido ou formatado
+  if (finalFbc) {
+    userData.fbc = finalFbc;
+  }
+
+  return userData;
+  // --- FIM DA MODIFICAÇÃO ---
 }
 
 /**
@@ -355,17 +391,4 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   };
 
   return serverEvent;
-}
-
-/**
- * Gera um FBP fallback no formato padrão fb.1...
- * @returns {string} FBP gerado.
- */
-function generateFallbackFbp(): string {
-  const timestamp = Date.now();
-  // Gera um número aleatório grande e garante padding para 13 dígitos
-  const random = Math.floor(Math.random() * 1e12).toString().padStart(13, '0');
-  const fallbackFbp = `fb.1.${timestamp}.${random}`;
-  logger.info(`[NormalizationService] Gerando FBP fallback: ${fallbackFbp}`);
-  return fallbackFbp;
 } 
