@@ -113,6 +113,15 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       dataProcessingOptionsState: rest.dataProcessingOptionsState,
     };
 
+    // +++ Logs de Alerta Adicionados +++
+    if (!rawEventInput.userData?.external_id) {
+      logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0,50)}`);
+    }
+    if (!rawEventInput.userData?.fbp) {
+      logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0,50)}`);
+    }
+    // +++ Fim dos Logs de Alerta +++
+
     // 5. Normalizar Evento para CAPI
     const capiEvent = NormalizationService.normalizeEventForCAPI(rawEventInput);
 

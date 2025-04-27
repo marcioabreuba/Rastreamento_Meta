@@ -118,19 +118,23 @@
 
   // Cria ou recupera ID externo para o usuário
   function getExternalId() {
-    // Primeiro verificar se o ID externo existe como parâmetro na URL (para domínios cruzados)
+    // Primeiro, tente pegar da URL (cross-domain)
     const urlExternalId = getUrlParameter('external_id');
     if (urlExternalId) {
-      // Se encontrado na URL, salvar no localStorage
       localStorage.setItem('meta_tracking_external_id', urlExternalId);
+      console.log('[Meta Tracking Debug] External ID obtido da URL e salvo no localStorage:', urlExternalId); // Log adicionado
       return urlExternalId;
     }
-    
-    // Caso contrário, usar o localStorage
+  
+    // Depois, tente pegar do localStorage
     let externalId = localStorage.getItem('meta_tracking_external_id');
     if (!externalId) {
+      // Só gera um novo se realmente não existir
       externalId = 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
       localStorage.setItem('meta_tracking_external_id', externalId);
+      console.log('[Meta Tracking Debug] Novo External ID gerado e salvo no localStorage:', externalId); // Log adicionado
+    } else {
+      // console.log('[Meta Tracking Debug] External ID recuperado do localStorage:', externalId); // Log opcional para debug
     }
     return externalId;
   }
@@ -596,6 +600,22 @@
 
   // Função auxiliar para enviar dados brutos para o backend /track
   async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, eventId) {
+    // Garantir que eventId exista
+    if (!eventId) {
+      eventId = generateUUID();
+      console.warn('[Meta Tracking] Event ID gerado no sendEventToBackend pois não foi fornecido.');
+    }
+
+    const facebookEventName = EVENT_MAPPING[eventName] || eventName;
+
+    // Log de envio (Adicionado conforme recomendação)
+    console.log('[Meta Tracking] Enviando evento para backend:', {
+      eventName: facebookEventName, // Usa o nome mapeado para FB
+      eventId: eventId,
+      externalId: rawUserData.external_id || getExternalId(), // Pega do userData ou recalcula
+      fbp: rawUserData.fbp || getCookie('_fbp') // Pega do userData ou lê novamente
+    });
+
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
 
     // +++ RE-LER FBP AQUI +++
@@ -628,7 +648,7 @@
 
     // ++ CHAMAR A NOVA FUNÇÃO DE LOG ++
     try {
-       logEventForDebug(eventName, EVENT_MAPPING[eventName] || eventName, eventId, PIXEL_ID, payload.customData, payload.userData);
+       logEventForDebug(eventName, facebookEventName, eventId, PIXEL_ID, payload.customData, payload.userData);
     } catch (logError) {
        console.error("[Meta Tracking Debug] Erro ao gerar log formatado:", logError);
     }
