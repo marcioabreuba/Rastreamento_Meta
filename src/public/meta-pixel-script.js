@@ -75,6 +75,27 @@
     return null;
   }
 
+  // +++ Nova Função getFbc +++
+  function getFbc() {
+    // Primeiro tenta pegar do cookie
+    const fbcCookie = getCookie('_fbc');
+    // Verifica se existe e se parece com um fbc válido (começa com fb.)
+    if (fbcCookie && fbcCookie.startsWith('fb.')) {
+        return fbcCookie;
+    }
+
+    // Se não tiver cookie válido, tenta pegar fbclid da URL
+    const fbclid = getUrlParameter('fbclid');
+    if (fbclid) {
+        // Formata o fbclid no formato correto do fbc (fb.1.timestamp_sec.fbclid)
+        const timestamp = Math.floor(Date.now() / 1000);
+        return `fb.1.${timestamp}.${fbclid}`;
+    }
+
+    return null; // Retorna null se nenhum for encontrado
+  }
+  // +++ Fim Nova Função getFbc +++
+
   // Função para definir o cookie first-party
   function setCookie(name, value, days) {
     var expires = "";
@@ -177,7 +198,15 @@
     const pageViewEventId = generateUUID();
     const externalId = getExternalId();
     const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-    const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+    const fbc = getFbc(); // <<< USA A NOVA FUNÇÃO
+
+    // +++ Debug Melhorado +++
+    if (fbc) { // Log apenas se fbc for encontrado/gerado
+        console.log('✅ FBC encontrado/gerado:', fbc);
+    } else {
+        console.log('🟡 FBC não encontrado (nem cookie _fbc válido, nem parâmetro fbclid na URL).');
+    }
+    // +++ Fim Debug Melhorado +++
 
     // Coletar PII (sem hash)
     const email = localStorage.getItem('meta_tracking_email');
@@ -202,7 +231,7 @@
 
     // Montar parâmetros para init (sem hash)
     const pixelParams = {
-      external_id: externalId, fbp: fbp, fbc: fbc,
+      external_id: externalId, fbp: fbp, fbc: fbc, // <<< Usa fbc da nova função
       // --- MODIFICADO: Adicionar client_ip_address e remover comentário antigo ---
       client_ip_address: clientIpAddress, // Adiciona o IP obtido do backend
       client_user_agent: navigator.userAgent, // User Agent é seguro enviar
@@ -614,37 +643,66 @@
       eventId: eventId,
       externalId: rawUserData.external_id || getExternalId(), // Pega do userData ou recalcula
       fbp: rawUserData.fbp || getCookie('_fbp') // Pega do userData ou lê novamente
+      // fbc será pego abaixo
     });
 
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
 
-    // +++ RE-LER FBP AQUI +++
+    // +++ RE-LER FBP e FBC AQUI para garantir valor mais recente +++
     const currentFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    const currentFbc = getFbc(); // <<< Usa a nova função getFbc
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
-    // +++ FIM RE-LEITURA FBP +++
+    console.log(`[Frontend Script] Valor FBC lido/gerado ANTES do envio para backend: ${currentFbc}`);
+    // +++ FIM RE-LEITURA FBP/FBC +++
 
     // Combinar dados de usuário gerais com PII (se houver)
-    const finalUserData = {
+    const mergedUserData = {
         ...rawUserData, // Contém external_id, visitorId, PII, etc.
         fbp: currentFbp, // <<< USAR O VALOR RE-LIDO AQUI
+        fbc: currentFbc, // <<< USAR O VALOR RE-LIDO/GERADO AQUI
     };
+
+    // +++ Limpar dados vazios antes de enviar +++
+    const cleanUserData = Object.entries(mergedUserData).reduce((acc, [key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+    // +++ Fim da limpeza de dados +++
+
+    // ++ Coleta de dados do navegador (movido para cá para incluir fbp/fbc atuais) ++
+    const browserData = {
+        userAgent: navigator.userAgent,
+        language: navigator.language || 'pt-BR',
+        // fbp e fbc já estão em cleanUserData
+        referrer: document.referrer || '' // Adiciona referrer aqui
+    };
+    const cleanBrowserData = Object.entries(browserData).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    // ++ Fim da coleta de dados do navegador ++
 
     const payload = {
         eventName: eventName,
         eventId: eventId, // <<< Usar o eventId recebido
         sourceUrl: window.location.href,
-        referrer: document.referrer || '',
-        userData: finalUserData,
+        // referrer: document.referrer || '', // Removido daqui, incluído em browserData
+        userData: cleanUserData, // <<< USA OS DADOS LIMPOS
         customData: {
             ...specificCustomData,
-            language: navigator.language || 'pt-BR',
+            // language: navigator.language || 'pt-BR', // Removido daqui, incluído em browserData
             app: 'meta-tracking'
         }
+        , browserData: cleanBrowserData // Adiciona dados limpos do navegador
     };
 
-    // Remover chaves nulas/undefined do payload para limpeza
-    Object.keys(payload.userData).forEach(key => payload.userData[key] == null && delete payload.userData[key]);
+    // Limpar customData e browserData opcional (redundante, mas seguro)
     Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
+    Object.keys(payload.browserData).forEach(key => payload.browserData[key] == null && delete payload.browserData[key]);
 
     // ++ CHAMAR A NOVA FUNÇÃO DE LOG ++
     try {
