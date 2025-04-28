@@ -731,7 +731,7 @@
 
         if (isDebugEnabled() && responseData.capiPayload) {
              // Usar JSON.stringify com indentação para melhor leitura
-            console.groupCollapsed(`[LOG_SERVER_CAPI] Evento: ${responseData.capiPayload.event_name} (ID: ${responseData.serverEventId})`);
+            console.groupCollapsed(`[PAYLOAD_SERVIDOR_CAPI] Evento: ${responseData.capiPayload.event_name} (ID: ${responseData.serverEventId})`); // <<< TÍTULO ALTERADO
             console.log(JSON.stringify(responseData.capiPayload, null, 2));
             console.log('Status CAPI:', responseData.capiSendStatus);
             console.log('Trace ID CAPI:', responseData.capiTraceId);
@@ -842,13 +842,13 @@
     if (isDebugEnabled()) {
       try {
           // Agrupar para organização
-          console.groupCollapsed(`[LOG_WEB_RAW] Preparando Evento: ${eventName} (ID: ${eventId})`);
+          console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Preparando Evento: ${eventName} (ID: ${eventId})`); // <<< TÍTULO ALTERADO
           // Usar JSON.stringify com indentação
           console.log('Raw User Data (para backend):', JSON.stringify(rawUserData, null, 2));
           console.log('Specific Custom Data (para backend):', JSON.stringify(finalCustomData, null, 2)); // Logar `finalCustomData` que vai pro backend
           console.groupEnd();
       } catch (e) {
-          console.error('[LOG_WEB_RAW] Erro ao gerar log:', e);
+          console.error('[PAYLOAD_WEB_PIXEL] Erro ao gerar log:', e);
       }
     }
     // +++ FIM LOG WEB RAW +++
