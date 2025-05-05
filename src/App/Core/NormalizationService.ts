@@ -340,55 +340,82 @@ export interface RawEventInput {
 
 /**
  * Normaliza um evento completo para o formato da CAPI.
- * @param {RawEventInput} rawEvent - Dados brutos do evento.
- * @returns {ServerEvent | null} Evento normalizado pronto para envio ou null se inválido.
+ * @param {RawEventInput} rawEvent - Dados brutos do evento com informações geo e do cliente.
+ * @returns {ServerEvent | null} Evento normalizado para CAPI ou null se inválido.
  */
 export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | null {
-  if (!rawEvent || !rawEvent.eventName) {
-    logger.error('[NormalizationService] Event name is missing in raw event data.');
+  // Validar nome do evento
+  if (!rawEvent.eventName || typeof rawEvent.eventName !== 'string') {
+    logger.warn('[NormalizationService] Evento recebido sem nome ou com nome inválido.', { eventName: rawEvent.eventName });
     return null;
   }
 
-  const mappedEventName = EVENT_NAME_MAPPING[rawEvent.eventName] || rawEvent.eventName;
+  // Normalizar nome do evento
+  const facebookEventName = EVENT_NAME_MAPPING[rawEvent.eventName] || rawEvent.eventName; // Usa mapeamento ou nome original
 
-  // Se mesmo após o mapeamento o evento não for reconhecido (ex: era um alias inválido)
-  // Pode-se optar por logar e descartar, ou enviar com o nome original mapeado.
-  // if (!Object.values(EVENT_NAME_MAPPING).includes(mappedEventName)) {
-  //    logger.warn(`[NormalizationService] Event name '${rawEvent.eventName}' mapped to '${mappedEventName}' is not a standard or known custom event.`);
-  // }
-
-  const serverUserData = normalizeUserData(
+  // Normalizar dados do usuário
+  const userData = normalizeUserData(
     rawEvent.userData,
     rawEvent.geoData,
     rawEvent.clientIp,
     rawEvent.userAgent
   );
 
-  const serverCustomData = normalizeCustomData(rawEvent.customData, rawEvent.eventName);
-
-  // Validar se temos o mínimo necessário (IP, UserAgent, external_id)
-  if (!serverUserData.client_ip_address || !serverUserData.client_user_agent || !serverUserData.external_id) {
-      logger.warn(`[NormalizationService] Evento ${mappedEventName} faltando parâmetros essenciais (IP, UserAgent ou ExternalId). Verifique a coleta de dados.`, { eventName: rawEvent.eventName });
-      // Decide se quer descartar ou enviar mesmo assim
-      // return null;
+  // Verificar se temos pelo menos um identificador principal (external_id é o fallback garantido)
+  if (!userData.external_id) {
+      logger.error('[NormalizationService] Falha crítica: Nenhum external_id (nem original nem fallback) presente após normalização.', { userData: rawEvent.userData });
+      // Considerar retornar null aqui pode ser muito restritivo se outros dados de match existirem.
+      // Mantendo o fluxo por enquanto, mas é um ponto de atenção.
+  }
+  // << ADICIONAR VERIFICAÇÃO E LOG PARA EVENTID AUSENTE >>
+  if (!rawEvent.eventId) {
+    logger.warn(`[NormalizationService] Evento '${rawEvent.eventName}' recebido sem eventId do cliente. Isso pode dificultar a deduplicação no Facebook.`, { sourceUrl: rawEvent.sourceUrl });
   }
 
+  // Normalizar dados customizados
+  const customData = normalizeCustomData(rawEvent.customData, rawEvent.eventName);
+
+  // Tempo do evento (Unix timestamp em segundos)
   const eventTime = Math.floor(Date.now() / 1000);
-  const actionSource = rawEvent.isAppEvent ? 'app' : 'website'; // Simplificado por enquanto
 
   const serverEvent: ServerEvent = {
-    event_name: mappedEventName,
+    event_name: facebookEventName,
     event_time: eventTime,
-    event_source_url: rawEvent.sourceUrl || rawEvent.userData?.sourceUrl || null,
-    action_source: actionSource,
-    event_id: rawEvent.eventId || generateEventId(),
-    user_data: serverUserData,
-    custom_data: Object.keys(serverCustomData).length > 0 ? serverCustomData : undefined, // Não enviar custom_data vazio
-    data_processing_options: rawEvent.dataProcessingOptions || [],
-    data_processing_options_country: rawEvent.dataProcessingOptionsCountry || 0,
-    data_processing_options_state: rawEvent.dataProcessingOptionsState || 0,
+    // << REMOVER FALLBACK generateEventId() >>
+    event_id: rawEvent.eventId || null, // Usar ID do cliente ou null
+    event_source_url: rawEvent.sourceUrl || null,
     opt_out: false, // Assumindo que não há opt-out por padrão
+    action_source: rawEvent.isAppEvent ? 'app' : 'website', // Ou 'physical_store', 'chat', etc. conforme necessário
+    user_data: userData,
+    custom_data: customData,
+    // Adicionar Data Processing Options se presentes e válidos
+    ...(rawEvent.dataProcessingOptions && rawEvent.dataProcessingOptions.length > 0 && {
+        data_processing_options: rawEvent.dataProcessingOptions,
+        data_processing_options_country: rawEvent.dataProcessingOptionsCountry || 0,
+        data_processing_options_state: rawEvent.dataProcessingOptionsState || 0,
+    }),
   };
+
+  // Remover chaves com valor null ou undefined do objeto final (exceto campos permitidos como null pela CAPI se houver)
+  Object.keys(serverEvent).forEach(key => {
+    const K = key as keyof ServerEvent;
+    if (serverEvent[K] === undefined) { // Manter null onde for permitido/necessário (ex: event_id)
+      delete serverEvent[K];
+    }
+  });
+    Object.keys(serverEvent.user_data).forEach(key => {
+        const K = key as keyof typeof serverEvent.user_data;
+        if (serverEvent.user_data[K] === null || serverEvent.user_data[K] === undefined) {
+            delete serverEvent.user_data[K];
+        }
+    });
+    Object.keys(serverEvent.custom_data).forEach(key => {
+        const K = key as keyof typeof serverEvent.custom_data;
+        if (serverEvent.custom_data[K] === null || serverEvent.custom_data[K] === undefined) {
+            delete serverEvent.custom_data[K];
+        }
+    });
+
 
   return serverEvent;
 } 
