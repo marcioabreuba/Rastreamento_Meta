@@ -49,7 +49,7 @@ const eventHandlers: Record<string, EventHandlerFunction> = {
  */
 export const handleTrackRequest = async (req: Request, res: Response): Promise<void> => {
   const requestStartTime = Date.now();
-  const { eventName, userData, customData, eventId, sourceUrl, referrer, ...rest } = req.body;
+  const { eventName, userData, customData, eventId, sourceUrl, referrer, client_event_time, ...rest } = req.body;
 
   /* LOG FBC REMOVIDO
   // +++ LOG FBC TEMPORÁRIO +++
@@ -111,6 +111,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       dataProcessingOptions: rest.dataProcessingOptions,
       dataProcessingOptionsCountry: rest.dataProcessingOptionsCountry,
       dataProcessingOptionsState: rest.dataProcessingOptionsState,
+      clientEventTime: client_event_time ? Number(client_event_time) : null // Adiciona client_event_time ao RawEventInput
     };
 
     // +++ Logs de Alerta Adicionados +++

@@ -336,6 +336,7 @@ export interface RawEventInput {
     dataProcessingOptions?: string[];
     dataProcessingOptionsCountry?: number;
     dataProcessingOptionsState?: number;
+    clientEventTime?: number | null; // Adicionado para receber o timestamp do cliente
 }
 
 /**
@@ -376,13 +377,60 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   const customData = normalizeCustomData(rawEvent.customData, rawEvent.eventName);
 
   // Tempo do evento (Unix timestamp em segundos)
-  const eventTime = Math.floor(Date.now() / 1000);
+  let eventTimeSource = 'server'; // Para logging
+  let finalEventTime: number;
+  const currentServerTimeSeconds = Math.floor(Date.now() / 1000);
+
+  if (rawEvent.clientEventTime && typeof rawEvent.clientEventTime === 'number' && rawEvent.clientEventTime > 0) {
+      const sevenDaysInSeconds = 7 * 24 * 60 * 60;
+      // Verifica se não é mais antigo que 7 dias E não mais que 2 horas no futuro
+      if ((currentServerTimeSeconds - rawEvent.clientEventTime) > sevenDaysInSeconds) {
+          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) é mais antigo que 7 dias. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+          finalEventTime = currentServerTimeSeconds;
+      } else if (rawEvent.clientEventTime > (currentServerTimeSeconds + (2 * 60 * 60))) { // 2 horas no futuro
+          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) está mais de 2h no futuro. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+          finalEventTime = currentServerTimeSeconds;
+      } else {
+          finalEventTime = rawEvent.clientEventTime;
+          eventTimeSource = 'client';
+      }
+  } else {
+      finalEventTime = currentServerTimeSeconds;
+      if (rawEvent.clientEventTime) { // Se existia mas era inválido (ex: não número, zero, ou negativo)
+          logger.warn(`[NormalizationService] clientEventTime inválido ou não fornecido (${rawEvent.clientEventTime}). Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+      } else {
+        // Se não foi fornecido, logar em debug pois é esperado que o fallback para server time ocorra.
+        logger.debug(`[NormalizationService] clientEventTime não fornecido. Usando tempo do servidor para evento ${rawEvent.eventName}.`, { eventId: rawEvent.eventId });
+      }
+  }
+  
+  logger.debug(`[NormalizationService] Event time para ${rawEvent.eventName} (ID: ${rawEvent.eventId || 'N/A'}) definido por: ${eventTimeSource} (Timestamp: ${finalEventTime})`);
+
+  let finalEventId: string;
+  let eventIdSource: string = 'client';
+
+  if (rawEvent.eventId && typeof rawEvent.eventId === 'string' && rawEvent.eventId.trim() !== '') {
+      finalEventId = rawEvent.eventId;
+  } else {
+      const originalEventId = rawEvent.eventId;
+      logger.warn(
+          `[NormalizationService] Evento '${rawEvent.eventName}' recebido sem eventId válido do cliente ou eventId estava vazio. Gerando novo event_id no servidor. Isso pode dificultar a deduplicação com o Pixel.`, 
+          { originalEventId: originalEventId, sourceUrl: rawEvent.sourceUrl }
+      );
+      finalEventId = generateEventId(); // generateEventId() já existe neste arquivo
+      eventIdSource = 'server';
+  }
+  
+  // Atualizar o log de tempo do evento para usar o finalEventId que agora é garantido.
+  // Este log pode ser movido para depois da definição de finalEventId se preferir registrar o ID final usado.
+  // Por ora, o log anterior de event_time já usava rawEvent.eventId, o que é aceitável para aquele contexto.
+  // Adicionando um novo log específico para a fonte do event_id:
+  logger.debug(`[NormalizationService] Event ID para ${rawEvent.eventName} definido por: ${eventIdSource} (ID: ${finalEventId})`);
 
   const serverEvent: ServerEvent = {
     event_name: facebookEventName,
-    event_time: eventTime,
-    // << REMOVER FALLBACK generateEventId() >>
-    event_id: rawEvent.eventId || null, // Usar ID do cliente ou null
+    event_time: finalEventTime,
+    event_id: finalEventId, // Usar o finalEventId garantido
     event_source_url: rawEvent.sourceUrl || null,
     opt_out: false, // Assumindo que não há opt-out por padrão
     action_source: rawEvent.isAppEvent ? 'app' : 'website', // Ou 'physical_store', 'chat', etc. conforme necessário

@@ -686,6 +686,8 @@
     }, {});
     // ++ Fim da coleta de dados do navegador ++
 
+    const clientEventTime = Math.floor(Date.now() / 1000); // Captura o timestamp do cliente
+
     const payload = {
         eventName: eventName,
         eventId: eventId, // <<< Usar o eventId recebido
@@ -696,8 +698,9 @@
             ...specificCustomData,
             // language: navigator.language || 'pt-BR', // Removido daqui, incluído em browserData
             app: 'meta-tracking'
-        }
-        , browserData: cleanBrowserData // Adiciona dados limpos do navegador
+        },
+        browserData: cleanBrowserData, // Adiciona dados limpos do navegador
+        client_event_time: clientEventTime // Adiciona o timestamp do cliente ao payload
     };
 
     // Limpar customData e browserData opcional (redundante, mas seguro)
