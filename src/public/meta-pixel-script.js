@@ -658,14 +658,20 @@
   // ++ FIM DA FUNÇÃO ADICIONADA ++
 
   // Função auxiliar para enviar dados brutos para o backend /track
-  // MODIFICADO: Não aceita mais eventId, backend vai gerar e retornar
+  // MODIFICADO: Gerar e enviar eventId para deduplicação
   async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}) {
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
 
+    // +++ GERAR EVENTID ÚNICO PARA DEDUPLICAÇÃO +++
+    const clientEventId = generateUUID(); // Gerar eventId único no frontend
+    console.log(`[Frontend Script] 🆔 EventId gerado para ${eventName}: ${clientEventId}`);
+    // +++ FIM GERAÇÃO EVENTID +++
+
     // Log de envio (Adicionado conforme recomendação)
     console.log('[Meta Tracking] Enviando evento para backend:', {
       eventName: facebookEventName, // Usa o nome mapeado para FB
+      eventId: clientEventId, // Incluir eventId gerado
       externalId: rawUserData.external_id || getExternalId(), // Pega do userData ou recalcula
       fbp: rawUserData.fbp || getCookie('_fbp') // Pega do userData ou lê novamente
       // fbc será pego abaixo
@@ -678,6 +684,20 @@
     const currentFbc = getFbc(); // <<< Usa a nova função getFbc
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
     console.log(`[Frontend Script] Valor FBC lido/gerado ANTES do envio para backend: ${currentFbc}`);
+    
+    // +++ LOG CRÍTICO DE _FBP +++
+    if (!currentFbp) {
+      console.error(`[Frontend Script] ❌ _FBP AUSENTE no envio do ${eventName}!`);
+      console.error('[Frontend Script] 📊 DIAGNÓSTICO DETALHADO:');
+      console.error(`  • document.cookie: ${document.cookie}`);
+      console.error(`  • URL fbp param: ${getUrlParameter('fbp')}`);
+      console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
+      console.error(`  • Facebook script carregado: ${!!document.querySelector('script[src*="fbevents.js"]')}`);
+    } else {
+      console.log(`[Frontend Script] ✅ _FBP confirmado: ${currentFbp}`);
+    }
+    // +++ FIM LOG _FBP +++
+    
     // +++ FIM RE-LEITURA FBP/FBC +++
 
     // Combinar dados de usuário gerais com PII (se houver)
@@ -715,7 +735,7 @@
 
     const payload = {
         eventName: eventName,
-        // REMOVIDO: eventId - backend vai gerar
+        eventId: clientEventId, // <<<< INCLUIR EVENTID GERADO AQUI
         sourceUrl: window.location.href,
         // referrer: document.referrer || '', // Removido daqui, incluído em browserData
         userData: cleanUserData, // <<< USA OS DADOS LIMPOS
@@ -737,6 +757,7 @@
       console.groupCollapsed(`📤 [BACKEND_PAYLOAD] Enviando ${eventName} para API Server`);
       console.log('🎯 EVENTO E METADADOS:');
       console.log('  • Nome do Evento:', eventName);
+      console.log('  • Event ID Cliente:', clientEventId);
       console.log('  • Evento Facebook:', facebookEventName);
       console.log('  • URL da Página:', window.location.href);
       console.log('  • Timestamp Cliente:', new Date(clientEventTime * 1000).toISOString());
@@ -765,8 +786,7 @@
 
     // Enviar para /track
     try {
-        // --- LOG BRUTO REMOVIDO DAQUI, SERÁ FEITO NA RESPOSTA ---
-        // console.log('[Frontend Script] Enviando payload bruto para /track:', JSON.stringify(payload).substring(0, 500) + '...');
+        console.log(`[Frontend Script] ⏳ Enviando ${eventName} com eventId ${clientEventId} para backend...`);
 
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -800,11 +820,15 @@
         }
 
         if (!response.ok || !responseData.success) {
-            console.error(`[Frontend Script] Erro na resposta do backend /track para ${eventName}:`, { status: response.status, responseData });
-            return null; // Retorna null em caso de erro
+            console.error(`[Frontend Script] ❌ Erro na resposta do backend /track para ${eventName}:`, { status: response.status, responseData });
+            
+            // +++ RETORNAR EVENTID DO CLIENTE MESMO COM ERRO DO BACKEND +++
+            console.warn(`[Frontend Script] ⚠️ Retornando eventId do cliente ${clientEventId} apesar do erro`);
+            return clientEventId; // Retorna eventId do cliente para continuar o fluxo
+            // +++ FIM FALLBACK +++
         } else {
-            const serverEventId = responseData.serverEventId;
-            console.log(`[Frontend Script] Resposta recebida do backend para ${eventName} (ID Servidor: ${serverEventId})`);
+            const serverEventId = responseData.serverEventId || clientEventId; // Fallback para clientEventId
+            console.log(`[Frontend Script] ✅ Resposta recebida do backend para ${eventName} (ID: ${serverEventId})`);
             
             // ++ CHAMAR A NOVA FUNÇÃO DE LOG COM eventID DO BACKEND ++
             try {
@@ -813,13 +837,18 @@
                console.error("[Meta Tracking Debug] Erro ao gerar log formatado:", logError);
             }
             
-            return serverEventId; // RETORNA o eventID do backend
+            return serverEventId; // RETORNA o eventID (do backend ou cliente como fallback)
         }
         // --- FIM DA MODIFICAÇÃO ---
 
     } catch (error) {
-        console.error(`[Frontend Script] Falha na requisição fetch para /track (${eventName}) ou processamento JSON:`, error);
-        return null; // Retorna null em caso de erro
+        console.error(`[Frontend Script] ❌ Falha na requisição fetch para /track (${eventName}):`, error);
+        
+        // +++ FALLBACK DE EMERGÊNCIA +++
+        console.warn(`[Frontend Script] 🚨 FALLBACK: Usando eventId do cliente ${clientEventId} devido ao erro de rede`);
+        console.warn('[Frontend Script] ⚠️ ATENÇÃO: Deduplicação CAPI pode ser comprometida, mas continuando execução');
+        return clientEventId; // Retorna eventId do cliente para não interromper o fluxo
+        // +++ FIM FALLBACK DE EMERGÊNCIA +++
     }
   }
 
