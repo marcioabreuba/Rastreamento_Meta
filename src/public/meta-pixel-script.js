@@ -356,14 +356,14 @@
                        shopifyPrice = parseFloat(offer.price);
                        console.log('[Meta Tracking Debug] getProductDetails - Preço do JSON-LD:', shopifyPrice);
                     }
+                    if (offer && offer.priceCurrency) {
+                      shopifyCurrency = offer.priceCurrency;
+                      // --- ADICIONADO: Atualizar 'currency' se encontrado no JSON-LD ---
+                      currency = shopifyCurrency; // Atualiza a variável principal
+                      // --- FIM DA ADIÇÃO ---
+                      console.log('[Meta Tracking Debug] getProductDetails - Moeda do JSON-LD:', shopifyCurrency);
+                    }
                  }
-                  if (offer && offer.priceCurrency) {
-                    shopifyCurrency = offer.priceCurrency;
-                    // --- ADICIONADO: Atualizar 'currency' se encontrado no JSON-LD ---
-                    currency = shopifyCurrency; // Atualiza a variável principal
-                    // --- FIM DA ADIÇÃO ---
-                    console.log('[Meta Tracking Debug] getProductDetails - Moeda do JSON-LD:', shopifyCurrency);
-                  }
               }
             } catch(e) { console.warn('[Meta Tracking Debug] getProductDetails - Erro ao processar JSON-LD:', e); }
          });
@@ -634,13 +634,12 @@
     // Log de envio (Adicionado conforme recomendação)
     console.log('[Meta Tracking] Enviando evento para backend:', {
       eventName: facebookEventName, // Usa o nome mapeado para FB
-      eventId: eventId,
       externalId: rawUserData.external_id || getExternalId(), // Pega do userData ou recalcula
       fbp: rawUserData.fbp || getCookie('_fbp') // Pega do userData ou lê novamente
       // fbc será pego abaixo
     });
 
-    console.log(`[Frontend Script] Preparando envio para backend: ${eventName} (ID: ${eventId})`);
+    console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
 
     // +++ RE-LER FBP e FBC AQUI para garantir valor mais recente +++
     const currentFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
