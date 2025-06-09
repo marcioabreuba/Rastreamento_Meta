@@ -963,7 +963,7 @@
     
     console.log(`[Meta Tracking] 🕐 Diagnóstico de tempo (Servidor Virginia UTC, Cliente Local):`);
     console.log(`  • Timestamp cliente: ${currentTimestamp} (${new Date(currentTimestamp * 1000).toISOString()})`);
-    console.log(`  • Horário local cliente: ${new Date().toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`);
+    console.log(`  • Horário local cliente: ${new Date().toLocaleString()}`);
     console.log(`  • Esperado mín: ${expectedMinTimestamp} (${new Date(expectedMinTimestamp * 1000).toISOString()})`);
     console.log(`  • Esperado máx: ${expectedMaxTimestamp} (${new Date(expectedMaxTimestamp * 1000).toISOString()})`);
     
