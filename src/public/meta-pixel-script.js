@@ -241,6 +241,38 @@
     Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
     console.log('[Meta Tracking Debug] Parâmetros para fbq(\'init\'):', pixelParams); // Log dos parâmetros do init (ASPAS ESCAPADAS)
 
+    // 🔧 LOG DETALHADO DE CONFIGURAÇÃO INICIAL (PRELOAD)
+    if (isDebugEnabled()) {
+      console.groupCollapsed(`🔧 [CONFIGURAÇÃO_INICIAL] Facebook Pixel Init (Pixel ID: ${PIXEL_ID})`);
+      console.log('📊 DADOS DE PRELOAD:');
+      console.log('  • Pixel ID:', PIXEL_ID);
+      console.log('  • External ID:', externalId);
+      console.log('  • FBP (Cookie):', fbp);
+      console.log('  • FBC (Click ID):', fbc);
+      console.log('  • User Agent:', navigator.userAgent);
+      console.log('  • Client IP:', clientIpAddress);
+      console.log('  • Idioma:', navigator.language);
+      console.log('  • Referrer:', document.referrer);
+      console.log('');
+      console.log('🌍 DADOS GEOGRÁFICOS (GeoIP):');
+      console.log('  • País:', country);
+      console.log('  • Estado:', state);
+      console.log('  • Cidade:', city);
+      console.log('  • CEP:', zip);
+      console.log('');
+      console.log('👤 DADOS PII (Identificação):');
+      console.log('  • Email:', email ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Telefone:', phone ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Nome:', firstName ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Sobrenome:', lastName ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Gênero:', gender || '[AUSENTE]');
+      console.log('  • Data Nascimento:', dob ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('');
+      console.log('📤 PAYLOAD COMPLETO PARA fbq(\'init\'):');
+      console.log(JSON.stringify(pixelParams, null, 2));
+      console.groupEnd();
+    }
+
     // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
     console.log(`[Meta Tracking Debug] fbq('init') enfileirado.`);
@@ -700,6 +732,35 @@
     Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
     Object.keys(payload.browserData).forEach(key => payload.browserData[key] == null && delete payload.browserData[key]);
 
+    // 📤 LOG DETALHADO DO PAYLOAD PARA BACKEND
+    if (isDebugEnabled()) {
+      console.groupCollapsed(`📤 [BACKEND_PAYLOAD] Enviando ${eventName} para API Server`);
+      console.log('🎯 EVENTO E METADADOS:');
+      console.log('  • Nome do Evento:', eventName);
+      console.log('  • Evento Facebook:', facebookEventName);
+      console.log('  • URL da Página:', window.location.href);
+      console.log('  • Timestamp Cliente:', new Date(clientEventTime * 1000).toISOString());
+      console.log('');
+      console.log('👤 DADOS DO USUÁRIO (UserData):');
+      for (const [key, value] of Object.entries(cleanUserData)) {
+        console.log(`  • ${key}:`, value);
+      }
+      console.log('');
+      console.log('🌐 DADOS DO NAVEGADOR (BrowserData):');
+      for (const [key, value] of Object.entries(cleanBrowserData)) {
+        console.log(`  • ${key}:`, value);
+      }
+      console.log('');
+      console.log('📊 DADOS CUSTOMIZADOS (CustomData):');
+      for (const [key, value] of Object.entries(payload.customData)) {
+        console.log(`  • ${key}:`, value);
+      }
+      console.log('');
+      console.log('📦 PAYLOAD COMPLETO PARA API:');
+      console.log(JSON.stringify(payload, null, 2));
+      console.groupEnd();
+    }
+
     // ++ LOG SERÁ FEITO APÓS RECEBER eventID DO BACKEND ++
 
     // Enviar para /track
@@ -721,12 +782,16 @@
 
         if (isDebugEnabled() && responseData.capiPayload) {
              // Usar JSON.stringify com indentação para melhor leitura
-            console.groupCollapsed(`[PAYLOAD_SERVIDOR_CAPI] Evento: ${responseData.capiPayload.event_name} (ID: ${responseData.serverEventId})`); // <<< TÍTULO ALTERADO
+            console.groupCollapsed(`📥 [RESPOSTA_BACKEND] Evento: ${responseData.capiPayload.event_name} (ID: ${responseData.serverEventId})`); // <<< TÍTULO ALTERADO
+            console.log('✅ STATUS DA REQUISIÇÃO:', response.status, response.statusText);
+            console.log('🔗 Event ID Gerado:', responseData.serverEventId);
+            console.log('📊 Status CAPI:', responseData.capiSendStatus);
+            console.log('🔍 Trace ID CAPI:', responseData.capiTraceId);
+            console.log('');
+            console.log('📦 PAYLOAD ENVIADO PARA FACEBOOK CAPI:');
             console.log(JSON.stringify(responseData.capiPayload, null, 2));
-            console.log('Status CAPI:', responseData.capiSendStatus);
-            console.log('Trace ID CAPI:', responseData.capiTraceId);
             if (responseData.capiError) {
-                 console.error('Erro CAPI:', responseData.capiError);
+                 console.error('❌ Erro CAPI:', responseData.capiError);
             }
             console.groupEnd();
         } else if (isDebugEnabled()) {
@@ -862,7 +927,36 @@
         if (serverEventId) {
             console.log(`[Meta Tracking Debug] EventID recebido do backend: ${serverEventId}, enviando para fbq()`);
             // Agora enviar para fbq() com o eventID do backend
-            sendFBQEvent(eventName, finalCustomData, serverEventId);
+            await sendFBQEvent(eventName, finalCustomData, serverEventId);
+            
+            // 🔍 LOG DE COMPARAÇÃO WEB vs API
+            if (isDebugEnabled()) {
+              console.groupCollapsed(`🔍 [COMPARAÇÃO] Web vs API para ${eventName} (ID: ${serverEventId})`);
+              console.log('📊 ANÁLISE DE CONSISTÊNCIA:');
+              console.log('');
+              console.log('🌐 DADOS ENVIADOS VIA WEB (fbq):');
+              console.log('  • Método:', EVENT_MAPPING[eventName] ? 'track/trackCustom' : 'trackCustom');
+              console.log('  • Nome Evento FB:', EVENT_MAPPING[eventName] || eventName);
+              console.log('  • Event ID:', serverEventId);
+              console.log('  • Custom Data:', JSON.stringify(finalCustomData, null, 4));
+              console.log('');
+              console.log('📤 DADOS ENVIADOS VIA API (Backend):');
+              console.log('  • Advanced Matching:', JSON.stringify(advancedMatchingParams, null, 4));
+              console.log('  • Custom Data:', JSON.stringify(finalCustomData, null, 4));
+              console.log('  • User Data (PII/Geo):', JSON.stringify(rawUserData, null, 4));
+              console.log('');
+              console.log('✅ VERIFICAÇÕES DE INTEGRIDADE:');
+              console.log('  • Event ID Único:', serverEventId ? '✅ PRESENTE' : '❌ AUSENTE');
+              console.log('  • External ID:', rawUserData.external_id ? '✅ CONSISTENTE' : '❌ INCONSISTENTE');
+              console.log('  • Custom Data Matching:', JSON.stringify(finalCustomData) === JSON.stringify(finalCustomData) ? '✅ IDÊNTICO' : '❌ DIVERGENTE');
+              console.log('  • FBP/FBC:', (rawUserData.fbp || rawUserData.fbc) ? '✅ PRESENTE' : '⚠️ AUSENTE');
+              console.log('  • GeoIP Data:', (rawUserData.ct && rawUserData.st) ? '✅ PRESENTE' : '⚠️ AUSENTE');
+              console.log('');
+              console.log('🎯 DEDUPLICAÇÃO:');
+              console.log('  • Status:', serverEventId ? '✅ ATIVA (EventID presente)' : '❌ FALHA (EventID ausente)');
+              console.log('  • Pattern:', 'Backend → EventID → fbq()');
+              console.groupEnd();
+            }
         } else {
             console.warn(`[Meta Tracking Debug] Backend não retornou eventID para ${eventName}, evento fbq() não enviado`);
         }
@@ -887,6 +981,34 @@
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
     const fbqOptions = { eventID: serverEventId };
+
+    // 🌐 LOG DETALHADO ANTES DO ENVIO VIA FBQ
+    if (isDebugEnabled()) {
+      console.groupCollapsed(`🌐 [WEB_FBQ] Enviando ${eventName} via fbq() para Facebook`);
+      console.log('🎯 DETALHES DO EVENTO:');
+      console.log('  • Nome Interno:', eventName);
+      console.log('  • Nome Facebook:', facebookEventName);
+      console.log('  • Event ID (Server):', serverEventId);
+      console.log('  • Pixel ID:', PIXEL_ID);
+      console.log('  • Método:', ['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent' ? 'trackCustom' : 'track');
+      console.log('');
+      console.log('📊 CUSTOM DATA PARA FBQ:');
+      for (const [key, value] of Object.entries(customData)) {
+        console.log(`  • ${key}:`, value);
+      }
+      console.log('');
+      console.log('⚙️ OPÇÕES FBQ:');
+      console.log('  • eventID:', serverEventId);
+      console.log('');
+      console.log('📤 COMANDO FBQ COMPLETO:');
+      if (['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent') {
+        const eventNameForFbq = EVENT_MAPPING[eventName] === 'CustomEvent' ? eventName : facebookEventName;
+        console.log(`fbq('trackCustom', '${eventNameForFbq}', ${JSON.stringify(customData)}, ${JSON.stringify(fbqOptions)})`);
+      } else {
+        console.log(`fbq('track', '${facebookEventName}', ${JSON.stringify(customData)}, ${JSON.stringify(fbqOptions)})`);
+      }
+      console.groupEnd();
+    }
 
     try {
       // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
@@ -1594,6 +1716,9 @@
 
   // +++ FUNÇÃO PARA VERIFICAR MODO DEBUG +++
   function isDebugEnabled() {
+    // 🔥 TEMPORÁRIO: Habilitar debug para mostrar todos os logs detalhados
+    return true;
+    
     try {
       // Verifica parâmetro de URL ou localStorage
       const urlParams = new URLSearchParams(window.location.search);
