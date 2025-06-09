@@ -364,6 +364,7 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   // Tempo do evento (Unix timestamp em segundos)
   let eventTimeSource = 'server'; // Para logging
   let finalEventTime: number;
+  // ✅ SERVIDOR EM VIRGINIA (UTC-5/UTC-4) - usar Date.now() diretamente
   const currentServerTimeSeconds = Math.floor(Date.now() / 1000);
 
   if (rawEvent.clientEventTime && typeof rawEvent.clientEventTime === 'number' && rawEvent.clientEventTime > 0) {

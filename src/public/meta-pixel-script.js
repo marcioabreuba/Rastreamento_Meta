@@ -952,39 +952,27 @@
         }
      });
 
-    // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO COM FUSO HORÁRIO +++
-    // Gerar timestamp atual em horário local brasileiro (GMT-3)
-    const now = new Date();
-    const brasiliaOffset = -3 * 60; // GMT-3 em minutos
-    const localTime = new Date(now.getTime() + (brasiliaOffset * 60 * 1000));
-    let currentTimestamp = Math.floor(localTime.getTime() / 1000);
+    // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO +++
+    // ✅ CORREÇÃO: Usar UTC diretamente (servidor Virginia + cliente qualquer = UTC como padrão)
+    let currentTimestamp = Math.floor(Date.now() / 1000);
     
-    // Data de referência: 9 de junho de 2025 em horário de Brasília
-    const referenceDate = new Date('2025-06-09T00:00:00-03:00'); // GMT-3
+    // Data de referência: 9 de junho de 2025 em UTC
+    const referenceDate = new Date('2025-06-09T00:00:00Z'); // UTC
     const expectedMinTimestamp = Math.floor(referenceDate.getTime() / 1000);
     const expectedMaxTimestamp = expectedMinTimestamp + (24 * 60 * 60);
     
-    console.log(`[Meta Tracking] 🕐 Diagnóstico de tempo (Horário Brasília GMT-3):`);
-    console.log(`  • Timestamp cliente: ${currentTimestamp} (${localTime.toISOString().replace('Z', '-03:00')})`);
-    console.log(`  • Horário local: ${localTime.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`);
-    console.log(`  • Esperado mín: ${expectedMinTimestamp} (${new Date(expectedMinTimestamp * 1000).toLocaleString('pt-BR')})`);
-    console.log(`  • Esperado máx: ${expectedMaxTimestamp} (${new Date(expectedMaxTimestamp * 1000).toLocaleString('pt-BR')})`);
+    console.log(`[Meta Tracking] 🕐 Diagnóstico de tempo (Servidor Virginia UTC, Cliente Local):`);
+    console.log(`  • Timestamp cliente: ${currentTimestamp} (${new Date(currentTimestamp * 1000).toISOString()})`);
+    console.log(`  • Horário local cliente: ${new Date().toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`);
+    console.log(`  • Esperado mín: ${expectedMinTimestamp} (${new Date(expectedMinTimestamp * 1000).toISOString()})`);
+    console.log(`  • Esperado máx: ${expectedMaxTimestamp} (${new Date(expectedMaxTimestamp * 1000).toISOString()})`);
     
     // Se o timestamp está muito fora do esperado (não é de junho 2025), corrigir
     if (currentTimestamp < expectedMinTimestamp - 86400 || currentTimestamp > expectedMaxTimestamp + 86400) {
-        // Corrigir para horário atual de Brasília
-        const correctedTime = new Date();
-        const correctedLocal = new Date(correctedTime.getTime() + (brasiliaOffset * 60 * 1000));
-        const correctedTimestamp = Math.floor(correctedLocal.getTime() / 1000);
-        
-        if (correctedTimestamp < expectedMinTimestamp - 86400 || correctedTimestamp > expectedMaxTimestamp + 86400) {
-            // Usar timestamp seguro de hoje em horário de Brasília
-            currentTimestamp = expectedMinTimestamp + (16 * 60 * 60) + (54 * 60); // 16:54 de hoje
-            console.warn(`[Meta Tracking] ⚠️ Sistema com data incorreta! Usando 16:54 horário Brasília: ${currentTimestamp}`);
-        } else {
-            currentTimestamp = correctedTimestamp;
-        }
-        console.warn(`[Meta Tracking] ⚠️ Timestamp ajustado para horário correto de Brasília (GMT-3)`);
+        console.warn(`[Meta Tracking] ⚠️ Timestamp fora do esperado (junho 2025). Detectado: ${new Date(currentTimestamp * 1000).toISOString()}`);
+        // Usar timestamp atual UTC (servidor Virginia aceita UTC)
+        currentTimestamp = Math.floor(Date.now() / 1000);
+        console.warn(`[Meta Tracking] ✅ Timestamp corrigido para UTC atual: ${new Date(currentTimestamp * 1000).toISOString()}`);
     }
     
     // Adicionar timestamp validado ao payload
