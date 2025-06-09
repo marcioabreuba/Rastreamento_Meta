@@ -193,9 +193,8 @@
     s.parentNode.insertBefore(t, s);
     console.log('[Meta Tracking Debug] Script fbevents.js sendo carregado...'); // Mudança de [Meta Tracking] para [Meta Tracking Debug]
 
-    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init/track --- 
+    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init --- 
 
-    const pageViewEventId = generateUUID();
     const externalId = getExternalId();
     const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
     const fbc = getFbc(); // <<< USA A NOVA FUNÇÃO
@@ -244,26 +243,9 @@
 
     // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
-    console.log(`[Meta Tracking Debug] fbq('init') enfileirado.`); // Mudança de [Meta Tracking] para [Meta Tracking Debug]
+    console.log(`[Meta Tracking Debug] fbq('init') enfileirado.`);
 
-    // Montar parâmetros customizados para PageView explícito
-    const pageTitle = document.title || 'Page View'; // Captura o título aqui
-    const customParams = {
-      app: 'meta-tracking',
-      contentName: pageTitle, // Usa o título capturado
-      contentType: 'page_view',
-      language: navigator.language || 'pt-BR',
-      referrer: document.referrer || ''
-    };
-    Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
-    console.log('[Meta Tracking Debug] Parâmetros Customizados para PageView explícito:', customParams); // Log dos parâmetros do PageView
-
-    // ENFILEIRAR PageView explícito COM eventID
-    const fbqOptions = { eventID: pageViewEventId };
-    fbq('track', 'PageView', customParams, fbqOptions);
-    console.log(`[Meta Tracking Debug] fbq('track', 'PageView') enfileirado (ID: ${pageViewEventId})`); // Mudança de [Meta Tracking] para [Meta Tracking Debug]
-
-    // --- ETAPA 4: Enviar para Backend (pode ser chamado fora da fila, mas após enfileirar fbq) ---
+    // --- ETAPA 4: Enviar PageView usando novo padrão ---
     const allRawUserDataForInit = {
         external_id: externalId, visitorId: getOrCreateVisitorId(),
         fbp: fbp, // Adicionar fbp lido do cookie
@@ -271,12 +253,28 @@
         em: email, ph: phone, fn: firstName, ln: lastName,
         ge: gender, db: dob, ct: city, st: state, zp: zip, country: country // Usar variáveis com placeholders
     };
-    // Pequeno delay pode ajudar a garantir que IDs como fbp foram setados pelo init
-    setTimeout(function() {
-         // LOG: Dados enviados para backend no PageView
-         console.log('[Meta Tracking Debug] Enviando PageView para Backend:', { eventName: 'PageView', rawUserData: allRawUserDataForInit, specificCustomData: customParams, eventId: pageViewEventId });
-         sendEventToBackend('PageView', allRawUserDataForInit, customParams, pageViewEventId);
-    }, 150); 
+
+    // Montar parâmetros customizados para PageView
+    const pageTitle = document.title || 'Page View';
+    const customParams = {
+      app: 'meta-tracking',
+      contentName: pageTitle,
+      contentType: 'page_view',
+      language: navigator.language || 'pt-BR',
+      referrer: document.referrer || ''
+    };
+    Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
+
+    // Delay pequeno para garantir que o init foi processado, depois usar novo padrão
+    setTimeout(async function() {
+         console.log('[Meta Tracking Debug] Enviando PageView inicial usando novo padrão...');
+         try {
+             // Usar sendEvent que agora implementa o padrão correto
+             await sendEvent('PageView', customParams);
+         } catch (error) {
+             console.error('[Meta Tracking Debug] Erro ao enviar PageView inicial:', error);
+         }
+    }, 200); // Pequeno delay para garantir que init foi processado 
 
   }
 
@@ -628,12 +626,8 @@
   // ++ FIM DA FUNÇÃO ADICIONADA ++
 
   // Função auxiliar para enviar dados brutos para o backend /track
-  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, eventId) {
-    // Garantir que eventId exista
-    if (!eventId) {
-      eventId = generateUUID();
-      console.warn('[Meta Tracking] Event ID gerado no sendEventToBackend pois não foi fornecido.');
-    }
+  // MODIFICADO: Não aceita mais eventId, backend vai gerar e retornar
+  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}) {
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
 
@@ -690,7 +684,7 @@
 
     const payload = {
         eventName: eventName,
-        eventId: eventId, // <<< Usar o eventId recebido
+        // REMOVIDO: eventId - backend vai gerar
         sourceUrl: window.location.href,
         // referrer: document.referrer || '', // Removido daqui, incluído em browserData
         userData: cleanUserData, // <<< USA OS DADOS LIMPOS
@@ -707,13 +701,7 @@
     Object.keys(payload.customData).forEach(key => payload.customData[key] == null && delete payload.customData[key]);
     Object.keys(payload.browserData).forEach(key => payload.browserData[key] == null && delete payload.browserData[key]);
 
-    // ++ CHAMAR A NOVA FUNÇÃO DE LOG ++
-    try {
-       logEventForDebug(eventName, facebookEventName, eventId, PIXEL_ID, payload.customData, payload.userData);
-    } catch (logError) {
-       console.error("[Meta Tracking Debug] Erro ao gerar log formatado:", logError);
-    }
-    // ++ FIM DA CHAMADA ++
+    // ++ LOG SERÁ FEITO APÓS RECEBER eventID DO BACKEND ++
 
     // Enviar para /track
     try {
@@ -749,21 +737,31 @@
 
         if (!response.ok || !responseData.success) {
             console.error(`[Frontend Script] Erro na resposta do backend /track para ${eventName}:`, { status: response.status, responseData });
+            return null; // Retorna null em caso de erro
         } else {
-            console.log(`[Frontend Script] Resposta recebida do backend para ${eventName} (ID Servidor: ${responseData.serverEventId})`);
+            const serverEventId = responseData.serverEventId;
+            console.log(`[Frontend Script] Resposta recebida do backend para ${eventName} (ID Servidor: ${serverEventId})`);
+            
+            // ++ CHAMAR A NOVA FUNÇÃO DE LOG COM eventID DO BACKEND ++
+            try {
+               logEventForDebug(eventName, facebookEventName, serverEventId, PIXEL_ID, payload.customData, payload.userData);
+            } catch (logError) {
+               console.error("[Meta Tracking Debug] Erro ao gerar log formatado:", logError);
+            }
+            
+            return serverEventId; // RETORNA o eventID do backend
         }
         // --- FIM DA MODIFICAÇÃO ---
 
     } catch (error) {
         console.error(`[Frontend Script] Falha na requisição fetch para /track (${eventName}) ou processamento JSON:`, error);
+        return null; // Retorna null em caso de erro
     }
   }
 
-  // Função principal para disparar eventos (simplificada)
+  // Função principal para disparar eventos (REFATORADA para padrão correto)
   async function sendEvent(eventName, customData = {}) {
-    // Mapear o nome do evento interno para o evento do Facebook, se necessário
-    const facebookEventName = EVENT_MAPPING[eventName] || eventName; // Usa mapeamento ou nome original
-    const eventId = generateUUID();
+    // REMOVIDO: generateUUID() - backend vai gerar eventID
 
     // Coletar dados comuns
     const externalId = getExternalId();
@@ -834,21 +832,20 @@
      // delete finalCustomData.fbc;
 
 
-    // LOG: Dados finais antes de enviar para FBQ e Backend
-    console.log(`[Meta Tracking Debug] Preparando evento: ${eventName} (Mapeado para: ${facebookEventName})`);
-    console.log('[Meta Tracking Debug]   Advanced Matching (para fbq):', advancedMatchingParams);
-    console.log('[Meta Tracking Debug]   Custom Data (para fbq e backend):', finalCustomData);
-    console.log('[Meta Tracking Debug]   Raw User Data (para backend):', rawUserData);
-    console.log('[Meta Tracking Debug]   Event ID:', eventId);
+    // LOG: Dados finais antes de enviar para Backend
+    console.log(`[Meta Tracking Debug] Preparando evento: ${eventName}`);
+    console.log('[Meta Tracking Debug]   Advanced Matching:', advancedMatchingParams);
+    console.log('[Meta Tracking Debug]   Custom Data:', finalCustomData);
+    console.log('[Meta Tracking Debug]   Raw User Data:', rawUserData);
 
     // +++ LOG WEB RAW +++
     if (isDebugEnabled()) {
       try {
           // Agrupar para organização
-          console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Preparando Evento: ${eventName} (ID: ${eventId})`); // <<< TÍTULO ALTERADO
+          console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Preparando Evento: ${eventName}`);
           // Usar JSON.stringify com indentação
           console.log('Raw User Data (para backend):', JSON.stringify(rawUserData, null, 2));
-          console.log('Specific Custom Data (para backend):', JSON.stringify(finalCustomData, null, 2)); // Logar `finalCustomData` que vai pro backend
+          console.log('Specific Custom Data (para backend):', JSON.stringify(finalCustomData, null, 2));
           console.groupEnd();
       } catch (e) {
           console.error('[PAYLOAD_WEB_PIXEL] Erro ao gerar log:', e);
@@ -856,59 +853,80 @@
     }
     // +++ FIM LOG WEB RAW +++
 
-    // Enviar para o Facebook Pixel
+    // NOVO PADRÃO: Enviar para Backend PRIMEIRO, depois fbq()
     try {
-      if (window.fbq) {
-        const fbqOptions = { eventID: eventId };
+        console.log('[Meta Tracking Debug] Enviando evento para Backend:', { eventName: eventName, rawUserData, specificCustomData: finalCustomData });
         
-        // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
-        if (['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent') { 
-          // Adicionar nome do evento customizado como parâmetro, se for CustomEvent genérico
-          const customEventPayload = { ...finalCustomData };
-          if (EVENT_MAPPING[eventName] === 'CustomEvent') {
-             customEventPayload.event = eventName; // Adiciona o nome original (ex: Timer_1min) 
-             console.log('[Meta Tracking Debug] Enviando como trackCustom (CustomEvent): ', facebookEventName, customEventPayload, fbqOptions);
-             // ++ LOG FBQ ++ 
-             logTrackCustomIfNeeded(eventName, customEventPayload, fbqOptions);
-             fbq('trackCustom', eventName, customEventPayload, fbqOptions); // Usa eventName original aqui
-          } else {
-             console.log('[Meta Tracking Debug] Enviando como trackCustom (Não Padrão): ', facebookEventName, finalCustomData, fbqOptions);
-             // ++ LOG FBQ ++ 
-             logTrackCustomIfNeeded(facebookEventName, finalCustomData, fbqOptions);
-             fbq('trackCustom', facebookEventName, finalCustomData, fbqOptions);
-          }
+        // Aguardar resposta do backend com eventID
+        const serverEventId = await sendEventToBackend(eventName, rawUserData, finalCustomData);
+        
+        if (serverEventId) {
+            console.log(`[Meta Tracking Debug] EventID recebido do backend: ${serverEventId}, enviando para fbq()`);
+            // Agora enviar para fbq() com o eventID do backend
+            sendFBQEvent(eventName, finalCustomData, serverEventId);
         } else {
-          // Para eventos padrão (PageView, ViewContent, AddToCart, Purchase, etc.) usar track padrão
-          console.log('[Meta Tracking Debug] Enviando como track (Padrão): ', facebookEventName, finalCustomData, fbqOptions);
-          // +++ LOG WEB FBQ (TRACK PADRÃO) +++
-          if (isDebugEnabled()) {
-              try {
-                  console.groupCollapsed(`[LOG_WEB_FBQ] fbq('track', '${facebookEventName}', ...) (ID: ${eventId})`);
-                  console.log('Custom Data:', JSON.stringify(finalCustomData, null, 2));
-                  console.log('Options:', JSON.stringify(fbqOptions, null, 2));
-                  console.groupEnd();
-              } catch (e) {
-                  console.error('[LOG_WEB_FBQ] Erro ao gerar log (track):', e);
-              }
-          }
-          fbq('track', facebookEventName, finalCustomData, fbqOptions);
+            console.warn(`[Meta Tracking Debug] Backend não retornou eventID para ${eventName}, evento fbq() não enviado`);
         }
-        // console.log(`[Meta Tracking Debug] fbq('track...') enfileirado (ID: ${eventId})`); // Log genérico removido, logs específicos acima
+        
+    } catch (error) {
+        console.error('[Meta Tracking Debug] Erro no fluxo de envio de evento:', error);
+    } 
+  }
+  // >>> FIM DA SEÇÃO MODIFICADA <<<
+
+  // ++ NOVA FUNÇÃO PARA ENVIO AO FBQ() SEPARADAMENTE ++
+  function sendFBQEvent(eventName, customData, serverEventId) {
+    if (!serverEventId) {
+      console.warn(`[Meta Tracking] Não é possível enviar fbq() para ${eventName}: eventID não fornecido`);
+      return;
+    }
+
+    if (!window.fbq) {
+      console.warn('[Meta Tracking] fbq não está definido ao tentar enviar evento:', eventName);
+      return;
+    }
+
+    const facebookEventName = EVENT_MAPPING[eventName] || eventName;
+    const fbqOptions = { eventID: serverEventId };
+
+    try {
+      // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
+      if (['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent') { 
+        // Adicionar nome do evento customizado como parâmetro, se for CustomEvent genérico
+        const customEventPayload = { ...customData };
+        if (EVENT_MAPPING[eventName] === 'CustomEvent') {
+           customEventPayload.event = eventName; // Adiciona o nome original (ex: Timer_1min) 
+           console.log('[Meta Tracking Debug] Enviando como trackCustom (CustomEvent): ', eventName, customEventPayload, fbqOptions);
+           // ++ LOG FBQ ++ 
+           logTrackCustomIfNeeded(eventName, customEventPayload, fbqOptions);
+           fbq('trackCustom', eventName, customEventPayload, fbqOptions); // Usa eventName original aqui
+        } else {
+           console.log('[Meta Tracking Debug] Enviando como trackCustom (Não Padrão): ', facebookEventName, customData, fbqOptions);
+           // ++ LOG FBQ ++ 
+           logTrackCustomIfNeeded(facebookEventName, customData, fbqOptions);
+           fbq('trackCustom', facebookEventName, customData, fbqOptions);
+        }
       } else {
-        console.warn('[Meta Tracking Debug] fbq não está definido ao tentar enviar evento:', facebookEventName);
+        // Para eventos padrão (PageView, ViewContent, AddToCart, Purchase, etc.) usar track padrão
+        console.log('[Meta Tracking Debug] Enviando como track (Padrão): ', facebookEventName, customData, fbqOptions);
+        // +++ LOG WEB FBQ (TRACK PADRÃO) +++
+        if (isDebugEnabled()) {
+            try {
+                console.groupCollapsed(`[LOG_WEB_FBQ] fbq('track', '${facebookEventName}', ...) (ID: ${serverEventId})`);
+                console.log('Custom Data:', JSON.stringify(customData, null, 2));
+                console.log('Options:', JSON.stringify(fbqOptions, null, 2));
+                console.groupEnd();
+            } catch (e) {
+                console.error('[LOG_WEB_FBQ] Erro ao gerar log (track):', e);
+            }
+        }
+        fbq('track', facebookEventName, customData, fbqOptions);
       }
     } catch (error) {
       console.error('[Meta Tracking Debug] Erro ao enviar evento para FB Pixel:', error);
     }
-
-    // Enviar para o Backend
-    // Pequeno delay pode ajudar se houver concorrência
-     setTimeout(function() {
-         console.log('[Meta Tracking Debug] Enviando evento para Backend:', { eventName: eventName, rawUserData, specificCustomData: finalCustomData, eventId });
-         sendEventToBackend(eventName, rawUserData, finalCustomData, eventId);
-    }, 50); 
   }
-  // >>> FIM DA SEÇÃO MODIFICADA <<<
+  // ++ FIM DA NOVA FUNÇÃO ++
 
   // Função para adicionar dados hasheados ao pixel (REMOVER ou REVISAR)
   // Esta função parece redundante/incorreta na nova abordagem
