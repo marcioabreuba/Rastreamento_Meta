@@ -26,10 +26,10 @@ export const EVENT_NAME_MAPPING: Record<string, string> = {
   'AddToWishlist': 'AddToWishlist',
 
   // Mapeamentos Específicos (onde o nome interno difere do padrão Meta ou não há padrão)
-  'ViewHome': 'PageView',        
+  'ViewHome': 'ViewHome',        
   'ViewList': 'ViewList',     
   'ViewCart': 'ViewCart',     
-  'ViewCategory': 'ViewCategory', 
+  'ViewCategory': 'ViewList',    // ✅ CORRIGIDO: ViewCategory → ViewList (consistência com frontend) 
   'Pesquisar': 'Search',         // Alias
   'ViewSearchResults': 'ViewSearchResults', // Alias
   'StartCheckout': 'InitiateCheckout', // Alias

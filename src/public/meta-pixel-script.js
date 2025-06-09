@@ -734,7 +734,8 @@
     const clientEventTime = Math.floor(Date.now() / 1000); // Captura o timestamp do cliente
 
     const payload = {
-        eventName: eventName,
+        eventName: facebookEventName, // ✅ USAR NOME MAPEADO PARA FACEBOOK (consistência CAPI/Pixel)
+        originalEventName: eventName, // ✅ MANTER NOME ORIGINAL PARA LOGS/DEBUG
         eventId: clientEventId, // <<<< INCLUIR EVENTID GERADO AQUI
         sourceUrl: window.location.href,
         // referrer: document.referrer || '', // Removido daqui, incluído em browserData
@@ -756,9 +757,9 @@
     if (isDebugEnabled()) {
       console.groupCollapsed(`📤 [BACKEND_PAYLOAD] Enviando ${eventName} para API Server`);
       console.log('🎯 EVENTO E METADADOS:');
-      console.log('  • Nome do Evento:', eventName);
+      console.log('  • Nome Interno:', eventName);
+      console.log('  • Nome Facebook (Enviado):', facebookEventName);
       console.log('  • Event ID Cliente:', clientEventId);
-      console.log('  • Evento Facebook:', facebookEventName);
       console.log('  • URL da Página:', window.location.href);
       console.log('  • Timestamp Cliente:', new Date(clientEventTime * 1000).toISOString());
       console.log('');
