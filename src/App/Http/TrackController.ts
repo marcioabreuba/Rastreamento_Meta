@@ -207,7 +207,12 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
     }
     if (!rawEventInput.userData?.fbp) {
-      logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
+      // ✅ Verificar se é Facebook In-App Browser (FB_IAB) - onde FBP não está disponível
+      if (userAgent?.includes('FB_IAB')) {
+        logger.debug(`[TrackController] 📱 FBP ausente em FB In-App Browser (esperado) - eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, fbc=${rawEventInput.userData?.fbc ? 'presente' : 'ausente'}`);
+      } else {
+        logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
+      }
     }
 
     // 5. Normalizar Evento para CAPI

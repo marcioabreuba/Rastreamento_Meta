@@ -580,7 +580,6 @@
    * @returns {string|null} FBP válido ou null
    */
   function validateFbp(fbp) {
-    // --- LÓGICA SIMPLIFICADA --- 
     // 1. Tentar ler o cookie _fbp diretamente
     let fbpValue = getCookie('_fbp');
     
@@ -589,10 +588,16 @@
       fbpValue = getUrlParameter('fbp');
     }
     
-    // 3. Retornar o valor encontrado (pode ser null)
-    // Não fazer validação, correção ou geração. Confiar no valor existente.
-    return fbpValue; 
-    // --- FIM DA LÓGICA SIMPLIFICADA ---
+    // 3. ✅ DETECÇÃO ESPECÍFICA PARA FACEBOOK IN-APP BROWSER
+    if (!fbpValue && navigator.userAgent.includes('FB_IAB')) {
+      console.log('[Meta Tracking] 📱 Facebook In-App Browser detectado - FBP não disponível por limitações de cookies');
+      console.log('[Meta Tracking] ✅ Usando FBC como identificador principal para advanced matching');
+      // Não gerar FBP falso - deixar null para indicar que não está disponível
+      return null;
+    }
+    
+    // 4. Retornar o valor encontrado (pode ser null)
+    return fbpValue;
     
     /* LÓGICA ANTIGA REMOVIDA:
     // Se não existir ou for inválido, GERAR um novo FBP válido
@@ -685,18 +690,23 @@
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
     console.log(`[Frontend Script] Valor FBC lido/gerado ANTES do envio para backend: ${currentFbc}`);
     
-    // +++ LOG CRÍTICO DE _FBP +++
+    // +++ LOG OTIMIZADO DE _FBP +++
     if (!currentFbp) {
-      console.error(`[Frontend Script] ❌ _FBP AUSENTE no envio do ${eventName}!`);
-      console.error('[Frontend Script] 📊 DIAGNÓSTICO DETALHADO:');
-      console.error(`  • document.cookie: ${document.cookie}`);
-      console.error(`  • URL fbp param: ${getUrlParameter('fbp')}`);
-      console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
-      console.error(`  • Facebook script carregado: ${!!document.querySelector('script[src*="fbevents.js"]')}`);
+      if (navigator.userAgent.includes('FB_IAB')) {
+        console.warn(`[Frontend Script] 📱 FBP ausente no FB In-App Browser para ${eventName} (esperado)`);
+        console.log('[Frontend Script] ✅ FBC disponível como alternativa:', currentFbc ? 'SIM' : 'NÃO');
+      } else {
+        console.error(`[Frontend Script] ❌ _FBP AUSENTE no envio do ${eventName}!`);
+        console.error('[Frontend Script] 📊 DIAGNÓSTICO DETALHADO:');
+        console.error(`  • document.cookie: ${document.cookie}`);
+        console.error(`  • URL fbp param: ${getUrlParameter('fbp')}`);
+        console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
+        console.error(`  • Facebook script carregado: ${!!document.querySelector('script[src*="fbevents.js"]')}`);
+      }
     } else {
       console.log(`[Frontend Script] ✅ _FBP confirmado: ${currentFbp}`);
     }
-    // +++ FIM LOG _FBP +++
+    // +++ FIM LOG OTIMIZADO +++
     
     // +++ FIM RE-LEITURA FBP/FBC +++
 
