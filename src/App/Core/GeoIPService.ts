@@ -4,8 +4,9 @@
  */
 
 import { Reader } from '@maxmind/geoip2-node';
-import { GeoData } from '../../types'; // Ajustar o caminho conforme necessário
-import logger from '../../utils/logger'; // Ajustar o caminho conforme necessário
+import { GeoData } from '../../types';
+import logger from '../../utils/logger';
+import { normalizeBrazilianZipCode } from '../../utils/validators';
 
 // Variável para armazenar a instância do leitor GeoIP (deve ser inicializada externamente)
 let geoipReaderInstance: Reader | null = null;
@@ -61,23 +62,7 @@ export function convertToIPv6Format(ip: string | null | undefined): string | nul
   return `::ffff:${potentialIPv4}`;
 }
 
-/**
- * Normaliza o CEP brasileiro para o formato padrão de 8 dígitos.
- * @param {string | null | undefined} zipCode - CEP a ser normalizado
- * @param {string | null | undefined} countryCode - Código do país
- * @returns {string | null} CEP normalizado ou o original se não for brasileiro
- */
-function normalizeBrazilianZipCodeInternal(zipCode: string | null | undefined, countryCode: string | null | undefined): string | null {
-  if (!zipCode || !countryCode || countryCode.toLowerCase() !== 'br') {
-    return zipCode || null;
-  }
-
-  const numericZip = zipCode.replace(/\D/g, '');
-  if (numericZip.length > 0 && numericZip.length < 8) {
-    return numericZip.padEnd(8, '0');
-  }
-  return numericZip || null; // Retorna nulo se for vazio após remover não numéricos
-}
+// Função removida - agora usando utilitário compartilhado
 
 /**
  * Obtém informações de geolocalização a partir de um endereço IP.
@@ -102,7 +87,7 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
     const geoResult = geoipReaderInstance.city(ipToUse);
 
     const countryCode = geoResult.country?.isoCode;
-    const postalCode = normalizeBrazilianZipCodeInternal(geoResult.postal?.code, countryCode);
+    const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);
 
     return {
       ip: ip, // Retorna sempre o IP original recebido
@@ -129,7 +114,7 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
         const geoResult = geoipReaderInstance.city(ipToUse);
 
         const countryCode = geoResult.country?.isoCode;
-        const postalCode = normalizeBrazilianZipCodeInternal(geoResult.postal?.code, countryCode);
+        const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);
 
         return {
           ip: ip, // Retorna sempre o IP original

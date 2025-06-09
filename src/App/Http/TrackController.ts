@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import * as GeoIPService from '../Core/GeoIPService';
 import * as NormalizationService from '../Core/NormalizationService';
 import { RawEventInput } from '../Core/NormalizationService';
-import logger from '../../utils/logger'; // Ajustar caminho
-import config from '../../config'; // <--- Adicionar esta linha
+import logger from '../../utils/logger';
+import config from '../../config';
 // Importar todos os handlers de evento
 import { handlePurchase } from '../events/PurchaseHandler';
 import { handleViewContent } from '../events/ViewContentHandler';
@@ -15,11 +15,9 @@ import { handleCompleteRegistration } from '../events/CompleteRegistrationHandle
 import { handleAddPaymentInfo } from '../events/AddPaymentInfoHandler';
 import { handleAddToWishlist } from '../events/AddToWishlistHandler';
 import { handleGenericEvent } from '../events/GenericEventHandler';
-// Importar CapiService
-// import { sendEvent as sendEventToCapi } from './CapiService'; // <<< Tentativa anterior
 import { sendEvent as sendEventToCapi, CapiSendResult } from './CapiService';
-// <<< ADICIONAR IMPORTAÇÕES DE TIPOS WEB >>>
 import { WebUserData, WebCustomData } from '../Model/WebEventParams';
+import { isValidEmail, isValidBrazilianPhone, isPrivateIP } from '../../utils/validators';
 
 // Definir um tipo para a assinatura da função do handler
 type EventHandlerFunction = (rawUserData: any, rawCustomData: any, originalEventName?: string) => { userData: Partial<WebUserData>; customData: Partial<WebCustomData> };
@@ -45,51 +43,141 @@ const eventHandlers: Record<string, EventHandlerFunction> = {
 };
 
 /**
+ * Extrai dados da requisição HTTP (IP e User Agent)
+ * @param req - Objeto de requisição Express
+ * @returns Objeto com clientIp e userAgent extraídos
+ */
+const extractRequestData = (req: Request) => {
+  const ipHeader = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
+  const clientIp = typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : null;
+  const userAgent = req.headers['user-agent'] || null;
+  
+  return { clientIp, userAgent };
+};
+
+/**
+ * Formata objetos para log evitando [Object object]
+ * @param obj - Objeto a ser formatado
+ * @returns String formatada para logging
+ */
+const formatObjectForLog = (obj: any): string => {
+  if (!obj || Object.keys(obj).length === 0) return ' (None)';
+  let logString = '';
+  for (const key in obj) {
+    // Não logar user agent completo nos logs do Render
+    const valueToLog = (key === 'client_user_agent' && obj[key]) ? String(obj[key]).substring(0, config.validation.debugLogLength) + '...' : obj[key];
+    if (valueToLog !== null && valueToLog !== undefined) { // Logar apenas chaves com valor
+      logString += `\n        ${key}: ${valueToLog}`;
+    }
+  }
+  return logString || ' (None)';
+};
+
+/**
+ * Loga detalhes do evento CAPI preparado
+ */
+const logCapiEventDetails = (capiEvent: any) => {
+  try {
+    logger.debug(`[TrackController] Prepared CAPI Event (Pixel Helper Server):
+      Event Name: ${capiEvent.event_name}
+      Pixel ID: ${config.fbPixelId}
+      Event ID: ${capiEvent.event_id}
+      --- Custom Parameters ---${formatObjectForLog(capiEvent.custom_data)}
+      --- User Data (Advanced Matching) ---${formatObjectForLog(capiEvent.user_data)}
+      --- Event Info ---
+        Event Time: ${capiEvent.event_time}
+        Action Source: ${capiEvent.action_source}
+        Source URL: ${capiEvent.event_source_url ?? '(Not provided)'}
+        Data Processing Options: ${capiEvent.data_processing_options?.join(', ') || '[]'}`);
+  } catch (logError: any) {
+    logger.error(`[TrackController] Error generating detailed debug log: ${logError.message}`);
+  }
+};
+
+/**
+ * Valida dados básicos do evento e userData
+ * @param eventName - Nome do evento a ser validado
+ * @param body - Corpo da requisição para validação adicional
+ * @returns Objeto com isValid e error (se houver)
+ */
+const validateEventData = (eventName: string, body: any) => {
+  if (!eventName) {
+    return { isValid: false, error: 'Event name is required' };
+  }
+  
+  // Validar formato de email se fornecido
+  if (body.userData?.email && !isValidEmail(body.userData.email)) {
+    logger.warn(`[TrackController] Email inválido recebido: ${body.userData.email}`);
+    // Não bloquear o evento, apenas alertar
+  }
+  
+  // Validar formato de telefone brasileiro se fornecido
+  if (body.userData?.phone && !isValidBrazilianPhone(body.userData.phone)) {
+    logger.warn(`[TrackController] Telefone brasileiro inválido recebido: ${body.userData.phone}`);
+    // Não bloquear o evento, apenas alertar
+  }
+  
+  return { isValid: true, error: null };
+};
+
+/**
+ * Cria resposta de erro padronizada para o cliente
+ * @param message - Mensagem de erro
+ * @param details - Detalhes adicionais do erro (opcional)
+ * @returns Objeto de resposta de erro padronizado
+ */
+const createErrorResponse = (eventId: string | null, capiError: string, message: string) => {
+  return {
+    success: false,
+    serverEventId: eventId,
+    capiPayload: null,
+    capiSendStatus: 'error',
+    capiTraceId: null,
+    capiError,
+    message
+  };
+};
+
+/**
  * Processa uma requisição de rastreamento recebida na rota /track.
  */
 export const handleTrackRequest = async (req: Request, res: Response): Promise<void> => {
   const requestStartTime = Date.now();
   const { eventName, userData, customData, eventId, sourceUrl, referrer, client_event_time, ...rest } = req.body;
 
-  /* LOG FBC REMOVIDO
-  // +++ LOG FBC TEMPORÁRIO +++
-  if (userData) {
-    logger.info(`[FBC DEBUG] TrackController - Received userData.fbc: ${userData.fbc}`);
-  } else {
-    logger.info(`[FBC DEBUG] TrackController - Received userData is null/undefined.`);
-  }
-  // +++ FIM LOG FBC +++
-  */
-
   // Loga os dados brutos recebidos APENAS se LOG_LEVEL=debug
   logger.debug(`[TrackController] Raw event received: ${eventName}`, {
       receivedEventName: eventName,
-      receivedEventId: eventId, // Event ID gerado pelo frontend (se houver)
+      receivedEventId: eventId,
       receivedSourceUrl: sourceUrl,
       receivedReferrer: referrer,
-      receivedUserData: userData, // Dados do usuário COMO CHEGARAM
-      receivedCustomData: customData, // Dados customizados COMO CHEGARAM
-      receivedOtherParams: rest // Outros parâmetros no body
+      receivedUserData: userData,
+      receivedCustomData: customData,
+      receivedOtherParams: rest
   });
 
-  if (!eventName) {
+  // Validar dados básicos
+  const validation = validateEventData(eventName, req.body);
+  if (!validation.isValid) {
     logger.warn('[TrackController] Requisição recebida sem eventName.', { body: req.body });
-    res.status(400).json({ success: false, error: 'Event name is required' });
+    res.status(400).json({ success: false, error: validation.error });
     return;
   }
 
   try {
-    // 1. Obter Dados da Requisição (IP, UserAgent)
-    const ipHeader = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
-    const clientIp = typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : null;
-    const userAgent = req.headers['user-agent'] || null;
-
-    logger.debug(`[TrackController] Recebido evento: ${eventName}`, { ip: clientIp, ua: userAgent?.substring(0, 50) });
+    // 1. Extrair dados da requisição
+    const { clientIp, userAgent } = extractRequestData(req);
+    logger.debug(`[TrackController] Recebido evento: ${eventName}`, { ip: clientIp, ua: userAgent?.substring(0, config.validation.userAgentLogLength) });
 
     // 2. Obter Dados GeoIP
-    const geoData = GeoIPService.getGeoData(clientIp);
-    if (geoData) {
+    let geoData = null;
+    if (!isPrivateIP(clientIp)) {
+      geoData = GeoIPService.getGeoData(clientIp);
+      if (geoData) {
         logger.debug(`[TrackController] GeoIP encontrado para ${clientIp}: ${geoData.city}, ${geoData.region?.code}, ${geoData.country?.code}`);
+      }
+    } else {
+      logger.debug(`[TrackController] IP privado/local detectado (${clientIp}), pulando GeoIP`);
     }
 
     // 3. Selecionar e Executar Handler Específico do Evento
@@ -111,58 +199,26 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       dataProcessingOptions: rest.dataProcessingOptions,
       dataProcessingOptionsCountry: rest.dataProcessingOptionsCountry,
       dataProcessingOptionsState: rest.dataProcessingOptionsState,
-      clientEventTime: client_event_time ? Number(client_event_time) : null // Adiciona client_event_time ao RawEventInput
+      clientEventTime: client_event_time ? Number(client_event_time) : null
     };
 
-    // +++ Logs de Alerta Adicionados +++
+    // Logs de alerta para identificadores ausentes
     if (!rawEventInput.userData?.external_id) {
-      logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0,50)}`);
+      logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
     }
     if (!rawEventInput.userData?.fbp) {
-      logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0,50)}`);
+      logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
     }
-    // +++ Fim dos Logs de Alerta +++
 
     // 5. Normalizar Evento para CAPI
     const capiEvent = NormalizationService.normalizeEventForCAPI(rawEventInput);
 
-    // Responder ao cliente imediatamente se a normalização for bem-sucedida
-    // e iniciar o envio para a CAPI de forma assíncrona.
+    // Processar evento normalizado
     if (capiEvent) {
-        // ++ Log Detalhado Similando Pixel Helper (Backend) ++
-        try {
-            // Função auxiliar para formatar objetos para log (evita [Object object])
-            const formatObjectForLog = (obj: any): string => {
-                if (!obj || Object.keys(obj).length === 0) return ' (None)';
-                let logString = '';
-                for (const key in obj) {
-                    // Não logar user agent completo nos logs do Render
-                     const valueToLog = (key === 'client_user_agent' && obj[key]) ? String(obj[key]).substring(0, 70) + '...' : obj[key];
-                     if (valueToLog !== null && valueToLog !== undefined) { // Logar apenas chaves com valor
-                         logString += `\n        ${key}: ${valueToLog}`;
-                     }
-                }
-                return logString || ' (None)';
-            };
+        // Log detalhado do evento CAPI preparado
+        logCapiEventDetails(capiEvent);
 
-            logger.debug(`[TrackController] Prepared CAPI Event (Pixel Helper Server):
-          Event Name: ${capiEvent.event_name}
-          Pixel ID: ${config.fbPixelId}
-          Event ID: ${capiEvent.event_id}
-          --- Custom Parameters ---${formatObjectForLog(capiEvent.custom_data)}
-          --- User Data (Advanced Matching) ---${formatObjectForLog(capiEvent.user_data)}
-          --- Event Info ---
-            Event Time: ${capiEvent.event_time}
-            Action Source: ${capiEvent.action_source}
-            Source URL: ${capiEvent.event_source_url ?? '(Not provided)'}
-            Data Processing Options: ${capiEvent.data_processing_options?.join(', ') || '[]'}`);
-
-        } catch (logError: any) {
-            logger.error(`[TrackController] Error generating detailed debug log: ${logError.message}`);
-        }
-        // ++ Fim do Log Detalhado ++
-
-        // --- MODIFICAÇÃO: Enviar para CAPI e aguardar resultado --- 
+        // Enviar para CAPI e aguardar resultado 
         let capiResult: CapiSendResult = { status: 'skipped', error: 'Send not attempted' };
         try {
             capiResult = await sendEventToCapi(capiEvent);
@@ -171,14 +227,13 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
              logger.error(`[TrackController] Erro síncrono ao enviar evento ${capiEvent.event_id} para CAPI: ${capiError.message}`, { error: capiError });
              capiResult = { status: 'error', error: capiError.message };
         }
-        // --- FIM DA MODIFICAÇÃO ---
 
-        // --- MODIFICAÇÃO: Montar e enviar a nova resposta JSON --- 
+        // Montar e enviar a nova resposta JSON 
         const processingTime = Date.now() - requestStartTime;
         const responsePayload = {
             success: true,
             serverEventId: capiEvent.event_id,
-            capiPayload: capiEvent, // <<< Incluir payload CAPI
+            capiPayload: capiEvent,
             capiSendStatus: capiResult.status,
             capiTraceId: capiResult.traceId || null,
             capiError: capiResult.error || null,
@@ -188,20 +243,16 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
         logger.info(`[TrackController] Resposta 200 (com detalhes CAPI) enviada para ${eventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
         res.status(200).json(responsePayload);
-        // --- FIM DA MODIFICAÇÃO ---
 
     } else {
       logger.error(`[TrackController] Falha ao normalizar evento ${eventName}. Evento descartado.`, { rawInput: rawEventInput });
-      // << AJUSTAR RESPOSTA DE ERRO DE NORMALIZAÇÃO >>
-      res.status(400).json({
-           success: false,
-           serverEventId: eventId || null, // Usar ID original se houver
-           capiPayload: null,
-           capiSendStatus: 'skipped',
-           capiTraceId: null,
-           capiError: 'Failed to normalize event data. Check required parameters.',
-           message: `Falha ao normalizar evento ${eventName}.`
-      });
+      const errorResponse = createErrorResponse(
+        eventId || null,
+        'Failed to normalize event data. Check required parameters.',
+        `Falha ao normalizar evento ${eventName}.`
+      );
+      errorResponse.capiSendStatus = 'skipped';
+      res.status(400).json(errorResponse);
     }
 
   } catch (error: any) {
@@ -212,15 +263,11 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       body: req.body,
       processingTime
     });
-    // << AJUSTAR RESPOSTA DE ERRO INTERNO >>
-    res.status(500).json({
-         success: false,
-         serverEventId: eventId || null, // Usar ID original se houver
-         capiPayload: null,
-         capiSendStatus: 'error',
-         capiTraceId: null,
-         capiError: 'Internal server error during processing.',
-         message: `Erro interno no servidor ao processar ${eventName}.`
-     });
+    const errorResponse = createErrorResponse(
+      eventId || null,
+      'Internal server error during processing.',
+      `Erro interno no servidor ao processar ${eventName}.`
+    );
+    res.status(500).json(errorResponse);
   }
 }; 

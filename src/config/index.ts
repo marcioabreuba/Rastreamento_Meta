@@ -31,6 +31,18 @@ interface Config {
   shopifyApiSecret: string;
   shopifyApiKey: string;
   fbApiVersion: string;
+  // Constantes de validação e processamento
+  validation: {
+    maxEventAgeInDays: number;
+    maxFutureEventHours: number;
+    userAgentLogLength: number;
+    debugLogLength: number;
+  };
+  // Configurações de rate limiting
+  rateLimit: {
+    windowMs: number;
+    maxRequestsPerWindow: number;
+  };
 }
 
 const config: Config = {
@@ -57,6 +69,18 @@ const config: Config = {
   shopifyApiSecret: process.env.SHOPIFY_API_SECRET || '',
   shopifyApiKey: process.env.SHOPIFY_API_KEY || '',
   fbApiVersion: process.env.FB_API_VERSION || 'v19.0',
+  // Constantes de validação e processamento
+  validation: {
+    maxEventAgeInDays: 7,
+    maxFutureEventHours: 2,
+    userAgentLogLength: 50,
+    debugLogLength: 70,
+  },
+  // Configurações de rate limiting
+  rateLimit: {
+    windowMs: 60 * 1000, // 1 minuto
+    maxRequestsPerWindow: 100, // 100 requests por minuto
+  },
 };
 
 export default config; 

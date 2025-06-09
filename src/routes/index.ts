@@ -10,6 +10,7 @@ import path from 'path';
 import * as GeoIPService from '../App/Core/GeoIPService';
 import { GeoData } from '../types';
 import logger from '../utils/logger';
+import { validateTrackingEvent, sanitizeData, rateLimitMiddleware } from '../middleware/validationMiddleware';
 
 const router = express.Router();
 
@@ -66,8 +67,13 @@ router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
   }
 });
 
-// Rota Principal de Rastreamento
-router.post('/track', handleTrackRequest);
+// Rota Principal de Rastreamento com middlewares
+router.post('/track', 
+  rateLimitMiddleware,
+  sanitizeData,
+  validateTrackingEvent,
+  handleTrackRequest
+);
 
 // Rota para servir o código do pixel (script completo + inicialização)
 router.get('/pixel-code', (req, res) => {
@@ -112,8 +118,8 @@ router.get('/pixel-code', (req, res) => {
     /></noscript>
     <!-- End Meta Pixel Code -->
   `);
-  } catch (error) {
-    console.error('Erro ao ler o arquivo do script:', error);
+  } catch (error: any) {
+    logger.error('Erro ao ler o arquivo do script:', error);
     
     // Fallback para o código básico do pixel
     res.status(200).send(`

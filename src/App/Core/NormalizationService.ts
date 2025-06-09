@@ -7,8 +7,9 @@ import { ServerEvent, ServerUserData, ServerCustomData } from '../Model/ServerEv
 import { WebEventParams, WebUserData, WebCustomData } from '../Model/WebEventParams'; // Pode ser útil para obter tipos de entrada
 import { GeoData } from '../../types'; // Ajustar caminho
 import logger from '../../utils/logger'; // Ajustar caminho
-import { convertToIPv6Format } from './GeoIPService'; // Importar função de conversão de IP
-import config from '../../config'; // Ajustar caminho
+import { convertToIPv6Format } from './GeoIPService';
+import config from '../../config';
+import { normalizeBrazilianZipCode as normalizeBRZip } from '../../utils/validators';
 
 // Mapeamento de nomes de eventos internos para nomes de eventos padrão da Meta CAPI
 export const EVENT_NAME_MAPPING: Record<string, string> = {
@@ -101,23 +102,7 @@ function hashData(data: string | number | undefined | null, type: 'email' | 'pho
   return crypto.createHash('sha256').update(normalizedData).digest('hex');
 }
 
-/**
- * Normaliza o CEP brasileiro (movido para GeoIPService, mas pode ser chamado de lá).
- * Esta função é mantida aqui caso precise ser usada separadamente.
- * @param {string | null} zipCode - CEP
- * @param {string | null} countryCode - Código do país
- * @returns {string | null} CEP normalizado
- */
-function normalizeBrazilianZipCode(zipCode: string | null, countryCode: string | null): string | null {
-    if (!zipCode || !countryCode || countryCode.toLowerCase() !== 'br') {
-        return zipCode || null;
-    }
-    const numericZip = zipCode.replace(/\D/g, '');
-    if (numericZip.length > 0 && numericZip.length < 8) {
-        return numericZip.padEnd(8, '0');
-    }
-    return numericZip || null;
-}
+// Função removida - agora usando utilitário compartilhado
 
 /**
  * Valida e corrige o formato do FBP.
@@ -169,7 +154,7 @@ function generateUserIdFallback(): string {
  */
 function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData | null, clientIp: string | null, userAgent: string | null): ServerUserData {
   const countryCode = rawUserData?.country?.toLowerCase() || geoData?.country?.code?.toLowerCase() || null;
-  const zipCode = normalizeBrazilianZipCode(rawUserData?.zp || geoData?.postal, countryCode);
+  const zipCode = normalizeBRZip(rawUserData?.zp || geoData?.postal, countryCode);
 
   // Normaliza external_id antes do hash
   const externalIdInput = rawUserData?.external_id;
@@ -382,13 +367,14 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   const currentServerTimeSeconds = Math.floor(Date.now() / 1000);
 
   if (rawEvent.clientEventTime && typeof rawEvent.clientEventTime === 'number' && rawEvent.clientEventTime > 0) {
-      const sevenDaysInSeconds = 7 * 24 * 60 * 60;
-      // Verifica se não é mais antigo que 7 dias E não mais que 2 horas no futuro
-      if ((currentServerTimeSeconds - rawEvent.clientEventTime) > sevenDaysInSeconds) {
-          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) é mais antigo que 7 dias. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+      const maxEventAgeInSeconds = config.validation.maxEventAgeInDays * 24 * 60 * 60;
+      const maxFutureEventInSeconds = config.validation.maxFutureEventHours * 60 * 60;
+      // Verifica se não é mais antigo que N dias E não mais que N horas no futuro
+      if ((currentServerTimeSeconds - rawEvent.clientEventTime) > maxEventAgeInSeconds) {
+          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) é mais antigo que ${config.validation.maxEventAgeInDays} dias. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
           finalEventTime = currentServerTimeSeconds;
-      } else if (rawEvent.clientEventTime > (currentServerTimeSeconds + (2 * 60 * 60))) { // 2 horas no futuro
-          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) está mais de 2h no futuro. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+      } else if (rawEvent.clientEventTime > (currentServerTimeSeconds + maxFutureEventInSeconds)) {
+          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) está mais de ${config.validation.maxFutureEventHours}h no futuro. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
           finalEventTime = currentServerTimeSeconds;
       } else {
           finalEventTime = rawEvent.clientEventTime;
@@ -457,12 +443,14 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
             delete serverEvent.user_data[K];
         }
     });
-    Object.keys(serverEvent.custom_data).forEach(key => {
-        const K = key as keyof typeof serverEvent.custom_data;
-        if (serverEvent.custom_data[K] === null || serverEvent.custom_data[K] === undefined) {
-            delete serverEvent.custom_data[K];
-        }
-    });
+    if (serverEvent.custom_data) {
+        Object.keys(serverEvent.custom_data).forEach(key => {
+            const K = key as keyof typeof serverEvent.custom_data;
+            if (serverEvent.custom_data && (serverEvent.custom_data[K] === null || serverEvent.custom_data[K] === undefined)) {
+                delete serverEvent.custom_data[K];
+            }
+        });
+    }
 
 
   return serverEvent;
