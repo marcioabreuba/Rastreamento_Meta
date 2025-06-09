@@ -16,13 +16,31 @@ const startServer = async () => {
   try {
     // Inicializar o serviço GeoIP (com tratamento robusto de erros)
     try {
+      logger.info(`🔍 Procurando GeoIP em: ${config.geoipDbPath}`);
+      logger.info(`📁 Working directory: ${process.cwd()}`);
+      logger.info(`📁 __dirname: ${__dirname}`);
+      
       if (fs.existsSync(config.geoipDbPath)) {
-          logger.info('Tentando carregar banco de dados GeoIP...');
+          logger.info('✅ Arquivo GeoIP encontrado! Tentando carregar...');
+          const stats = fs.statSync(config.geoipDbPath);
+          logger.info(`📊 Tamanho do arquivo: ${Math.round(stats.size / 1024 / 1024)}MB`);
+          
           const geoipReader = await Reader.open(config.geoipDbPath);
           GeoIPService.setGeoIPReaderInstance(geoipReader);
           logger.info('✅ Banco de dados GeoIP carregado e injetado no GeoIPService.');
       } else {
-          logger.warn(`⚠️  Banco de dados GeoIP não encontrado em ${config.geoipDbPath}. GeoIPService não funcionará.`);
+          logger.warn(`❌ Banco de dados GeoIP não encontrado em: ${config.geoipDbPath}`);
+          logger.info('📂 Conteúdo do diretório atual:');
+          try {
+            const files = fs.readdirSync(process.cwd());
+            logger.info(`Arquivos em ${process.cwd()}: ${files.join(', ')}`);
+            if (fs.existsSync('data')) {
+              const dataFiles = fs.readdirSync('data');
+              logger.info(`Arquivos em data/: ${dataFiles.join(', ')}`);
+            }
+          } catch (e) {
+            logger.warn('Erro ao listar arquivos:', e);
+          }
       }
     } catch (geoipError: any) {
       logger.warn('⚠️  Erro ao carregar GeoIP (continuando sem GeoIP):', {

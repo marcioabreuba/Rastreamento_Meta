@@ -17,9 +17,11 @@
 /prisma/dev.db
 /prisma/dev.db-journal
 
-# GeoIP database
-/data/*.mmdb
+# GeoIP database temp files
 /data/temp
+
+# Permitir o arquivo principal do GeoIP
+!/data/GeoLite2-City.mmdb
 
 # Permitir arquivos de backup do GeoIP
 !/data/backup/*.mmdb

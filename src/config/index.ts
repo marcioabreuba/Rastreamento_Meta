@@ -56,7 +56,7 @@ const config: Config = {
   fbTestEventCode: process.env.FB_TEST_EVENT_CODE || '',
   shopifyDomain: process.env.SHOPIFY_DOMAIN || 'soleterra.com.br',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3001',
-  geoipDbPath: process.env.GEOIP_DB_PATH || 'data/GeoLite2-City.mmdb',
+  geoipDbPath: process.env.GEOIP_DB_PATH || require('path').resolve(process.cwd(), 'data/GeoLite2-City.mmdb'),
   maxmindAccountId: process.env.MAXMIND_ACCOUNT_ID || '',
   maxmindLicenseKey: process.env.MAXMIND_LICENSE_KEY || '',
   redis: {
