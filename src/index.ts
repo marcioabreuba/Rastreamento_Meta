@@ -14,14 +14,30 @@ const PORT = config.port || 10000;
 // Função assíncrona para inicializar todos os componentes antes de iniciar o servidor
 const startServer = async () => {
   try {
-    // Inicializar o serviço GeoIP
-    if (fs.existsSync(config.geoipDbPath)) {
-        const geoipReader = await Reader.open(config.geoipDbPath);
-        GeoIPService.setGeoIPReaderInstance(geoipReader);
-        logger.info('Banco de dados GeoIP carregado e injetado no GeoIPService.');
-    } else {
-        logger.warn(`Banco de dados GeoIP não encontrado em ${config.geoipDbPath}. GeoIPService não funcionará.`);
-        // Considerar lançar erro ou sair se GeoIP for crítico?
+    // Inicializar o serviço GeoIP (com tratamento robusto de erros)
+    try {
+      if (fs.existsSync(config.geoipDbPath)) {
+          logger.info('Tentando carregar banco de dados GeoIP...');
+          const geoipReader = await Reader.open(config.geoipDbPath);
+          GeoIPService.setGeoIPReaderInstance(geoipReader);
+          logger.info('✅ Banco de dados GeoIP carregado e injetado no GeoIPService.');
+      } else {
+          logger.warn(`⚠️  Banco de dados GeoIP não encontrado em ${config.geoipDbPath}. GeoIPService não funcionará.`);
+      }
+    } catch (geoipError: any) {
+      logger.warn('⚠️  Erro ao carregar GeoIP (continuando sem GeoIP):', {
+        error: geoipError.message,
+        path: config.geoipDbPath
+      });
+      // Remove arquivo corrompido se existir
+      if (fs.existsSync(config.geoipDbPath)) {
+        try {
+          fs.unlinkSync(config.geoipDbPath);
+          logger.info('🗑️  Arquivo GeoIP corrompido removido. Será baixado novamente no próximo build.');
+        } catch (unlinkError) {
+          logger.warn('Não foi possível remover arquivo GeoIP corrompido:', unlinkError);
+        }
+      }
     }
 
     // Iniciar o servidor HTTP

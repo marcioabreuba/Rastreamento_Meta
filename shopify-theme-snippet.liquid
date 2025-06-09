@@ -1,0 +1,28 @@
+<!-- ADICIONE O SCRIPT DO META-TRACKING AQUI -->
+<!-- Localização: Antes do closing </head>, depois de todos os outros scripts -->
+
+    {%- if settings.predictive_search_enabled -%}
+      <link
+        rel="stylesheet"
+        href="{{ 'component-predictive-search.css' | asset_url }}"
+        media="print"
+        onload="this.media='all'"
+      >
+    {%- endif -%}
+
+    <script>
+      document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
+      if (Shopify.designMode) {
+        document.documentElement.classList.add('shopify-design-mode');
+      }
+    </script>
+
+    <!-- ========================================= -->
+    <!-- 🎯 META TRACKING SCRIPT - ADICIONE AQUI -->
+    <!-- ========================================= -->
+    <script src="https://rastreamento-meta.onrender.com/meta-pixel-script.js"></script>
+    <!-- ========================================= -->
+
+  </head>
+
+  <body class="animate--hover-default"> 
