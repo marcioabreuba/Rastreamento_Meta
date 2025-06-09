@@ -5,65 +5,82 @@
 import express, { Request, Response } from 'express';
 import { handleTrackRequest } from '../App/Http/TrackController';
 import config from '../config';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as GeoIPService from '../App/Core/GeoIPService';
 import { GeoData } from '../types';
 import logger from '../utils/logger';
 import { validateTrackingEvent, sanitizeData, rateLimitMiddleware } from '../middleware/validationMiddleware';
+import { promisify } from 'util';
 
 const router = express.Router();
+const readFileAsync = promisify(fs.readFile);
 
-// Nova Rota para servir o script dinamicamente com GeoIP injetado
+// Nova Rota para servir o script dinamicamente com headers anti-cache
 router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
-  const scriptPath = path.join(__dirname, '../public/meta-pixel-script.js');
-
   try {
-    if (!fs.existsSync(scriptPath)) {
-      logger.error(`[GeoScript] Arquivo de script não encontrado: ${scriptPath}`);
-      return res.status(404).send('// Script not found.');
-    }
+    // +++ HEADERS ANTI-CACHE PARA FORÇAR RECARREGAMENTO +++
+    const currentTimestamp = Date.now();
+    res.set({
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Last-Modified': new Date(currentTimestamp).toUTCString(),
+      'ETag': `"${currentTimestamp}"`,
+      'X-Script-Version': currentTimestamp.toString(),
+      'Vary': 'Accept-Encoding'
+    });
 
-    let scriptContent = fs.readFileSync(scriptPath, 'utf8');
-    let geoData: GeoData | null = null;
-
-    // --- MODIFICADO: Obter IP corretamente via x-forwarded-for ---
+    // +++ OBTER DADOS GEOIP PARA INJEÇÃO NO SCRIPT +++
     const ipHeader = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
     const ip = typeof ipHeader === 'string' ? ipHeader.split(',')[0].trim() : null;
-    // --- FIM DA MODIFICAÇÃO ---
+    let geoData: any = null;
 
-    // Obter GeoIP
     if (ip) {
-        try {
-            geoData = await GeoIPService.getGeoData(ip);
-            logger.debug(`[GeoScript] GeoIP data for ${ip}:`, geoData); // Log extra
-        } catch (geoError: any) {
-            logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
-            // Continuar sem dados GeoIP
-        }
-    } else {
-        logger.warn('[GeoScript] Não foi possível obter o IP do requisitante.');
+      try {
+        geoData = await GeoIPService.getGeoData(ip);
+        logger.debug(`[GeoScript] GeoIP data for ${ip}:`, geoData);
+      } catch (geoError: any) {
+        logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
+      }
     }
 
-    // Adicionar log antes da substituição
-    logger.debug(`[GeoScript] Data before replacement: ip=${ip}, city=${geoData?.city}, state=${geoData?.region?.code}`);
+    // Lê o script base
+    const scriptPath = path.join(__dirname, '../public/meta-pixel-script.js');
+    const pixelScript = await readFileAsync(scriptPath, 'utf8');
+    
+    // +++ ADICIONAR TIMESTAMP/VERSÃO E DADOS GEOIP NO INÍCIO DO SCRIPT +++
+    const versionComment = `// Meta Tracking Script v${currentTimestamp} - Generated: ${new Date().toISOString()}\n`;
+    const versionLog = `console.log('[Meta Tracking] Script v${currentTimestamp} carregado - ${new Date().toISOString()}');\n`;
+    
+    // Gerar script GeoIP com dados atuais
+    const geoInjection = `
+// --- GeoIP Data Injection ---
+window.__GEO_DATA__ = {
+  city: ${JSON.stringify(geoData?.city ?? null)},
+  state: ${JSON.stringify(geoData?.region?.code?.toLowerCase() ?? null)},
+  zip: ${JSON.stringify(geoData?.postal ?? null)},
+  country: ${JSON.stringify(geoData?.country?.code?.toLowerCase() ?? null)},
+  ip: ${JSON.stringify(ip ?? null)}
+};
+`;
+    
+    // Substituir placeholders no script original
+    let processedScript = pixelScript
+      .replace(/['"`]?__GEO_CITY__['"`]?/g, JSON.stringify(geoData?.city ?? null))
+      .replace(/['"`]?__GEO_STATE__['"`]?/g, JSON.stringify(geoData?.region?.code?.toLowerCase() ?? null))
+      .replace(/['"`]?__GEO_ZIP__['"`]?/g, JSON.stringify(geoData?.postal ?? null))
+      .replace(/['"`]?__GEO_COUNTRY__['"`]?/g, JSON.stringify(geoData?.country?.code?.toLowerCase() ?? null))
+      .replace(/['"`]?__CLIENT_IP__['"`]?/g, JSON.stringify(ip ?? null));
+    
+    // Combina tudo
+    const combinedScript = versionComment + versionLog + geoInjection + '\n\n' + processedScript;
 
-    // Substituir placeholders
-    // Usar `?? null` para garantir que null seja injetado se o dado não existir
-    // Usar JSON.stringify para lidar corretamente com strings e null
-    scriptContent = scriptContent.replace(/['"`]?__GEO_CITY__['"`]?/g, JSON.stringify(geoData?.city ?? null));
-    scriptContent = scriptContent.replace(/['"`]?__GEO_STATE__['"`]?/g, JSON.stringify(geoData?.region?.code?.toLowerCase() ?? null)); // Garantir lowercase
-    scriptContent = scriptContent.replace(/['"`]?__GEO_ZIP__['"`]?/g, JSON.stringify(geoData?.postal ?? null)); // Já normalizado no GeoIPService
-    scriptContent = scriptContent.replace(/['"`]?__GEO_COUNTRY__['"`]?/g, JSON.stringify(geoData?.country?.code?.toLowerCase() ?? null)); // Garantir lowercase
-    scriptContent = scriptContent.replace(/['"`]?__CLIENT_IP__['"`]?/g, JSON.stringify(ip ?? null)); // Usar o IP obtido do req.ip
-
-    // Enviar script modificado
-    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    res.status(200).send(scriptContent);
-
-  } catch (error: any) {
-    logger.error(`[GeoScript] Erro ao servir o script dinâmico: ${error.message}`, { stack: error.stack });
-    res.status(500).send('// Error processing script.');
+    res.send(combinedScript);
+  } catch (error) {
+    console.error('Erro ao servir meta-pixel-script.js:', error);
+    res.status(500).send('// Erro ao carregar script');
   }
 });
 
