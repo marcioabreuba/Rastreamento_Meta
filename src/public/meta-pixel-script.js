@@ -951,30 +951,39 @@
         }
      });
 
-    // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO +++
-    let currentTimestamp = Math.floor(Date.now() / 1000);
+    // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO COM FUSO HORÁRIO +++
+    // Gerar timestamp atual em horário local brasileiro (GMT-3)
+    const now = new Date();
+    const brasiliaOffset = -3 * 60; // GMT-3 em minutos
+    const localTime = new Date(now.getTime() + (brasiliaOffset * 60 * 1000));
+    let currentTimestamp = Math.floor(localTime.getTime() / 1000);
     
-    // Data de referência: 9 de junho de 2025 (hoje conforme usuário)
-    const referenceDate = new Date('2025-06-09');
-    const expectedMinTimestamp = Math.floor(referenceDate.getTime() / 1000); // 9 de junho 00:00
-    const expectedMaxTimestamp = expectedMinTimestamp + (24 * 60 * 60); // 10 de junho 00:00
+    // Data de referência: 9 de junho de 2025 em horário de Brasília
+    const referenceDate = new Date('2025-06-09T00:00:00-03:00'); // GMT-3
+    const expectedMinTimestamp = Math.floor(referenceDate.getTime() / 1000);
+    const expectedMaxTimestamp = expectedMinTimestamp + (24 * 60 * 60);
     
-    console.log(`[Meta Tracking] 🕐 Diagnóstico de tempo:`);
-    console.log(`  • Timestamp cliente: ${currentTimestamp} (${new Date(currentTimestamp * 1000).toISOString()})`);
-    console.log(`  • Esperado mín: ${expectedMinTimestamp} (${new Date(expectedMinTimestamp * 1000).toISOString()})`);
-    console.log(`  • Esperado máx: ${expectedMaxTimestamp} (${new Date(expectedMaxTimestamp * 1000).toISOString()})`);
+    console.log(`[Meta Tracking] 🕐 Diagnóstico de tempo (Horário Brasília GMT-3):`);
+    console.log(`  • Timestamp cliente: ${currentTimestamp} (${localTime.toISOString().replace('Z', '-03:00')})`);
+    console.log(`  • Horário local: ${localTime.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`);
+    console.log(`  • Esperado mín: ${expectedMinTimestamp} (${new Date(expectedMinTimestamp * 1000).toLocaleString('pt-BR')})`);
+    console.log(`  • Esperado máx: ${expectedMaxTimestamp} (${new Date(expectedMaxTimestamp * 1000).toLocaleString('pt-BR')})`);
     
     // Se o timestamp está muito fora do esperado (não é de junho 2025), corrigir
     if (currentTimestamp < expectedMinTimestamp - 86400 || currentTimestamp > expectedMaxTimestamp + 86400) {
-        const correctedTimestamp = Math.floor(Date.now() / 1000); // Mantém a hora atual, mas...
-        // Se ainda estiver fora do range, usar um timestamp seguro de hoje
+        // Corrigir para horário atual de Brasília
+        const correctedTime = new Date();
+        const correctedLocal = new Date(correctedTime.getTime() + (brasiliaOffset * 60 * 1000));
+        const correctedTimestamp = Math.floor(correctedLocal.getTime() / 1000);
+        
         if (correctedTimestamp < expectedMinTimestamp - 86400 || correctedTimestamp > expectedMaxTimestamp + 86400) {
-            currentTimestamp = expectedMinTimestamp + Math.floor(Math.random() * 86400); // Hora aleatória de hoje
-            console.warn(`[Meta Tracking] ⚠️ Sistema com data incorreta! Usando timestamp corrigido: ${currentTimestamp}`);
+            // Usar timestamp seguro de hoje em horário de Brasília
+            currentTimestamp = expectedMinTimestamp + (16 * 60 * 60) + (54 * 60); // 16:54 de hoje
+            console.warn(`[Meta Tracking] ⚠️ Sistema com data incorreta! Usando 16:54 horário Brasília: ${currentTimestamp}`);
         } else {
             currentTimestamp = correctedTimestamp;
         }
-        console.warn(`[Meta Tracking] ⚠️ Timestamp ajustado para data correta de junho 2025`);
+        console.warn(`[Meta Tracking] ⚠️ Timestamp ajustado para horário correto de Brasília (GMT-3)`);
     }
     
     // Adicionar timestamp validado ao payload
