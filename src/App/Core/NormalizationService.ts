@@ -369,17 +369,44 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
   if (rawEvent.clientEventTime && typeof rawEvent.clientEventTime === 'number' && rawEvent.clientEventTime > 0) {
       const maxEventAgeInSeconds = config.validation.maxEventAgeInDays * 24 * 60 * 60;
       const maxFutureEventInSeconds = config.validation.maxFutureEventHours * 60 * 60;
-      // Verifica se não é mais antigo que N dias E não mais que N horas no futuro
+      
+      // +++ CORREÇÃO: Validação mais rigorosa de timestamp futuro +++
+      const timeDifference = rawEvent.clientEventTime - currentServerTimeSeconds;
+      const maxAllowedFutureSeconds = 60; // Facebook permite apenas 1 minuto no futuro
+      
+      // Verifica se não é mais antigo que N dias
       if ((currentServerTimeSeconds - rawEvent.clientEventTime) > maxEventAgeInSeconds) {
-          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) é mais antigo que ${config.validation.maxEventAgeInDays} dias. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+          logger.warn(`[NormalizationService] ⚠️ clientEventTime (${rawEvent.clientEventTime}) é mais antigo que ${config.validation.maxEventAgeInDays} dias. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
           finalEventTime = currentServerTimeSeconds;
-      } else if (rawEvent.clientEventTime > (currentServerTimeSeconds + maxFutureEventInSeconds)) {
-          logger.warn(`[NormalizationService] clientEventTime (${rawEvent.clientEventTime}) está mais de ${config.validation.maxFutureEventHours}h no futuro. Usando tempo do servidor. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+      } 
+      // CORREÇÃO: Verificação mais restrita para timestamp futuro
+      else if (timeDifference > maxAllowedFutureSeconds) {
+          logger.warn(`[NormalizationService] ⚠️ clientEventTime (${rawEvent.clientEventTime}) está ${timeDifference}s no futuro (máximo ${maxAllowedFutureSeconds}s). Ajustando para tempo do servidor. Evento: ${rawEvent.eventName}`, { 
+            eventId: rawEvent.eventId,
+            clientTime: rawEvent.clientEventTime,
+            serverTime: currentServerTimeSeconds,
+            difference: timeDifference
+          });
           finalEventTime = currentServerTimeSeconds;
-      } else {
+      } 
+      // Verificação adicional: Se o timestamp for muito grande (possível milissegundos em vez de segundos)
+      else if (rawEvent.clientEventTime > 9999999999) { // Timestamp maior que 2286/11/20 indica milissegundos
+          logger.warn(`[NormalizationService] ⚠️ clientEventTime parece estar em milissegundos (${rawEvent.clientEventTime}). Convertendo para segundos. Evento: ${rawEvent.eventName}`, { eventId: rawEvent.eventId });
+          const convertedTimestamp = Math.floor(rawEvent.clientEventTime / 1000);
+          // Verificar novamente se o timestamp convertido não está no futuro
+          if (convertedTimestamp > currentServerTimeSeconds + maxAllowedFutureSeconds) {
+              logger.warn(`[NormalizationService] ⚠️ Timestamp convertido ainda está no futuro. Usando tempo do servidor.`);
+              finalEventTime = currentServerTimeSeconds;
+          } else {
+              finalEventTime = convertedTimestamp;
+              eventTimeSource = 'client (converted)';
+          }
+      }
+      else {
           finalEventTime = rawEvent.clientEventTime;
           eventTimeSource = 'client';
       }
+      // +++ FIM CORREÇÃO +++
   } else {
       finalEventTime = currentServerTimeSeconds;
       if (rawEvent.clientEventTime) { // Se existia mas era inválido (ex: não número, zero, ou negativo)

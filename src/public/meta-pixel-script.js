@@ -825,7 +825,27 @@
 
   // Função principal para disparar eventos (REFATORADA para padrão correto)
   async function sendEvent(eventName, customData = {}) {
-    // REMOVIDO: generateUUID() - backend vai gerar eventID
+
+    // +++ DIAGNÓSTICO INICIAL DE _FBP +++
+    const initialFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    console.log(`[Meta Tracking Debug] 🔍 DIAGNÓSTICO _FBP INICIAL para ${eventName}:`);
+    console.log(`  • Cookie _fbp: ${getCookie('_fbp') || 'AUSENTE'}`);
+    console.log(`  • URL param fbp: ${getUrlParameter('fbp') || 'AUSENTE'}`);
+    console.log(`  • Document.cookie completo: ${document.cookie ? 'PRESENTE' : 'VAZIO'}`);
+    console.log(`  • Tamanho cookies: ${document.cookie.length} caracteres`);
+    
+    if (!initialFbp) {
+      console.warn(`[Meta Tracking Debug] ⚠️ ALERTA CRÍTICO: _fbp não encontrado para ${eventName}!`);
+      console.warn('[Meta Tracking Debug] 🔍 Possíveis causas:');
+      console.warn('  • Pixel Facebook não carregou completamente');
+      console.warn('  • Bloqueador de ads/tracking ativo');
+      console.warn('  • Problemas de domínio/cookies SameSite');
+      console.warn('  • Script executando antes do init do pixel');
+      console.warn('  • Configuração incorreta do pixel');
+    } else {
+      console.log(`[Meta Tracking Debug] ✅ _fbp encontrado: ${initialFbp}`);
+    }
+    // +++ FIM DIAGNÓSTICO _FBP +++
 
     // Coletar dados comuns
     const externalId = getExternalId();
@@ -851,7 +871,7 @@
     const clientIpAddress = '__CLIENT_IP__'; // Placeholder será substituído por string JSON (ex: "123.45.67.89" ou null)
     // --- FIM DA ADIÇÃO ---
 
-    console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress }); // Adicionado IP ao log
+    console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress });
 
     // Montar UserData para backend e Advanced Matching para fbq
     const rawUserData = {
@@ -871,6 +891,17 @@
     advancedMatchingParams.client_user_agent = navigator.userAgent; 
     Object.keys(advancedMatchingParams).forEach(key => advancedMatchingParams[key] == null && delete advancedMatchingParams[key]);
 
+    // +++ SEGUNDA VALIDAÇÃO DE _FBP (APÓS COLETA) +++
+    if (!fbpForFbq) {
+      console.error(`[Meta Tracking Debug] ❌ _FBP AINDA AUSENTE após coleta para ${eventName}!`);
+      console.error('[Meta Tracking Debug] 📊 Estado dos cookies no momento da coleta:');
+      console.error(`  • document.cookie: ${document.cookie.substring(0, 200)}...`);
+      console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
+      console.error(`  • localStorage keys: ${Object.keys(localStorage).filter(k => k.includes('fb') || k.includes('pixel')).join(', ')}`);
+    } else {
+      console.log(`[Meta Tracking Debug] ✅ _fbp confirmado para envio: ${fbpForFbq}`);
+    }
+    // +++ FIM SEGUNDA VALIDAÇÃO +++
 
     // Mesclar dados customizados específicos do evento
     const finalCustomData = {
@@ -890,27 +921,34 @@
             }
         }
      });
-     // Remover campos que já estão no advancedMatchingParams para evitar redundância no fbq('track')
-     // delete finalCustomData.external_id; // fbq já recebe no init/AM
-     // delete finalCustomData.fbp;
-     // delete finalCustomData.fbc;
 
+    // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO +++
+    let currentTimestamp = Math.floor(Date.now() / 1000);
+    const maxFutureOffset = 300; // 5 minutos no futuro (margem de segurança)
+    const serverTime = Math.floor(Date.now() / 1000); // Timestamp atual do servidor
+    
+    // Verificar se o timestamp não está muito no futuro
+    if (currentTimestamp > serverTime + maxFutureOffset) {
+        console.warn(`[Meta Tracking] ⚠️ Timestamp detectado no futuro (${currentTimestamp}), ajustando para timestamp atual (${serverTime})`);
+        currentTimestamp = serverTime;
+    }
+    
+    // Adicionar timestamp validado ao payload
+    finalCustomData.client_event_time = currentTimestamp;
+    // +++ FIM VALIDAÇÃO TIMESTAMP +++
 
     // LOG: Dados finais antes de enviar para Backend
     console.log(`[Meta Tracking Debug] Preparando evento: ${eventName}`);
-    console.log('[Meta Tracking Debug]   Advanced Matching:', advancedMatchingParams);
-    console.log('[Meta Tracking Debug]   Custom Data:', finalCustomData);
-    console.log('[Meta Tracking Debug]   Raw User Data:', rawUserData);
+    console.log(`[Meta Tracking Debug] Advanced Matching:`, advancedMatchingParams);
+    console.log(`[Meta Tracking Debug] Custom Data:`, finalCustomData);
 
     // +++ LOG WEB RAW +++
     if (isDebugEnabled()) {
       try {
-          // Agrupar para organização
-          console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Preparando Evento: ${eventName}`);
-          // Usar JSON.stringify com indentação
-          console.log('Raw User Data (para backend):', JSON.stringify(rawUserData, null, 2));
-          console.log('Specific Custom Data (para backend):', JSON.stringify(finalCustomData, null, 2));
-          console.groupEnd();
+        console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Enviando ${eventName} via Web (fbq)`);
+        console.log('Advanced Matching Parameters:', JSON.stringify(advancedMatchingParams, null, 2));
+        console.log('Custom Data:', JSON.stringify(finalCustomData, null, 2));
+        console.groupEnd();
       } catch (e) {
           console.error('[PAYLOAD_WEB_PIXEL] Erro ao gerar log:', e);
       }
@@ -925,7 +963,7 @@
         const serverEventId = await sendEventToBackend(eventName, rawUserData, finalCustomData);
         
         if (serverEventId) {
-            console.log(`[Meta Tracking Debug] EventID recebido do backend: ${serverEventId}, enviando para fbq()`);
+            console.log(`[Meta Tracking Debug] ✅ EventID recebido do backend: ${serverEventId}, enviando para fbq()`);
             // Agora enviar para fbq() com o eventID do backend
             await sendFBQEvent(eventName, finalCustomData, serverEventId);
             
@@ -958,14 +996,43 @@
               console.groupEnd();
             }
         } else {
-            console.warn(`[Meta Tracking Debug] Backend não retornou eventID para ${eventName}, evento fbq() não enviado`);
+            // +++ IMPLEMENTAR FALLBACK ROBUSTO +++
+            console.error(`[Meta Tracking Debug] ❌ Backend não retornou eventID para ${eventName}!`);
+            console.error('[Meta Tracking Debug] 🔄 Implementando fallback - gerando eventID local...');
+            
+            // Gerar eventID local como fallback
+            const fallbackEventId = generateUUID();
+            console.warn(`[Meta Tracking Debug] ⚠️ Usando eventID de fallback: ${fallbackEventId}`);
+            console.warn('[Meta Tracking Debug] ⚠️ ATENÇÃO: Deduplicação pode ser afetada!');
+            
+            // Enviar para fbq() com eventID de fallback
+            await sendFBQEvent(eventName, finalCustomData, fallbackEventId);
+            
+            // Log do problema para debugging
+            console.error('[Meta Tracking Debug] 📊 DIAGNÓSTICO DO PROBLEMA:');
+            console.error('  • Payload enviado:', { eventName, rawUserData, finalCustomData });
+            console.error('  • Response recebida: null/undefined');
+            console.error('  • Verifique logs do servidor para mais detalhes');
+            // +++ FIM FALLBACK +++
         }
         
     } catch (error) {
-        console.error('[Meta Tracking Debug] Erro no fluxo de envio de evento:', error);
+        console.error('[Meta Tracking Debug] ❌ Erro no fluxo de envio de evento:', error);
+        
+        // +++ FALLBACK EM CASO DE ERRO DE REDE +++
+        console.error('[Meta Tracking Debug] 🔄 Erro de rede detectado - implementando fallback de emergência...');
+        const emergencyEventId = generateUUID();
+        console.warn(`[Meta Tracking Debug] 🚨 Usando eventID de emergência: ${emergencyEventId}`);
+        
+        try {
+            await sendFBQEvent(eventName, finalCustomData, emergencyEventId);
+            console.warn('[Meta Tracking Debug] ✅ Evento enviado via fallback de emergência');
+        } catch (fbqError) {
+            console.error('[Meta Tracking Debug] ❌ Falha total no envio do evento:', fbqError);
+        }
+        // +++ FIM FALLBACK EMERGÊNCIA +++
     } 
   }
-  // >>> FIM DA SEÇÃO MODIFICADA <<<
 
   // ++ NOVA FUNÇÃO PARA ENVIO AO FBQ() SEPARADAMENTE ++
   function sendFBQEvent(eventName, customData, serverEventId) {
