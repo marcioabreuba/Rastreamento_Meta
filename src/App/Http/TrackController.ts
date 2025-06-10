@@ -155,11 +155,12 @@ const createErrorResponse = (eventId: string | null, capiError: string, message:
  */
 export const handleTrackRequest = async (req: Request, res: Response): Promise<void> => {
   const requestStartTime = Date.now();
-  const { eventName, userData, customData, eventId, sourceUrl, referrer, client_event_time, ...rest } = req.body;
+  const { eventName, originalEventName, userData, customData, eventId, sourceUrl, referrer, client_event_time, ...rest } = req.body;
 
   // Loga os dados brutos recebidos APENAS se LOG_LEVEL=debug
   logger.debug(`[TrackController] Raw event received: ${eventName}`, {
       receivedEventName: eventName,
+      receivedOriginalEventName: originalEventName,
       receivedEventId: eventId,
       receivedSourceUrl: sourceUrl,
       receivedReferrer: referrer,
@@ -168,8 +169,18 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       receivedOtherParams: rest
   });
 
-  // Validar dados básicos
-  const validation = validateEventData(eventName, req.body);
+  // ✅ CORREÇÃO: Usar originalEventName se disponível, senão eventName
+  // Isso garante que eventos como Timer_1min, Scroll_25 sejam processados com o nome original
+  // para manter consistência entre CAPI e Pixel
+  const effectiveEventName = originalEventName || eventName;
+  
+  // Log da correção aplicada
+  if (originalEventName && originalEventName !== eventName) {
+    logger.debug(`[TrackController] 🔧 Usando originalEventName para CAPI: "${originalEventName}" (frontend enviou "${eventName}" mapeado)`);
+  }
+
+  // Validar dados básicos usando o nome efetivo
+  const validation = validateEventData(effectiveEventName, req.body);
   if (!validation.isValid) {
     logger.warn('[TrackController] Requisição recebida sem eventName.', { body: req.body });
     res.status(400).json({ success: false, error: validation.error });
@@ -179,7 +190,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
   try {
     // 1. Extrair dados da requisição
     const { clientIp, userAgent } = extractRequestData(req);
-    logger.debug(`[TrackController] Recebido evento: ${eventName}`, { ip: clientIp, ua: userAgent?.substring(0, config.validation.userAgentLogLength) });
+    logger.debug(`[TrackController] Recebido evento: ${effectiveEventName}`, { ip: clientIp, ua: userAgent?.substring(0, config.validation.userAgentLogLength) });
 
     // 2. Obter Dados GeoIP
     let geoData = null;
@@ -192,13 +203,13 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       logger.debug(`[TrackController] IP privado/local detectado (${clientIp}), pulando GeoIP`);
     }
 
-    // 3. Selecionar e Executar Handler Específico do Evento
-    const handler = eventHandlers[eventName] || handleGenericEvent;
-    const specificEventData = handler(userData, customData, eventName);
+    // 3. Selecionar e Executar Handler Específico do Evento - usando o nome efetivo
+    const handler = eventHandlers[effectiveEventName] || handleGenericEvent;
+    const specificEventData = handler(userData, customData, effectiveEventName);
 
-    // 4. Preparar Input para Normalização
+    // 4. Preparar Input para Normalização - usando o nome efetivo
     const rawEventInput: RawEventInput = {
-      eventName,
+      eventName: effectiveEventName, // ✅ CORREÇÃO: usar nome efetivo (original quando disponível)
       eventId: eventId || null,
       sourceUrl: sourceUrl || customData?.sourceUrl || null,
       referrer: referrer || customData?.referrer || null,
@@ -216,14 +227,14 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
     // Logs de alerta para identificadores ausentes
     if (!rawEventInput.userData?.external_id) {
-      logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
+      logger.warn(`[TrackController] Evento recebido sem external_id! eventName=${effectiveEventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
     }
     if (!rawEventInput.userData?.fbp) {
       // ✅ Verificar se é Facebook In-App Browser (FB_IAB) - onde FBP não está disponível
       if (userAgent?.includes('FB_IAB')) {
-        logger.debug(`[TrackController] 📱 FBP ausente em FB In-App Browser (esperado) - eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, fbc=${rawEventInput.userData?.fbc ? 'presente' : 'ausente'}`);
+        logger.debug(`[TrackController] 📱 FBP ausente em FB In-App Browser (esperado) - eventName=${effectiveEventName}, eventId=${rawEventInput.eventId || 'N/A'}, fbc=${rawEventInput.userData?.fbc ? 'presente' : 'ausente'}`);
       } else {
-        logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${eventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
+        logger.warn(`[TrackController] Evento recebido sem _fbp! eventName=${effectiveEventName}, eventId=${rawEventInput.eventId || 'N/A'}, userAgent=${userAgent?.substring(0, config.validation.userAgentLogLength)}`);
       }
     }
 
@@ -254,19 +265,19 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
             capiSendStatus: capiResult.status,
             capiTraceId: capiResult.traceId || null,
             capiError: capiResult.error || null,
-            message: `Evento ${eventName} processado. Status CAPI: ${capiResult.status}.`,
+            message: `Evento ${effectiveEventName} processado. Status CAPI: ${capiResult.status}.`,
             processingTimeMs: processingTime
         };
 
-        logger.info(`[TrackController] Resposta 200 (com detalhes CAPI) enviada para ${eventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
+        logger.info(`[TrackController] Resposta 200 (com detalhes CAPI) enviada para ${effectiveEventName} (ID: ${capiEvent.event_id}). Tempo: ${processingTime}ms`);
         res.status(200).json(responsePayload);
 
     } else {
-      logger.error(`[TrackController] Falha ao normalizar evento ${eventName}. Evento descartado.`, { rawInput: rawEventInput });
+      logger.error(`[TrackController] Falha ao normalizar evento ${effectiveEventName}. Evento descartado.`, { rawInput: rawEventInput });
       const errorResponse = createErrorResponse(
         eventId || null,
         'Failed to normalize event data. Check required parameters.',
-        `Falha ao normalizar evento ${eventName}.`
+        `Falha ao normalizar evento ${effectiveEventName}.`
       );
       errorResponse.capiSendStatus = 'skipped';
       res.status(400).json(errorResponse);
@@ -274,7 +285,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
 
   } catch (error: any) {
     const processingTime = Date.now() - requestStartTime;
-    logger.error(`[TrackController] Erro inesperado ao processar evento ${eventName}: ${error.message}`, {
+    logger.error(`[TrackController] Erro inesperado ao processar evento ${effectiveEventName}: ${error.message}`, {
       error: error.message,
       stack: error.stack,
       body: req.body,
@@ -283,7 +294,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
     const errorResponse = createErrorResponse(
       eventId || null,
       'Internal server error during processing.',
-      `Erro interno no servidor ao processar ${eventName}.`
+      `Erro interno no servidor ao processar ${effectiveEventName}.`
     );
     res.status(500).json(errorResponse);
   }
