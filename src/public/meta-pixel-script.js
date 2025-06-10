@@ -18,27 +18,47 @@
   const VISITOR_COOKIE_NAME = '_mtVisitorId';
   const VISITOR_COOKIE_EXPIRATION_DAYS = 730; // 2 anos
   
-  // Mapeamento de eventos para o Facebook - AJUSTADO PARA IGUALAR TRACKLEAD
+  // Mapeamento de eventos para o Facebook - CORRIGIDO PARA COBERTURA COMPLETA
   const EVENT_MAPPING = {
-    'PageView': 'PageView',         // Igual
-    'ViewHome': 'ViewHome',         // Alterado de ViewContent para ViewHome
-    'ViewList': 'ViewList',         // Mantido (Tracklead usa ViewList em Categoria)
-    'ViewContent': 'ViewContent',      // Igual (para páginas de produto)
-    'AddToCart': 'AddToCart',        // Igual (precisa ser implementado)
-    'ViewCart': 'ViewCart',         // Alterado de InitiateCheckout para ViewCart
-    'StartCheckout': 'InitiateCheckout', // Mapeamento padrão mantido, mas tracklead não parece usar StartCheckout
-    'CompleteRegistration': 'CompleteRegistration', // Mapeamento padrão
-    'AddPaymentInfo': 'AddPaymentInfo', // Mapeamento padrão
-    'Purchase': 'Purchase',         // Igual
-    // Manter outros mapeamentos específicos se necessário
-    'ViewCategory': 'ViewList',    // Mapear tipo interno 'ViewCategory' para 'ViewList' (Tracklead)
-    'Search': 'Search',           // Mapeamento padrão
-    'Refused - credit_card': 'CustomEvent',
-    'Pesquisar': 'Search',
-    'ViewSearchResults': 'Search',
-    'Timer_1min': 'CustomEvent',
+    // === EVENTOS PADRÃO DO FACEBOOK ===
+    'PageView': 'PageView',         
+    'ViewContent': 'ViewContent',      
+    'AddToCart': 'AddToCart',        
+    'InitiateCheckout': 'InitiateCheckout',
+    'Purchase': 'Purchase',         
+    'CompleteRegistration': 'CompleteRegistration', 
+    'AddPaymentInfo': 'AddPaymentInfo', 
+    'Search': 'Search',
+    'Lead': 'Lead',
+    
+    // === EVENTOS CUSTOMIZADOS PARA TRACKRIGHT ===
+    'ViewHome': 'ViewHome',         // Página inicial
+    'ViewList': 'ViewList',         // Listas de produtos/categorias
+    'ViewCart': 'ViewCart',         // Carrinho de compras
+    'StartCheckout': 'InitiateCheckout', // Mapeamento para padrão FB
+    
+    // === EVENTOS DE SCROLL (CUSTOMIZADOS) ===
     'Scroll_25': 'CustomEvent',
-    'Scroll_50': 'CustomEvent'
+    'Scroll_50': 'CustomEvent',
+    'Scroll_75': 'CustomEvent',     // ✅ ADICIONADO 
+    'Scroll_90': 'CustomEvent',     // ✅ ADICIONADO
+    
+    // === EVENTOS DE TIMER (CUSTOMIZADOS) ===
+    'Timer_1min': 'CustomEvent',
+    
+    // === EVENTOS DE VIDEO (CUSTOMIZADOS) ===
+    'PlayVideo': 'CustomEvent',
+    'ViewVideo_25': 'CustomEvent',
+    'ViewVideo_50': 'CustomEvent',
+    'ViewVideo_75': 'CustomEvent',
+    'ViewVideo_90': 'CustomEvent',
+    'CompleteVideo': 'CustomEvent',
+    
+    // === EVENTOS LEGADOS/OUTROS ===
+    'ViewCategory': 'ViewList',    // Mapear tipo interno 'ViewCategory' para 'ViewList'
+    'ViewSearchResults': 'Search', // ✅ ADICIONADO
+    'Pesquisar': 'Search',
+    'Refused - credit_card': 'CustomEvent'
   };
   
   // Controle de eventos já enviados para evitar duplicação
@@ -46,8 +66,8 @@
     timer_1min: false,
     scroll_25: false,
     scroll_50: false,
-    scroll_75: false,
-    scroll_90: false,
+    scroll_75: false,    // ✅ ADICIONADO
+    scroll_90: false,    // ✅ ADICIONADO
     video_started: {}  // Objeto para armazenar os vídeos já rastreados por ID
   };
   
@@ -142,17 +162,17 @@
     // Primeiro, tente pegar da URL (cross-domain)
     const urlExternalId = getUrlParameter('external_id');
     if (urlExternalId) {
-      localStorage.setItem('meta_tracking_external_id', urlExternalId);
+      setLocalStorageItem('meta_tracking_external_id', urlExternalId);
       console.log('[Meta Tracking Debug] External ID obtido da URL e salvo no localStorage:', urlExternalId); // Log adicionado
       return urlExternalId;
     }
   
     // Depois, tente pegar do localStorage
-    let externalId = localStorage.getItem('meta_tracking_external_id');
+    let externalId = getLocalStorageItem('meta_tracking_external_id');
     if (!externalId) {
       // Só gera um novo se realmente não existir
       externalId = 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('meta_tracking_external_id', externalId);
+      setLocalStorageItem('meta_tracking_external_id', externalId);
       console.log('[Meta Tracking Debug] Novo External ID gerado e salvo no localStorage:', externalId); // Log adicionado
     } else {
       // console.log('[Meta Tracking Debug] External ID recuperado do localStorage:', externalId); // Log opcional para debug
@@ -208,12 +228,12 @@
     // +++ Fim Debug Melhorado +++
 
     // Coletar PII (sem hash)
-    const email = localStorage.getItem('meta_tracking_email');
-    const phone = localStorage.getItem('meta_tracking_phone');
-    const firstName = localStorage.getItem('meta_tracking_first_name');
-    const lastName = localStorage.getItem('meta_tracking_last_name');
-    const gender = localStorage.getItem('meta_tracking_gender');
-    const dob = localStorage.getItem('meta_tracking_dob');
+    const email = getLocalStorageItem('meta_tracking_email');
+    const phone = getLocalStorageItem('meta_tracking_phone');
+    const firstName = getLocalStorageItem('meta_tracking_first_name');
+    const lastName = getLocalStorageItem('meta_tracking_last_name');
+    const gender = getLocalStorageItem('meta_tracking_gender');
+    const dob = getLocalStorageItem('meta_tracking_dob');
 
     // --- MODIFICADO: Usar placeholders injetados pelo backend para GeoIP ---
     const city = '__GEO_CITY__';       // Placeholder será substituído por string JSON (ex: "sao paulo" ou null)
@@ -295,7 +315,12 @@
       language: navigator.language || 'pt-BR',
       referrer_url: document.referrer || ''
     };
-    Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
+    // Limpar campos vazios, nulos ou undefined
+    Object.keys(customParams).forEach(key => {
+      if (customParams[key] == null || customParams[key] === '') {
+        delete customParams[key];
+      }
+    });
 
     // Delay pequeno para garantir que o init foi processado, depois aguardar _fbp
     setTimeout(async function() {
@@ -674,7 +699,7 @@
 
   // Função auxiliar para enviar dados brutos para o backend /track
   // MODIFICADO: Gerar e enviar eventId para deduplicação
-  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}) {
+  async function sendEventToBackend(eventName, rawUserData = {}, specificCustomData = {}, clientEventTime = null) {
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
 
@@ -699,49 +724,25 @@
     const currentFbc = getFbc(); // <<< Usa a nova função getFbc
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
     console.log(`[Frontend Script] Valor FBC lido/gerado ANTES do envio para backend: ${currentFbc}`);
-    
-    // +++ LOG OTIMIZADO DE _FBP +++
-    if (!currentFbp) {
-      if (navigator.userAgent.includes('FB_IAB')) {
-        console.warn(`[Frontend Script] 📱 FBP ausente no FB In-App Browser para ${eventName} (esperado)`);
-        console.log('[Frontend Script] ✅ FBC disponível como alternativa:', currentFbc ? 'SIM' : 'NÃO');
-      } else {
-        console.error(`[Frontend Script] ❌ _FBP AUSENTE no envio do ${eventName}!`);
-        console.error('[Frontend Script] 📊 DIAGNÓSTICO DETALHADO:');
-        console.error(`  • document.cookie: ${document.cookie}`);
-        console.error(`  • URL fbp param: ${getUrlParameter('fbp')}`);
-        console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
-        console.error(`  • Facebook script carregado: ${!!document.querySelector('script[src*="fbevents.js"]')}`);
+    // +++ FIM RE-LEITURA +++
+
+    // Mesclar os dados recebidos com os dados coletados
+    const cleanUserData = Object.entries({
+      ...rawUserData,
+      fbp: currentFbp, // <<< Sempre usar valor mais recente
+      fbc: currentFbc, // <<< Sempre usar valor mais recente
+    }).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
       }
-    } else {
-      console.log(`[Frontend Script] ✅ _FBP confirmado: ${currentFbp}`);
-    }
-    // +++ FIM LOG OTIMIZADO +++
-    
-    // +++ FIM RE-LEITURA FBP/FBC +++
-
-    // Combinar dados de usuário gerais com PII (se houver)
-    const mergedUserData = {
-        ...rawUserData, // Contém external_id, visitorId, PII, etc.
-        fbp: currentFbp, // <<< USAR O VALOR RE-LIDO AQUI
-        fbc: currentFbc, // <<< USAR O VALOR RE-LIDO/GERADO AQUI
-    };
-
-    // +++ Limpar dados vazios antes de enviar +++
-    const cleanUserData = Object.entries(mergedUserData).reduce((acc, [key, value]) => {
-        if (value !== null && value !== undefined && value !== '') {
-            acc[key] = value;
-        }
-        return acc;
+      return acc;
     }, {});
-    // +++ Fim da limpeza de dados +++
 
-    // ++ Coleta de dados do navegador (movido para cá para incluir fbp/fbc atuais) ++
+    // ++ Coleta de dados do navegador ++
     const browserData = {
-        userAgent: navigator.userAgent,
-        language: navigator.language || 'pt-BR',
-        // fbp e fbc já estão em cleanUserData
-        referrer_url: document.referrer || '' // Adiciona referrer_url aqui
+      userAgent: navigator.userAgent,
+      language: navigator.language || 'pt-BR',
+      referrer_url: document.referrer || ''
     };
     const cleanBrowserData = Object.entries(browserData).reduce((acc, [key, value]) => {
       if (value !== null && value !== undefined && value !== '') {
@@ -751,7 +752,8 @@
     }, {});
     // ++ Fim da coleta de dados do navegador ++
 
-    const clientEventTime = Math.floor(Date.now() / 1000); // Captura o timestamp do cliente
+    // MODIFICADO: Usar timestamp recebido como parâmetro ou gerar novo
+    const finalEventTime = clientEventTime || Math.floor(Date.now() / 1000);
 
     const payload = {
         eventName: facebookEventName, // ✅ USAR NOME MAPEADO PARA FACEBOOK (consistência CAPI/Pixel)
@@ -766,7 +768,7 @@
             app: 'meta-tracking'
         },
         browserData: cleanBrowserData, // Adiciona dados limpos do navegador
-        client_event_time: clientEventTime // Adiciona o timestamp do cliente ao payload
+        client_event_time: finalEventTime // MODIFICADO: Usar timestamp final calculado
     };
 
     // Limpar customData e browserData opcional (redundante, mas seguro)
@@ -781,7 +783,7 @@
       console.log('  • Nome Facebook (Enviado):', facebookEventName);
       console.log('  • Event ID Cliente:', clientEventId);
       console.log('  • URL da Página:', window.location.href);
-      console.log('  • Timestamp Cliente:', new Date(clientEventTime * 1000).toISOString());
+      console.log('  • Timestamp Cliente:', new Date(finalEventTime * 1000).toISOString());
       console.log('');
       console.log('👤 DADOS DO USUÁRIO (UserData):');
       for (const [key, value] of Object.entries(cleanUserData)) {
@@ -876,6 +878,23 @@
   // Função principal para disparar eventos (REFATORADA para padrão correto)
   async function sendEvent(eventName, customData = {}) {
 
+    // +++ GERAR TIMESTAMP ÚNICO PARA CADA EVENTO +++
+    // Implementar diferenciação para eventos enviados rapidamente
+    let uniqueTimestamp = Math.floor(Date.now() / 1000);
+    
+    // Se eventos forem enviados muito rapidamente (mesmo segundo), adicionar diferenciação
+    if (window.lastEventTimestamp && uniqueTimestamp === window.lastEventTimestamp) {
+      // Adicionar 1 segundo para garantir timestamps únicos
+      uniqueTimestamp = window.lastEventTimestamp + 1;
+      console.log(`[Meta Tracking] ⏰ Timestamp ajustado para evitar duplicação: ${uniqueTimestamp}`);
+    }
+    
+    // Armazenar para próxima verificação
+    window.lastEventTimestamp = uniqueTimestamp;
+    
+    console.log(`[Meta Tracking] 🕐 Timestamp único gerado para ${eventName}: ${uniqueTimestamp} (${new Date(uniqueTimestamp * 1000).toISOString()})`);
+    // +++ FIM GERAÇÃO TIMESTAMP ÚNICO +++
+
     // +++ DIAGNÓSTICO INICIAL DE _FBP +++
     const initialFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
     console.log(`[Meta Tracking Debug] 🔍 DIAGNÓSTICO _FBP INICIAL para ${eventName}:`);
@@ -903,12 +922,12 @@
     const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
 
     // Coletar PII novamente (pode ter sido atualizado desde o init)
-    const email = localStorage.getItem('meta_tracking_email');
-    const phone = localStorage.getItem('meta_tracking_phone');
-    const firstName = localStorage.getItem('meta_tracking_first_name');
-    const lastName = localStorage.getItem('meta_tracking_last_name');
-    const gender = localStorage.getItem('meta_tracking_gender');
-    const dob = localStorage.getItem('meta_tracking_dob');
+    const email = getLocalStorageItem('meta_tracking_email');
+    const phone = getLocalStorageItem('meta_tracking_phone');
+    const firstName = getLocalStorageItem('meta_tracking_first_name');
+    const lastName = getLocalStorageItem('meta_tracking_last_name');
+    const gender = getLocalStorageItem('meta_tracking_gender');
+    const dob = getLocalStorageItem('meta_tracking_dob');
 
     // --- MODIFICADO: Usar placeholders injetados pelo backend para GeoIP ---
     const city = '__GEO_CITY__';       // Placeholder será substituído por string JSON (ex: "sao paulo" ou null)
@@ -974,7 +993,7 @@
 
     // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO +++
     // ✅ CORREÇÃO: Usar UTC diretamente (servidor Virginia + cliente qualquer = UTC como padrão)
-    let currentTimestamp = Math.floor(Date.now() / 1000);
+    let currentTimestamp = uniqueTimestamp; // Usar o timestamp único gerado acima
     
     // Data de referência: 9 de junho de 2025 em UTC
     const referenceDate = new Date('2025-06-09T00:00:00Z'); // UTC
@@ -1004,13 +1023,13 @@
     console.log(`[Meta Tracking Debug] Advanced Matching:`, advancedMatchingParams);
     console.log(`[Meta Tracking Debug] Custom Data:`, finalCustomData);
 
-    // +++ LOG WEB RAW +++
+    // +++ LOG WEB RAW (ANTES DO PROCESSAMENTO BACKEND) +++
     if (isDebugEnabled()) {
       try {
-        console.groupCollapsed(`[PAYLOAD_WEB_PIXEL] Enviando ${eventName} via Web (fbq)`);
-        console.log('Advanced Matching Parameters:', JSON.stringify(advancedMatchingParams, null, 2));
-        console.log('Custom Data:', JSON.stringify(finalCustomData, null, 2));
-        console.groupEnd();
+          console.groupCollapsed(`📤 [PAYLOAD_WEB_PIXEL] Antes do processamento backend (${eventName})`);
+          console.log('Advanced Matching (fbq):', JSON.stringify(advancedMatchingParams, null, 2));
+          console.log('Custom Data (fbq):', JSON.stringify(finalCustomData, null, 2));
+          console.groupEnd();
       } catch (e) {
           console.error('[PAYLOAD_WEB_PIXEL] Erro ao gerar log:', e);
       }
@@ -1021,8 +1040,8 @@
     try {
         console.log('[Meta Tracking Debug] Enviando evento para Backend:', { eventName: eventName, rawUserData, specificCustomData: finalCustomData });
         
-        // Aguardar resposta do backend com eventID
-        const serverEventId = await sendEventToBackend(eventName, rawUserData, finalCustomData);
+        // MODIFICADO: Passar timestamp único para backend
+        const serverEventId = await sendEventToBackend(eventName, rawUserData, finalCustomData, currentTimestamp);
         
         if (serverEventId) {
             console.log(`[Meta Tracking Debug] ✅ EventID recebido do backend: ${serverEventId}, enviando para fbq()`);
@@ -1096,48 +1115,39 @@
     } 
   }
 
-  // ++ NOVA FUNÇÃO PARA ENVIO AO FBQ() SEPARADAMENTE ++
+  // +++ NOVA FUNÇÃO SENDPIXEL COM DEDUPLICAÇÃO GARANTIDA +++
   function sendFBQEvent(eventName, customData, serverEventId) {
+    
+    // ⚠️ CRÍTICO: Verificar se serverEventId existe
     if (!serverEventId) {
-      console.warn(`[Meta Tracking] Não é possível enviar fbq() para ${eventName}: eventID não fornecido`);
+      console.error(`[Meta Tracking] ❌ ERRO CRÍTICO: serverEventId não fornecido para ${eventName}! Deduplicação será comprometida.`);
       return;
     }
 
-    if (!window.fbq) {
-      console.warn('[Meta Tracking] fbq não está definido ao tentar enviar evento:', eventName);
+    // ⚠️ CRÍTICO: Verificar se fbq está disponível
+    if (!window.fbq || typeof window.fbq !== 'function') {
+      console.error(`[Meta Tracking] ❌ ERRO CRÍTICO: fbq não está disponível para ${eventName}! Aguardando inicialização...`);
+      // Tentar aguardar um pouco e retentar
+      setTimeout(() => {
+        if (window.fbq && typeof window.fbq === 'function') {
+          sendFBQEvent(eventName, customData, serverEventId);
+        } else {
+          console.error(`[Meta Tracking] ❌ fbq ainda não disponível após espera para ${eventName}`);
+        }
+      }, 500);
       return;
     }
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
-    const fbqOptions = { eventID: serverEventId };
+    
+    // ✅ GARANTIR FORMATO CORRETO DO eventID
+    const fbqOptions = {
+      eventID: String(serverEventId) // Converter explicitamente para string
+    };
 
-    // 🌐 LOG DETALHADO ANTES DO ENVIO VIA FBQ
-    if (isDebugEnabled()) {
-      console.groupCollapsed(`🌐 [WEB_FBQ] Enviando ${eventName} via fbq() para Facebook`);
-      console.log('🎯 DETALHES DO EVENTO:');
-      console.log('  • Nome Interno:', eventName);
-      console.log('  • Nome Facebook:', facebookEventName);
-      console.log('  • Event ID (Server):', serverEventId);
-      console.log('  • Pixel ID:', PIXEL_ID);
-      console.log('  • Método:', ['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent' ? 'trackCustom' : 'track');
-      console.log('');
-      console.log('📊 CUSTOM DATA PARA FBQ:');
-      for (const [key, value] of Object.entries(customData)) {
-        console.log(`  • ${key}:`, value);
-      }
-      console.log('');
-      console.log('⚙️ OPÇÕES FBQ:');
-      console.log('  • eventID:', serverEventId);
-      console.log('');
-      console.log('📤 COMANDO FBQ COMPLETO:');
-      if (['ViewCart', 'ViewHome', 'ViewList'].includes(facebookEventName) || EVENT_MAPPING[eventName] === 'CustomEvent') {
-        const eventNameForFbq = EVENT_MAPPING[eventName] === 'CustomEvent' ? eventName : facebookEventName;
-        console.log(`fbq('trackCustom', '${eventNameForFbq}', ${JSON.stringify(customData)}, ${JSON.stringify(fbqOptions)})`);
-      } else {
-        console.log(`fbq('track', '${facebookEventName}', ${JSON.stringify(customData)}, ${JSON.stringify(fbqOptions)})`);
-      }
-      console.groupEnd();
-    }
+    // 🔍 LOG DETALHADO PRÉ-ENVIO
+    console.log(`[Meta Tracking] 📤 Enviando para fbq(): ${facebookEventName} (eventID: ${serverEventId})`);
+    console.log(`[Meta Tracking] 📋 Dados: customData=${JSON.stringify(customData)}, options=${JSON.stringify(fbqOptions)}`);
 
     try {
       // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
@@ -1146,19 +1156,26 @@
         const customEventPayload = { ...customData };
         if (EVENT_MAPPING[eventName] === 'CustomEvent') {
            customEventPayload.event = eventName; // Adiciona o nome original (ex: Timer_1min) 
-           console.log('[Meta Tracking Debug] Enviando como trackCustom (CustomEvent): ', eventName, customEventPayload, fbqOptions);
+           console.log(`[Meta Tracking] 🎯 fbq('trackCustom', '${eventName}', data, {eventID: '${serverEventId}'})`);
+           
            // ++ LOG FBQ ++ 
            logTrackCustomIfNeeded(eventName, customEventPayload, fbqOptions);
+           
+           // ✅ CHAMADA COM EVENTID GARANTIDO
            fbq('trackCustom', eventName, customEventPayload, fbqOptions); // Usa eventName original aqui
         } else {
-           console.log('[Meta Tracking Debug] Enviando como trackCustom (Não Padrão): ', facebookEventName, customData, fbqOptions);
+           console.log(`[Meta Tracking] 🎯 fbq('trackCustom', '${facebookEventName}', data, {eventID: '${serverEventId}'})`);
+           
            // ++ LOG FBQ ++ 
            logTrackCustomIfNeeded(facebookEventName, customData, fbqOptions);
+           
+           // ✅ CHAMADA COM EVENTID GARANTIDO  
            fbq('trackCustom', facebookEventName, customData, fbqOptions);
         }
       } else {
         // Para eventos padrão (PageView, ViewContent, AddToCart, Purchase, etc.) usar track padrão
-        console.log('[Meta Tracking Debug] Enviando como track (Padrão): ', facebookEventName, customData, fbqOptions);
+        console.log(`[Meta Tracking] 🎯 fbq('track', '${facebookEventName}', data, {eventID: '${serverEventId}'})`);
+        
         // +++ LOG WEB FBQ (TRACK PADRÃO) +++
         if (isDebugEnabled()) {
             try {
@@ -1170,10 +1187,16 @@
                 console.error('[LOG_WEB_FBQ] Erro ao gerar log (track):', e);
             }
         }
+        
+        // ✅ CHAMADA COM EVENTID GARANTIDO
         fbq('track', facebookEventName, customData, fbqOptions);
       }
+      
+      // ✅ LOG CONFIRMAÇÃO
+      console.log(`[Meta Tracking] ✅ Evento ${eventName} enviado para fbq() com eventID: ${serverEventId}`);
+      
     } catch (error) {
-      console.error('[Meta Tracking Debug] Erro ao enviar evento para FB Pixel:', error);
+      console.error(`[Meta Tracking] ❌ Erro ao enviar evento ${eventName} para FB Pixel:`, error);
     }
   }
   // ++ FIM DA NOVA FUNÇÃO ++
@@ -1901,7 +1924,7 @@
       // Verifica parâmetro de URL ou localStorage
       const urlParams = new URLSearchParams(window.location.search);
       const debugParam = urlParams.get('debug_meta');
-      const localStorageDebug = localStorage.getItem('meta_debug');
+      const localStorageDebug = getLocalStorageItem('meta_debug');
       
       // Retorna true se qualquer um for 'true' (string)
       return debugParam === 'true' || localStorageDebug === 'true';
@@ -1926,4 +1949,27 @@
         }
      }
   }
+
+  // Função para acessar localStorage com segurança (evita erros de sandboxing)
+  function getLocalStorageItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (error) {
+      console.warn(`[Meta Tracking] LocalStorage indisponível (ambiente sandboxed): ${error.message}`);
+      return null;
+    }
+  }
+
+  // Função para definir localStorage com segurança
+  function setLocalStorageItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      console.warn(`[Meta Tracking] Não foi possível salvar no localStorage (ambiente sandboxed): ${error.message}`);
+      return false;
+    }
+  }
+
+  // +++ MELHORIAS DE CONFIGURAÇÃO E LOGS +++
 })(); 
