@@ -252,7 +252,7 @@
       console.log('  • User Agent:', navigator.userAgent);
       console.log('  • Client IP:', clientIpAddress);
       console.log('  • Idioma:', navigator.language);
-      console.log('  • Referrer:', document.referrer);
+      console.log('  • Referrer URL:', document.referrer);
       console.log('');
       console.log('🌍 DADOS GEOGRÁFICOS (GeoIP):');
       console.log('  • País:', country);
@@ -293,7 +293,7 @@
       contentName: pageTitle,
       contentType: 'page_view',
       language: navigator.language || 'pt-BR',
-      referrer: document.referrer || ''
+      referrer_url: document.referrer || ''
     };
     Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
 
@@ -741,7 +741,7 @@
         userAgent: navigator.userAgent,
         language: navigator.language || 'pt-BR',
         // fbp e fbc já estão em cleanUserData
-        referrer: document.referrer || '' // Adiciona referrer aqui
+        referrer_url: document.referrer || '' // Adiciona referrer_url aqui
     };
     const cleanBrowserData = Object.entries(browserData).reduce((acc, [key, value]) => {
       if (value !== null && value !== undefined && value !== '') {
@@ -758,7 +758,7 @@
         originalEventName: eventName, // ✅ MANTER NOME ORIGINAL PARA LOGS/DEBUG
         eventId: clientEventId, // <<<< INCLUIR EVENTID GERADO AQUI
         sourceUrl: window.location.href,
-        // referrer: document.referrer || '', // Removido daqui, incluído em browserData
+        // referrer_url: document.referrer || '', // Removido daqui, incluído em browserData
         userData: cleanUserData, // <<< USA OS DADOS LIMPOS
         customData: {
             ...specificCustomData,
@@ -957,7 +957,7 @@
     const finalCustomData = {
       app: 'meta-tracking',
       language: navigator.language || 'pt-BR',
-      referrer: document.referrer || '',
+      referrer_url: document.referrer || '',
       ...customData // Dados específicos vindos de detectPageType, etc.
     };
     // Garantir que dados essenciais como value/currency não sejam sobrescritos por null/undefined

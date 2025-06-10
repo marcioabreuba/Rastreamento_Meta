@@ -42,7 +42,7 @@
         language: navigator.language || 'pt-BR',
         fbp: getCookie('_fbp'),
         fbc: getCookie('_fbc') || getUrlParameter('fbclid'),
-        referrer: document.referrer
+        referrer_url: document.referrer
       };
 
       // Unificar dados do usuário

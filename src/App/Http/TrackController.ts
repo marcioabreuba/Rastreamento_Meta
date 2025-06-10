@@ -155,7 +155,7 @@ const createErrorResponse = (eventId: string | null, capiError: string, message:
  */
 export const handleTrackRequest = async (req: Request, res: Response): Promise<void> => {
   const requestStartTime = Date.now();
-  const { eventName, originalEventName, userData, customData, eventId, sourceUrl, referrer, client_event_time, ...rest } = req.body;
+  const { eventName, originalEventName, userData, customData, eventId, sourceUrl, referrer_url, client_event_time, ...rest } = req.body;
 
   // Loga os dados brutos recebidos APENAS se LOG_LEVEL=debug
   logger.debug(`[TrackController] Raw event received: ${eventName}`, {
@@ -163,7 +163,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       receivedOriginalEventName: originalEventName,
       receivedEventId: eventId,
       receivedSourceUrl: sourceUrl,
-      receivedReferrer: referrer,
+      receivedReferrer: referrer_url,
       receivedUserData: userData,
       receivedCustomData: customData,
       receivedOtherParams: rest
@@ -212,7 +212,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
       eventName: effectiveEventName, // ✅ CORREÇÃO: usar nome efetivo (original quando disponível)
       eventId: eventId || null,
       sourceUrl: sourceUrl || customData?.sourceUrl || null,
-      referrer: referrer || customData?.referrer || null,
+      referrer_url: referrer_url || customData?.referrer_url || null,
       clientIp,
       userAgent,
       userData: { ...(userData || {}), ...(specificEventData.userData || {}) }, // Mescla dados gerais e específicos

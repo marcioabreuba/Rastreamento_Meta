@@ -355,7 +355,7 @@ export interface RawEventInput {
     eventName: string;
     eventId?: string | null; // ID do evento (opcional, pode ser gerado)
     sourceUrl?: string | null;
-    referrer?: string | null;
+    referrer_url?: string | null;
     clientIp: string | null;
     userAgent: string | null;
     isAppEvent?: boolean;

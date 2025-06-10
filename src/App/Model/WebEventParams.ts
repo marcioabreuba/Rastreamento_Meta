@@ -45,7 +45,7 @@ export interface WebCustomData {
 
   // Parâmetros de Contexto Adicionais
   language?: string | null; // ex: 'pt-BR'
-  referrer?: string | null; // URL de referência
+  referrer_url?: string | null; // URL de referência
   app?: string | null;      // Identificador da aplicação (ex: 'meta-tracking')
   sourceUrl?: string | null;// URL da página atual
 

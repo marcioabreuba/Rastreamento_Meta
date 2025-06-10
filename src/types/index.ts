@@ -37,7 +37,7 @@ export interface UserData {
   city?: string;
   zip?: string;
   language?: string;
-  referrer?: string;
+  referrer_url?: string;
   visitorId?: string;     // ID de visitante First-Party
   // Campos específicos de App (usados se isAppEvent = true)
   anonId?: string;
@@ -97,7 +97,7 @@ export interface CustomData {
   predictedLtv?: number;
   contents?: any[];
   sourceUrl?: string;
-  referrer?: string;
+  referrer_url?: string;
   // Dados para eventos de rolagem
   scrollPercentage?: number;
   // Dados para eventos de vídeo 
