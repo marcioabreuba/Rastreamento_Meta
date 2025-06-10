@@ -297,16 +297,26 @@
     };
     Object.keys(customParams).forEach(key => customParams[key] == null && delete customParams[key]);
 
-    // Delay pequeno para garantir que o init foi processado, depois usar novo padrão
+    // Delay pequeno para garantir que o init foi processado, depois aguardar _fbp
     setTimeout(async function() {
-         console.log('[Meta Tracking Debug] Enviando PageView inicial usando novo padrão...');
+         console.log('[Meta Tracking Debug] Aguardando _fbp cookie ser criado...');
+         
          try {
+             // Aguardar até o _fbp existir ou timeout de 3 segundos
+             const fbpFound = await waitForFbpCookie(3000);
+             
+             if (fbpFound) {
+                 console.log('[Meta Tracking Debug] ✅ _fbp confirmado, enviando PageView...');
+             } else {
+                 console.warn('[Meta Tracking Debug] ⚠️ Enviando PageView sem _fbp (timeout de 3s atingido)');
+             }
+             
              // Usar sendEvent que agora implementa o padrão correto
              await sendEvent('PageView', customParams);
          } catch (error) {
              console.error('[Meta Tracking Debug] Erro ao enviar PageView inicial:', error);
          }
-    }, 200); // Pequeno delay para garantir que init foi processado 
+    }, 200); // Delay mínimo para garantir que fbq('init') processou 
 
   }
 
@@ -1512,9 +1522,25 @@
       // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
       // pois o PageView já foi enviado na inicialização do pixel
       console.log(`Atrasando envio do evento inicial "${pageInfo.type}" por 750ms para permitir a inicialização de cookies.`);
-      setTimeout(() => {
-        console.log(`Enviando evento inicial "${pageInfo.type}" após atraso.`);
-        sendEvent(pageInfo.type, pageInfo.data);
+      setTimeout(async () => {
+        console.log(`Aguardando _fbp para evento "${pageInfo.type}"...`);
+        
+        try {
+          // Aguardar _fbp com timeout mais curto para eventos subsequentes
+          const fbpFound = await waitForFbpCookie(1500);
+          
+          if (fbpFound) {
+            console.log(`✅ _fbp confirmado para ${pageInfo.type}, enviando evento...`);
+          } else {
+            console.warn(`⚠️ Enviando ${pageInfo.type} sem _fbp (timeout de 1.5s)`);
+          }
+          
+          sendEvent(pageInfo.type, pageInfo.data);
+        } catch (error) {
+          console.error(`Erro ao enviar evento ${pageInfo.type}:`, error);
+          // Fallback: enviar mesmo com erro
+          sendEvent(pageInfo.type, pageInfo.data);
+        }
       }, 750); // Atraso de 750 milissegundos
     } else if (!pageInfo || pageInfo.type === 'PageView') {
       // Se nenhum tipo específico for detectado ou for PageView, não enviamos PageView novamente
@@ -1831,6 +1857,39 @@
     
      console.log('[Meta Tracking Debug] extractCartData - Retornando Resultado Final:', cartDataExtracted);
      return cartDataExtracted;
+  }
+
+  // +++ FUNÇÃO INTELIGENTE PARA AGUARDAR COOKIE _FBP +++
+  async function waitForFbpCookie(maxWait = 3000) {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      let attempts = 0;
+      
+      const checkCookie = () => {
+        attempts++;
+        
+        // Usar getCookie() para ser mais preciso que document.cookie.includes()
+        const fbpCookie = getCookie('_fbp');
+        
+        if (fbpCookie) {
+          console.log(`[Meta Tracking Debug] ✅ _fbp encontrado após ${Date.now() - startTime}ms (${attempts} tentativas): ${fbpCookie}`);
+          resolve(true);
+          return;
+        }
+        
+        // Se passou do tempo máximo, resolve mesmo assim
+        if (Date.now() - startTime >= maxWait) {
+          console.warn(`[Meta Tracking Debug] ⚠️ Timeout de ${maxWait}ms atingido. _fbp não encontrado após ${attempts} tentativas.`);
+          resolve(false);
+          return;
+        }
+        
+        // Verifica novamente em 100ms
+        setTimeout(checkCookie, 100);
+      };
+      
+      checkCookie();
+    });
   }
 
   // +++ FUNÇÃO PARA VERIFICAR MODO DEBUG +++
