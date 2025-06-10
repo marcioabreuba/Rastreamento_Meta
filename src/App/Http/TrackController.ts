@@ -65,7 +65,19 @@ const formatObjectForLog = (obj: any): string => {
   let logString = '';
   for (const key in obj) {
     // Não logar user agent completo nos logs do Render
-    const valueToLog = (key === 'client_user_agent' && obj[key]) ? String(obj[key]).substring(0, config.validation.debugLogLength) + '...' : obj[key];
+    let valueToLog: any;
+    if (key === 'client_user_agent' && obj[key]) {
+      valueToLog = String(obj[key]).substring(0, config.validation.debugLogLength) + '...';
+    } else if (Array.isArray(obj[key])) {
+      // Formatação especial para arrays (como content_ids)
+      valueToLog = JSON.stringify(obj[key]);
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      // Formatação especial para objetos
+      valueToLog = JSON.stringify(obj[key]);
+    } else {
+      valueToLog = obj[key];
+    }
+    
     if (valueToLog !== null && valueToLog !== undefined) { // Logar apenas chaves com valor
       logString += `\n        ${key}: ${valueToLog}`;
     }
@@ -173,7 +185,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
     let geoData = null;
     if (!isPrivateIP(clientIp)) {
       geoData = GeoIPService.getGeoData(clientIp);
-      if (geoData) {
+    if (geoData) {
         logger.debug(`[TrackController] GeoIP encontrado para ${clientIp}: ${geoData.city}, ${geoData.region?.code}, ${geoData.country?.code}`);
       }
     } else {

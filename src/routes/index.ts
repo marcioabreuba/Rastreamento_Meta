@@ -38,11 +38,11 @@ router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
     let geoData: any = null;
 
     if (ip) {
-      try {
-        geoData = await GeoIPService.getGeoData(ip);
+        try {
+            geoData = await GeoIPService.getGeoData(ip);
         logger.debug(`[GeoScript] GeoIP data for ${ip}:`, geoData);
-      } catch (geoError: any) {
-        logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
+        } catch (geoError: any) {
+            logger.warn(`[GeoScript] Erro ao obter GeoIP para ${ip}: ${geoError.message}`);
       }
     }
 

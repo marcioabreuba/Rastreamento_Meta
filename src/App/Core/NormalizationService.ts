@@ -270,7 +270,53 @@ function normalizeCustomData(rawCustomData: WebCustomData | any = {}, eventName:
   }
 
   normalized.content_category = rawCustomData.content_category || rawCustomData.contentCategory || null;
-  normalized.content_ids = rawCustomData.content_ids || rawCustomData.contentIds || null;
+  
+  // +++ CORREÇÃO CRÍTICA: content_ids deve ser array, não objeto +++
+  if (rawCustomData.content_ids || rawCustomData.contentIds) {
+    const contentIdsInput = rawCustomData.content_ids || rawCustomData.contentIds;
+    
+    // +++ LOGGING DETALHADO PARA DEBUG +++
+    logger.debug(`[NormalizationService] Processando content_ids para ${eventName}`, {
+      originalInput: contentIdsInput,
+      inputType: typeof contentIdsInput,
+      isArray: Array.isArray(contentIdsInput),
+      eventName
+    });
+    
+    if (Array.isArray(contentIdsInput)) {
+      // Já é array, apenas garantir que são strings
+      normalized.content_ids = contentIdsInput.map(id => String(id));
+      logger.debug(`[NormalizationService] content_ids já era array, convertido para strings: ${JSON.stringify(normalized.content_ids)}`, { eventName });
+    } else if (typeof contentIdsInput === 'object' && contentIdsInput !== null) {
+      // É objeto (como {"0":"49576588411170"}), converter para array
+      normalized.content_ids = Object.values(contentIdsInput).map(id => String(id));
+      logger.warn(`[NormalizationService] content_ids recebido como objeto, convertido para array: ${JSON.stringify(normalized.content_ids)}`, { 
+        originalInput: contentIdsInput, 
+        eventName 
+      });
+    } else if (typeof contentIdsInput === 'string' || typeof contentIdsInput === 'number') {
+      // É string/número único, converter para array
+      normalized.content_ids = [String(contentIdsInput)];
+      logger.debug(`[NormalizationService] content_ids era string/número único, convertido para array: ${JSON.stringify(normalized.content_ids)}`, { eventName });
+    } else {
+      normalized.content_ids = null;
+      logger.warn(`[NormalizationService] content_ids em formato inválido, definindo como null`, { 
+        contentIdsInput, 
+        eventName 
+      });
+    }
+    
+    // +++ LOG FINAL DO RESULTADO +++
+    logger.debug(`[NormalizationService] content_ids FINAL para ${eventName}: ${JSON.stringify(normalized.content_ids)}`, {
+      finalValue: normalized.content_ids,
+      finalType: typeof normalized.content_ids,
+      finalIsArray: Array.isArray(normalized.content_ids)
+    });
+  } else {
+    normalized.content_ids = null;
+    logger.debug(`[NormalizationService] Nenhum content_ids fornecido para ${eventName}`);
+  }
+  
   normalized.content_type = rawCustomData.content_type || rawCustomData.contentType || null;
   normalized.contents = rawCustomData.contents || null; // Assumindo que já está no formato correto
   normalized.search_string = rawCustomData.search_string || rawCustomData.searchString || null;
@@ -353,6 +399,52 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
       // Considerar retornar null aqui pode ser muito restritivo se outros dados de match existirem.
       // Mantendo o fluxo por enquanto, mas é um ponto de atenção.
   }
+
+  // +++ DIAGNÓSTICO DE QUALIDADE DE CORRESPONDÊNCIA +++
+  const piiDataQuality = {
+    hasEmail: !!userData.em,
+    hasPhone: !!userData.ph,
+    hasFirstName: !!userData.fn,
+    hasLastName: !!userData.ln,
+    hasCity: !!userData.ct,
+    hasState: !!userData.st,
+    hasZip: !!userData.zp,
+    hasCountry: !!userData.country,
+    hasFbp: !!userData.fbp,
+    hasFbc: !!userData.fbc,
+    hasExternalId: !!userData.external_id
+  };
+
+  const piiCount = Object.values(piiDataQuality).filter(Boolean).length;
+  const totalPossiblePII = Object.keys(piiDataQuality).length;
+  const piiQualityPercentage = Math.round((piiCount / totalPossiblePII) * 100);
+
+  logger.info(`[NormalizationService] 📊 Qualidade de Correspondência para ${rawEvent.eventName} (ID: ${rawEvent.eventId}): ${piiCount}/${totalPossiblePII} campos PII (${piiQualityPercentage}%)`, {
+    eventName: rawEvent.eventName,
+    eventId: rawEvent.eventId,
+    sourceUrl: rawEvent.sourceUrl,
+    piiDataQuality,
+    qualityPercentage: piiQualityPercentage
+  });
+
+  // Alertas específicos para dados PII críticos ausentes
+  if (!userData.em && !userData.ph) {
+    logger.warn(`[NormalizationService] ⚠️ ALERTA DE QUALIDADE: Evento ${rawEvent.eventName} sem EMAIL nem TELEFONE - isso reduz significativamente a qualidade de correspondência!`, {
+      eventId: rawEvent.eventId,
+      sourceUrl: rawEvent.sourceUrl,
+      hasOtherPII: piiCount > 2
+    });
+  }
+
+  if (!userData.fbp) {
+    logger.warn(`[NormalizationService] ⚠️ ALERTA CRÍTICO: Evento ${rawEvent.eventName} sem _fbp - isso compromete severamente a correspondência com o Pixel!`, {
+      eventId: rawEvent.eventId,
+      sourceUrl: rawEvent.sourceUrl,
+      userAgent: rawEvent.userAgent?.substring(0, 50) + '...'
+    });
+  }
+  // +++ FIM DIAGNÓSTICO +++
+
   // << ADICIONAR VERIFICAÇÃO E LOG PARA EVENTID AUSENTE >>
   if (!rawEvent.eventId) {
     logger.warn(`[NormalizationService] Evento '${rawEvent.eventName}' recebido sem eventId do cliente. Isso pode dificultar a deduplicação no Facebook.`, { sourceUrl: rawEvent.sourceUrl });
@@ -360,6 +452,49 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
 
   // Normalizar dados customizados
   const customData = normalizeCustomData(rawEvent.customData, rawEvent.eventName);
+
+  // +++ VALIDAÇÃO DE DADOS ESPECÍFICOS POR TIPO DE EVENTO +++
+  if (facebookEventName === 'ViewContent') {
+    if (!customData.content_ids || (Array.isArray(customData.content_ids) && customData.content_ids.length === 0)) {
+      logger.warn(`[NormalizationService] ⚠️ ViewContent sem content_ids - isso reduz a qualidade de correspondência para e-commerce!`, {
+        eventId: rawEvent.eventId,
+        sourceUrl: rawEvent.sourceUrl,
+        customData: rawEvent.customData
+      });
+    }
+    if (!customData.value || customData.value <= 0) {
+      logger.warn(`[NormalizationService] ⚠️ ViewContent sem valor de produto - recomendado para melhor correspondência!`, {
+        eventId: rawEvent.eventId,
+        hasContentIds: !!customData.content_ids
+      });
+    }
+  }
+
+  if (facebookEventName === 'Purchase') {
+    const missingPurchaseFields = [];
+    if (!customData.value || customData.value <= 0) missingPurchaseFields.push('value');
+    if (!customData.currency) missingPurchaseFields.push('currency');
+    if (!customData.content_ids) missingPurchaseFields.push('content_ids');
+    
+    if (missingPurchaseFields.length > 0) {
+      logger.error(`[NormalizationService] ❌ ERRO CRÍTICO: Purchase com campos obrigatórios ausentes: ${missingPurchaseFields.join(', ')}`, {
+        eventId: rawEvent.eventId,
+        sourceUrl: rawEvent.sourceUrl,
+        missingFields: missingPurchaseFields,
+        customData: rawEvent.customData
+      });
+    }
+  }
+
+  if (facebookEventName === 'AddToCart') {
+    if (!customData.content_ids) {
+      logger.warn(`[NormalizationService] ⚠️ AddToCart sem content_ids - isso pode afetar a qualidade do tracking de conversões!`, {
+        eventId: rawEvent.eventId,
+        sourceUrl: rawEvent.sourceUrl
+      });
+    }
+  }
+  // +++ FIM VALIDAÇÃO ESPECÍFICA +++
 
   // Tempo do evento (Unix timestamp em segundos)
   let eventTimeSource = 'server'; // Para logging
@@ -397,8 +532,8 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
           // Verificar novamente se o timestamp convertido não está no futuro
           if (convertedTimestamp > currentServerTimeSeconds + maxAllowedFutureSeconds) {
               logger.warn(`[NormalizationService] ⚠️ Timestamp convertido ainda está no futuro. Usando tempo do servidor.`);
-              finalEventTime = currentServerTimeSeconds;
-          } else {
+          finalEventTime = currentServerTimeSeconds;
+      } else {
               finalEventTime = convertedTimestamp;
               eventTimeSource = 'client (converted)';
           }
@@ -472,12 +607,12 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
         }
     });
     if (serverEvent.custom_data) {
-        Object.keys(serverEvent.custom_data).forEach(key => {
-            const K = key as keyof typeof serverEvent.custom_data;
+    Object.keys(serverEvent.custom_data).forEach(key => {
+        const K = key as keyof typeof serverEvent.custom_data;
             if (serverEvent.custom_data && (serverEvent.custom_data[K] === null || serverEvent.custom_data[K] === undefined)) {
-                delete serverEvent.custom_data[K];
-            }
-        });
+            delete serverEvent.custom_data[K];
+        }
+    });
     }
 
 

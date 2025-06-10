@@ -20,15 +20,15 @@ const startServer = async () => {
       logger.info(`📁 Working directory: ${process.cwd()}`);
       logger.info(`📁 __dirname: ${__dirname}`);
       
-      if (fs.existsSync(config.geoipDbPath)) {
+    if (fs.existsSync(config.geoipDbPath)) {
           logger.info('✅ Arquivo GeoIP encontrado! Tentando carregar...');
           const stats = fs.statSync(config.geoipDbPath);
           logger.info(`📊 Tamanho do arquivo: ${Math.round(stats.size / 1024 / 1024)}MB`);
           
-          const geoipReader = await Reader.open(config.geoipDbPath);
-          GeoIPService.setGeoIPReaderInstance(geoipReader);
+        const geoipReader = await Reader.open(config.geoipDbPath);
+        GeoIPService.setGeoIPReaderInstance(geoipReader);
           logger.info('✅ Banco de dados GeoIP carregado e injetado no GeoIPService.');
-      } else {
+    } else {
           logger.warn(`❌ Banco de dados GeoIP não encontrado em: ${config.geoipDbPath}`);
           logger.info('📂 Conteúdo do diretório atual:');
           try {
