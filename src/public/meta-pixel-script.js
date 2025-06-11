@@ -962,33 +962,45 @@
 
     console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress });
 
-    // Montar UserData para backend e Advanced Matching para fbq
+    // Montar UserData para backend (inclui fbp para CAPI)
+    const fbpForBackend = getCookie('_fbp') || getUrlParameter('fbp') || null;
     const rawUserData = {
-      external_id: externalId, visitorId: visitorId, fbc: fbc,
+      external_id: externalId, visitorId: visitorId, fbc: fbc, fbp: fbpForBackend,
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
     Object.keys(rawUserData).forEach(key => rawUserData[key] == null && delete rawUserData[key]);
 
-    // Montar Advanced Matching Params para fbq (sem hash)
-    const fbpForFbq = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    // Montar Advanced Matching Params para fbq (sem fbp/fbc - Facebook detecta automaticamente)
     const advancedMatchingParams = { 
-        ...rawUserData, // Reutiliza os dados já coletados
-        fbp: fbpForFbq // <<< Adiciona fbp lido para o fbq
+        external_id: rawUserData.external_id,
+        visitorId: rawUserData.visitorId,
+        em: rawUserData.em,
+        ph: rawUserData.ph,
+        fn: rawUserData.fn,
+        ln: rawUserData.ln,
+        ge: rawUserData.ge,
+        db: rawUserData.db,
+        ct: rawUserData.ct,
+        st: rawUserData.st,
+        zp: rawUserData.zp,
+        country: rawUserData.country
+        // REMOVIDO: fbp e fbc (Facebook detecta automaticamente)
     };
     // Adicionar userAgent que fbq usa
     advancedMatchingParams.client_user_agent = navigator.userAgent; 
     Object.keys(advancedMatchingParams).forEach(key => advancedMatchingParams[key] == null && delete advancedMatchingParams[key]);
 
     // +++ SEGUNDA VALIDAÇÃO DE _FBP (APÓS COLETA) +++
-    if (!fbpForFbq) {
+    const fbpForValidation = getCookie('_fbp') || getUrlParameter('fbp') || null;
+    if (!fbpForValidation) {
       console.error(`[Meta Tracking Debug] ❌ _FBP AINDA AUSENTE após coleta para ${eventName}!`);
       console.error('[Meta Tracking Debug] 📊 Estado dos cookies no momento da coleta:');
       console.error(`  • document.cookie: ${document.cookie.substring(0, 200)}...`);
       console.error(`  • fbq definido: ${typeof window.fbq !== 'undefined'}`);
       console.error(`  • localStorage keys: ${Object.keys(localStorage).filter(k => k.includes('fb') || k.includes('pixel')).join(', ')}`);
     } else {
-      console.log(`[Meta Tracking Debug] ✅ _fbp confirmado para envio: ${fbpForFbq}`);
+      console.log(`[Meta Tracking Debug] ✅ _fbp confirmado: ${fbpForValidation}`);
     }
     // +++ FIM SEGUNDA VALIDAÇÃO +++
 
