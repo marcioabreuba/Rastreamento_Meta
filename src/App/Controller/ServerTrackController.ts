@@ -20,11 +20,17 @@ export class ServerTrackController {
       
              // Capturar dados da requisição
        const fbclid = req.query.fbclid as string || req.body.fbclid;
-       const fbcParam = req.query.fbc as string || req.body.fbc; // ✅ NOVO: Aceitar FBC diretamente
+       let fbcParam = req.query.fbc as string || req.body.fbc; // ✅ NOVO: Aceitar FBC diretamente
        const eventName = req.query.event as string || req.body.event || 'PageView';
        const clientIp = req.ip || req.connection.remoteAddress || '';
        const userAgent = req.get('User-Agent') || '';
        const sourceUrl = req.query.url as string || req.body.url || req.get('Referer') || '';
+
+       // 🛡️ VALIDAÇÃO CRÍTICA: Detectar e rejeitar FBCs de teste no backend
+       if (fbcParam && this.isTestFbc(fbcParam)) {
+         logger.warn('[ServerTrack] 🚨 FBC de teste detectado e rejeitado no servidor:', fbcParam);
+         fbcParam = null; // Anular FBC de teste
+       }
        
        logger.info(`[ServerTrack] 🛡️ BACKUP TRACKING HÍBRIDO iniciado para ${eventName}`, {
          hasJavaScript: false,
@@ -172,6 +178,56 @@ export class ServerTrackController {
         error: 'Falha no server-side tracking' 
       });
     }
+  }
+
+  /**
+   * 🛡️ Detecta FBCs de teste/desenvolvimento
+   */
+  private static isTestFbc(fbc: string): boolean {
+    if (!fbc || !fbc.startsWith('fb.')) return false;
+    
+    // Lista de indicadores de dados de teste
+    const testIndicators = [
+        'TESTCLICK',           // Nosso exemplo de teste
+        'TEST123',             // Padrões comuns de teste
+        'DUMMY',               // Dados dummy
+        'FAKE',                // Dados falsos
+        'MOCK',                // Dados mock
+        'DEMO',                // Dados de demonstração
+        'SAMPLE',              // Dados de exemplo
+        'synthetic_test',      // Sintéticos de teste
+        'debug_',              // Prefixos de debug
+        'dev_',                // Prefixos de desenvolvimento
+        'localhost'            // Local development
+    ];
+    
+    // Verificar se o FBC contém algum indicador de teste
+    const fbcLower = fbc.toLowerCase();
+    for (const indicator of testIndicators) {
+        if (fbcLower.includes(indicator.toLowerCase())) {
+            return true;
+        }
+    }
+    
+    // ⏰ VALIDAÇÃO DE TIMESTAMP: FBCs muito antigos podem ser de teste
+    try {
+        // Extrair timestamp do FBC (formato: fb.X.TIMESTAMP.FBCLID)
+        const parts = fbc.split('.');
+        if (parts.length >= 3) {
+            const timestamp = parseInt(parts[2]) * 1000; // Converter para ms
+            const now = Date.now();
+            const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000); // 3 dias atrás
+            
+            // Se o FBC é muito antigo (mais de 3 dias), considerá-lo suspeito
+            if (timestamp < threeDaysAgo) {
+                return true;
+            }
+        }
+    } catch (e) {
+        logger.warn('[ServerTrack] Erro validando timestamp do FBC:', e);
+    }
+    
+    return false;
   }
 
   /**
