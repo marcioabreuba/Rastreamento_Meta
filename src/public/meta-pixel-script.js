@@ -95,46 +95,61 @@
     return null;
   }
 
-  // +++ FUNÇÃO MELHORADA PARA FBC +++
-  function getFbc() {
-    // Primeiro tenta pegar do cookie
+  // +++ FUNÇÃO HÍBRIDA PARA FBC (SISTEMA DUPLO) +++
+  function getFbcValue() {
+    // ✅ NÍVEL 1: Tentar cookie primeiro (padrão Facebook)
     const fbcCookie = getCookie('_fbc');
-    // Verifica se existe e se parece com um fbc válido (começa com fb.)
     if (fbcCookie && fbcCookie.startsWith('fb.')) {
         console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie);
+        // Sincronizar com localStorage para backup
+        setLocalStorageItem('meta_tracking_fbc', fbcCookie);
         return fbcCookie;
     }
 
-    // Se não tiver cookie válido, tenta pegar fbclid da URL
+    // ✅ NÍVEL 2: Tentar localStorage como backup
+    const fbcLocalStorage = getLocalStorageItem('meta_tracking_fbc');
+    if (fbcLocalStorage && fbcLocalStorage.startsWith('fb.')) {
+        console.log('[Meta Tracking] 🔄 FBC recuperado do localStorage:', fbcLocalStorage);
+        // Restaurar no cookie
+        setCookie('_fbc', fbcLocalStorage, 90);
+        return fbcLocalStorage;
+    }
+
+    // ✅ NÍVEL 3: Gerar do fbclid se disponível
     const fbclid = getUrlParameter('fbclid');
     if (fbclid && fbclid.trim() !== '') {
-        // Formata o fbclid no formato correto do fbc (fb.1.timestamp_ms.fbclid)
-        const timestamp = Date.now(); // Usar timestamp em milissegundos
+        const timestamp = Date.now();
         const generatedFbc = `fb.1.${timestamp}.${fbclid}`;
         console.log('[Meta Tracking] ✅ FBC gerado do fbclid:', generatedFbc);
         
-        // Salvar no cookie para próximas visitas
-        setCookie('_fbc', generatedFbc, 90); // 90 dias como padrão Facebook
+        // Salvar em AMBOS os locais para máxima persistência
+        setCookie('_fbc', generatedFbc, 90);
+        setLocalStorageItem('meta_tracking_fbc', generatedFbc);
         return generatedFbc;
     }
 
-    // Verificar se há outros indicadores de origem Facebook
+    // ✅ NÍVEL 4: Detectar origem Facebook sem fbclid
     const referrer = document.referrer || '';
     if (referrer.includes('facebook.com') || referrer.includes('fb.com') || referrer.includes('m.facebook.com')) {
-        // Gerar FBC sintético para tráfego Facebook sem fbclid
         const timestamp = Date.now();
         const syntheticFbc = `fb.1.${timestamp}.synthetic_${Math.random().toString(36).substring(2, 15)}`;
         console.log('[Meta Tracking] ✅ FBC sintético gerado (origem Facebook):', syntheticFbc);
         
-        // Salvar no cookie
+        // Salvar em ambos os locais
         setCookie('_fbc', syntheticFbc, 90);
+        setLocalStorageItem('meta_tracking_fbc', syntheticFbc);
         return syntheticFbc;
     }
 
-    console.log('[Meta Tracking] ⚠️ FBC não disponível (não há fbclid nem origem Facebook)');
-    return null; // Retorna null se nenhum for encontrado
+    console.log('[Meta Tracking] ⚠️ FBC não disponível em nenhuma fonte');
+    return null;
   }
-  // +++ FIM DA FUNÇÃO MELHORADA PARA FBC +++
+
+  // Função legada para compatibilidade
+  function getFbc() {
+    return getFbcValue();
+  }
+  // +++ FIM DA FUNÇÃO HÍBRIDA PARA FBC +++
 
   // Função para definir o cookie first-party
   function setCookie(name, value, days) {
@@ -165,6 +180,67 @@
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
+  }
+
+  // ✅ BACKUP SERVER-SIDE TRACKING HÍBRIDO
+  function initServerSideBackup() {
+    try {
+      // Se fbq não está disponível (bloqueado), ativar backup
+      if (typeof window.fbq === 'undefined') {
+        console.log('[Server Backup] 🛡️ Facebook Pixel bloqueado - ativando tracking server-side HÍBRIDO');
+        
+        // Tentar múltiplas fontes para fbclid/fbc
+        const fbclid = getUrlParameter('fbclid');
+        const fbc = getFbcValue(); // Usa nossa função híbrida
+        
+        if (fbclid || fbc) {
+          // Criar pixel de backup para server-side tracking
+          const backupImg = new Image(1, 1);
+          let backupUrl = `/server-track/pixel?event=PageView&url=${encodeURIComponent(window.location.href)}&t=${Date.now()}`;
+          
+          if (fbclid) {
+            backupUrl += `&fbclid=${encodeURIComponent(fbclid)}`;
+          }
+          if (fbc) {
+            backupUrl += `&fbc=${encodeURIComponent(fbc)}`;
+          }
+          
+          backupImg.src = backupUrl;
+          console.log('[Server Backup] ✅ Pixel híbrido criado:', fbclid ? 'com fbclid' : 'com fbc salvo');
+        } else {
+          console.log('[Server Backup] ⚠️ Nenhuma fonte de tracking disponível');
+        }
+      } else {
+        // Mesmo com fbq funcionando, fazer backup preventivo do FBC
+        const fbc = getFbcValue();
+        if (fbc) {
+          console.log('[Server Backup] 💾 FBC salvo em localStorage como backup preventivo');
+        }
+      }
+      
+      // Adicionar listener para formulários (backup sem JS)
+      const forms = document.querySelectorAll('form');
+      forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+          // Não bloquear o submit, apenas adicionar tracking
+          const fbclid = getUrlParameter('fbclid');
+          const fbc = getFbcValue();
+          
+          if (fbclid || fbc) {
+            const backupImg = new Image(1, 1);
+            let backupUrl = `/server-track/pixel?event=Lead&url=${encodeURIComponent(window.location.href)}&t=${Date.now()}`;
+            
+            if (fbclid) backupUrl += `&fbclid=${encodeURIComponent(fbclid)}`;
+            if (fbc) backupUrl += `&fbc=${encodeURIComponent(fbc)}`;
+            
+            backupImg.src = backupUrl;
+          }
+        });
+      });
+      
+    } catch (error) {
+      console.warn('[Server Backup] Erro no backup server-side:', error);
+    }
   }
 
   // Cria ou recupera o ID de Visitante First-Party
@@ -1634,6 +1710,9 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
+    // ✅ PRIMEIRO: Inicializar backup server-side
+    initServerSideBackup();
+    
     // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
     initFacebookPixel();
     

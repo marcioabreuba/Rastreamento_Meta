@@ -12,9 +12,17 @@ import { GeoData } from '../types';
 import logger from '../utils/logger';
 import { validateTrackingEvent, sanitizeData, rateLimitMiddleware } from '../middleware/validationMiddleware';
 import { promisify } from 'util';
+import serverTrackRoutes from './serverTrackRoutes';
+import { FbclidCaptureMiddleware } from '../App/Middleware/FbclidCaptureMiddleware';
 
 const router = express.Router();
 const readFileAsync = promisify(fs.readFile);
+
+// ✅ MIDDLEWARE GLOBAL: Capturar fbclid automaticamente
+router.use(FbclidCaptureMiddleware.capture);
+
+// ✅ ROTAS SERVER-SIDE TRACKING (Backup para quando JS está desabilitado)
+router.use('/server-track', serverTrackRoutes);
 
 // Nova Rota para servir o script dinamicamente com headers anti-cache
 router.get('/meta-pixel-script.js', async (req: Request, res: Response) => {
