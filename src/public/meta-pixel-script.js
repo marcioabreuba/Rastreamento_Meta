@@ -180,21 +180,31 @@
     // ✅ NÍVEL 3: Gerar do fbclid se disponível (FORMATAÇÃO ÚNICA CONFORME DOCS)
     const fbclid = getUrlParameter('fbclid');
     if (fbclid && fbclid.trim() !== '') {
-        const timestamp = Date.now(); // Milliseconds conforme documentação
-        const subdomainIndex = getSubdomainIndex(); // Detectar domínio real
-        const generatedFbc = `fb.${subdomainIndex}.${timestamp}.${fbclid}`;
+        // 🛡️ VALIDAÇÃO CRÍTICA: Verificar se o fbclid é de teste antes de gerar FBC
+        const testIndicators = ['Test999', 'ZZZ', 'TESTCLICK', 'TEST123', 'DUMMY', 'FAKE', 'MOCK', 'DEMO', 'SAMPLE', 'test_', 'TEST_', 'example', 'EXAMPLE'];
+        const fbclidLower = fbclid.toLowerCase();
+        const isTestFbclid = testIndicators.some(indicator => fbclidLower.includes(indicator.toLowerCase()));
         
-        console.log('[Meta Tracking] ✅ FBC gerado do fbclid (formatação única):', {
-          fbc: generatedFbc,
-          domain: window.location.hostname,
-          subdomainIndex: subdomainIndex,
-          timestamp: timestamp
-        });
-        
-        // Salvar em AMBOS os locais para máxima persistência
-        setCookie('_fbc', generatedFbc, 90);
-        setLocalStorageItem('meta_tracking_fbc', generatedFbc);
-        return generatedFbc;
+        if (isTestFbclid) {
+            console.warn('[Meta Tracking] 🚨 FBCLID de teste detectado e rejeitado:', fbclid);
+            // Não gerar FBC para fbclids de teste, continuar para próximo nível
+        } else {
+            const timestamp = Date.now(); // Milliseconds conforme documentação
+            const subdomainIndex = getSubdomainIndex(); // Detectar domínio real
+            const generatedFbc = `fb.${subdomainIndex}.${timestamp}.${fbclid}`;
+            
+            console.log('[Meta Tracking] ✅ FBC gerado do fbclid (formatação única):', {
+              fbc: generatedFbc,
+              domain: window.location.hostname,
+              subdomainIndex: subdomainIndex,
+              timestamp: timestamp
+            });
+            
+            // Salvar em AMBOS os locais para máxima persistência
+            setCookie('_fbc', generatedFbc, 90);
+            setLocalStorageItem('meta_tracking_fbc', generatedFbc);
+            return generatedFbc;
+        }
     }
 
     // ✅ NÍVEL 4: Detectar origem Facebook sem fbclid
