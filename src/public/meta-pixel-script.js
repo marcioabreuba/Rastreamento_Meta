@@ -118,14 +118,13 @@
       console.log(`[Meta Tracking] 🇧🇷 TLD composto detectado: ${hostname}`, {
         parts: parts,
         domainParts: domainParts,
-        subdomainIndex: domainParts === 1 ? 1 : 2
+        subdomainIndex: domainParts
       });
       
-      if (domainParts === 1) {
-        return 1; // salveterrah.com.br = domínio principal
-      } else if (domainParts >= 2) {
-        return 2; // www.salveterrah.com.br = com subdomínio
-      }
+      // CORREÇÃO: Para TLD composto brasileiro
+      // salveterrah.com.br = ['salveterrah', 'com', 'br'] = 3 partes - 2 (TLD) = 1 parte = subdomainIndex 1
+      // www.salveterrah.com.br = ['www', 'salveterrah', 'com', 'br'] = 4 partes - 2 (TLD) = 2 partes = subdomainIndex 2
+      return domainParts;
     }
     
     // Lógica original para TLDs simples (.com, .org, etc.)
