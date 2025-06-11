@@ -1178,6 +1178,7 @@
     console.log(`[Meta Tracking] 📤 Enviando para fbq(): ${facebookEventName} (eventID: ${serverEventId})`);
     console.log(`[Meta Tracking] 📋 Dados: customData=${JSON.stringify(customData)}, options=${JSON.stringify(fbqOptions)}`);
     console.log(`[Meta Tracking] 🎯 Advanced Matching: external_id=${!!externalId}, fbp=${!!fbp}, fbc=${!!fbc}`);
+    console.log(`[Meta Tracking] 🔍 fbqOptions completo:`, JSON.stringify(fbqOptions, null, 2));
 
     try {
       // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
