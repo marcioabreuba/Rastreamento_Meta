@@ -95,26 +95,46 @@
     return null;
   }
 
-  // +++ Nova Função getFbc +++
+  // +++ FUNÇÃO MELHORADA PARA FBC +++
   function getFbc() {
     // Primeiro tenta pegar do cookie
     const fbcCookie = getCookie('_fbc');
     // Verifica se existe e se parece com um fbc válido (começa com fb.)
     if (fbcCookie && fbcCookie.startsWith('fb.')) {
+        console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie);
         return fbcCookie;
     }
 
     // Se não tiver cookie válido, tenta pegar fbclid da URL
     const fbclid = getUrlParameter('fbclid');
-    if (fbclid) {
-        // Formata o fbclid no formato correto do fbc (fb.1.timestamp_sec.fbclid)
-        const timestamp = Math.floor(Date.now() / 1000);
-        return `fb.1.${timestamp}.${fbclid}`;
+    if (fbclid && fbclid.trim() !== '') {
+        // Formata o fbclid no formato correto do fbc (fb.1.timestamp_ms.fbclid)
+        const timestamp = Date.now(); // Usar timestamp em milissegundos
+        const generatedFbc = `fb.1.${timestamp}.${fbclid}`;
+        console.log('[Meta Tracking] ✅ FBC gerado do fbclid:', generatedFbc);
+        
+        // Salvar no cookie para próximas visitas
+        setCookie('_fbc', generatedFbc, 90); // 90 dias como padrão Facebook
+        return generatedFbc;
     }
 
+    // Verificar se há outros indicadores de origem Facebook
+    const referrer = document.referrer || '';
+    if (referrer.includes('facebook.com') || referrer.includes('fb.com') || referrer.includes('m.facebook.com')) {
+        // Gerar FBC sintético para tráfego Facebook sem fbclid
+        const timestamp = Date.now();
+        const syntheticFbc = `fb.1.${timestamp}.synthetic_${Math.random().toString(36).substring(2, 15)}`;
+        console.log('[Meta Tracking] ✅ FBC sintético gerado (origem Facebook):', syntheticFbc);
+        
+        // Salvar no cookie
+        setCookie('_fbc', syntheticFbc, 90);
+        return syntheticFbc;
+    }
+
+    console.log('[Meta Tracking] ⚠️ FBC não disponível (não há fbclid nem origem Facebook)');
     return null; // Retorna null se nenhum for encontrado
   }
-  // +++ Fim Nova Função getFbc +++
+  // +++ FIM DA FUNÇÃO MELHORADA PARA FBC +++
 
   // Função para definir o cookie first-party
   function setCookie(name, value, days) {
@@ -919,7 +939,7 @@
     // Coletar dados comuns
     const externalId = getExternalId();
     const visitorId = getOrCreateVisitorId();
-    const fbc = getCookie('_fbc') || getUrlParameter('fbclid') || null;
+    const fbc = getFbc(); // <<< USAR FUNÇÃO MELHORADA
 
     // Coletar PII novamente (pode ter sido atualizado desde o init)
     const email = getLocalStorageItem('meta_tracking_email');
@@ -1140,14 +1160,24 @@
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
     
-    // ✅ GARANTIR FORMATO CORRETO DO eventID
+    // 🔧 COLETAR DADOS DE ADVANCED MATCHING PARA FBQ
+    const externalId = getExternalId();
+    const fbp = getCookie('_fbp') || getUrlParameter('fbp');
+    const fbc = getFbc(); // Usar função melhorada
+    
+    // ✅ GARANTIR FORMATO CORRETO DO eventID + ADVANCED MATCHING
     const fbqOptions = {
-      eventID: String(serverEventId) // Converter explicitamente para string
+      eventID: String(serverEventId), // Converter explicitamente para string
+      // 🎯 ADICIONAR ADVANCED MATCHING PARA DEDUPLICAÇÃO
+      ...(externalId && { external_id: externalId }),
+      ...(fbp && { fbp: fbp }),
+      ...(fbc && { fbc: fbc })
     };
 
     // 🔍 LOG DETALHADO PRÉ-ENVIO
     console.log(`[Meta Tracking] 📤 Enviando para fbq(): ${facebookEventName} (eventID: ${serverEventId})`);
     console.log(`[Meta Tracking] 📋 Dados: customData=${JSON.stringify(customData)}, options=${JSON.stringify(fbqOptions)}`);
+    console.log(`[Meta Tracking] 🎯 Advanced Matching: external_id=${!!externalId}, fbp=${!!fbp}, fbc=${!!fbc}`);
 
     try {
       // CORREÇÃO: Usar trackCustom para eventos não padrão como ViewCart ou mapeados para CustomEvent
@@ -1972,4 +2002,95 @@
   }
 
   // +++ MELHORIAS DE CONFIGURAÇÃO E LOGS +++
+
+  // +++ FUNÇÕES PARA CAPTURA AUTOMÁTICA DE PII +++
+  
+  // Função para detectar e capturar email de formulários
+  function detectAndCaptureEmail() {
+    // Procurar por campos de email comuns
+    const emailSelectors = [
+      'input[type="email"]',
+      'input[name*="email" i]',
+      'input[id*="email" i]',
+      'input[placeholder*="email" i]',
+      '#email', '#Email', '#EMAIL',
+      '.email-input', '.email-field'
+    ];
+    
+    for (const selector of emailSelectors) {
+      const emailField = document.querySelector(selector);
+      if (emailField && emailField.value && emailField.value.includes('@')) {
+        const email = emailField.value.trim().toLowerCase();
+        if (isValidEmail(email)) {
+          setLocalStorageItem('meta_tracking_email', email);
+          return email;
+        }
+      }
+    }
+    return null;
+  }
+  
+  // Função para detectar e capturar telefone de formulários
+  function detectAndCapturePhone() {
+    const phoneSelectors = [
+      'input[type="tel"]',
+      'input[name*="phone" i]',
+      'input[name*="telefone" i]',
+      'input[id*="phone" i]',
+      'input[id*="telefone" i]',
+      'input[placeholder*="phone" i]',
+      'input[placeholder*="telefone" i]',
+      '#phone', '#Phone', '#telefone', '#Telefone'
+    ];
+    
+    for (const selector of phoneSelectors) {
+      const phoneField = document.querySelector(selector);
+      if (phoneField && phoneField.value) {
+        const phone = phoneField.value.trim();
+        if (phone.length >= 8) { // Telefone mínimo válido
+          setLocalStorageItem('meta_tracking_phone', phone);
+          return phone;
+        }
+      }
+    }
+    return null;
+  }
+  
+  // Função para detectar nome de formulários
+  function detectAndCaptureName() {
+    const nameSelectors = [
+      'input[name*="name" i]',
+      'input[name*="nome" i]',
+      'input[id*="name" i]',
+      'input[id*="nome" i]',
+      '#firstName', '#first-name', '#nome', '#name'
+    ];
+    
+    for (const selector of nameSelectors) {
+      const nameField = document.querySelector(selector);
+      if (nameField && nameField.value) {
+        const name = nameField.value.trim();
+        if (name.length >= 2) {
+          const nameParts = name.split(' ');
+          const firstName = nameParts[0];
+          const lastName = nameParts.slice(1).join(' ');
+          
+          setLocalStorageItem('meta_tracking_first_name', firstName);
+          if (lastName) {
+            setLocalStorageItem('meta_tracking_last_name', lastName);
+          }
+          return { firstName, lastName };
+        }
+      }
+    }
+    return null;
+  }
+  
+  // Função para validar email
+  function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+  
+  // +++ FIM DAS FUNÇÕES DE CAPTURA PII +++
 })(); 
