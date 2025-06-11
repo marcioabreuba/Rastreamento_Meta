@@ -170,18 +170,18 @@
   function isTestFbc(fbc) {
     if (!fbc || !fbc.startsWith('fb.')) return false;
     
-    // Lista de indicadores de dados de teste
+    // Lista de indicadores de dados de teste (ESPECÍFICOS para evitar falsos positivos)
     const testIndicators = [
-        'TESTCLICK',           // Nosso exemplo de teste
-        'TEST123',             // Padrões comuns de teste
+        'TESTCLICK',           // Nosso exemplo específico de teste
+        'TEST123',             // Padrões específicos de teste
         'DUMMY',               // Dados dummy
         'FAKE',                // Dados falsos
         'MOCK',                // Dados mock
         'DEMO',                // Dados de demonstração
         'SAMPLE',              // Dados de exemplo
         'synthetic_test',      // Sintéticos de teste
-        'debug_',              // Prefixos de debug
-        'dev_',                // Prefixos de desenvolvimento
+        'debug_click',         // Debug específico
+        'dev_click',           // Dev específico
         'localhost'            // Local development
     ];
     

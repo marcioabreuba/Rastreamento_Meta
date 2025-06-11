@@ -186,18 +186,18 @@ export class ServerTrackController {
   private static isTestFbc(fbc: string): boolean {
     if (!fbc || !fbc.startsWith('fb.')) return false;
     
-    // Lista de indicadores de dados de teste
+    // Lista de indicadores de dados de teste (ESPECÍFICOS para evitar falsos positivos)
     const testIndicators = [
-        'TESTCLICK',           // Nosso exemplo de teste
-        'TEST123',             // Padrões comuns de teste
+        'TESTCLICK',           // Nosso exemplo específico de teste
+        'TEST123',             // Padrões específicos de teste
         'DUMMY',               // Dados dummy
         'FAKE',                // Dados falsos
         'MOCK',                // Dados mock
         'DEMO',                // Dados de demonstração
         'SAMPLE',              // Dados de exemplo
         'synthetic_test',      // Sintéticos de teste
-        'debug_',              // Prefixos de debug
-        'dev_',                // Prefixos de desenvolvimento
+        'debug_click',         // Debug específico
+        'dev_click',           // Dev específico
         'localhost'            // Local development
     ];
     
@@ -214,7 +214,7 @@ export class ServerTrackController {
         // Extrair timestamp do FBC (formato: fb.X.TIMESTAMP.FBCLID)
         const parts = fbc.split('.');
         if (parts.length >= 3) {
-            const timestamp = parseInt(parts[2]) * 1000; // Converter para ms
+            const timestamp = parseInt(parts[2]); // ✅ CORRIGIDO: timestamp já está em milliseconds
             const now = Date.now();
             const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000); // 3 dias atrás
             
@@ -234,7 +234,7 @@ export class ServerTrackController {
    * Gera FBC no formato correto a partir do fbclid
    */
   private static generateFbcFromFbclid(fbclid: string): string {
-    const timestamp = Math.floor(Date.now() / 1000);
+    const timestamp = Date.now();
     return `fb.1.${timestamp}.${fbclid}`;
   }
 

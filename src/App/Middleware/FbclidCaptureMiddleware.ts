@@ -78,7 +78,7 @@ export class FbclidCaptureMiddleware {
    * Gera FBC no formato correto a partir do fbclid
    */
   static generateFbcFromFbclid(fbclid: string): string {
-    const timestamp = Math.floor(Date.now() / 1000);
+    const timestamp = Date.now();
     return `fb.1.${timestamp}.${fbclid}`;
   }
 
