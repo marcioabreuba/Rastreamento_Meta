@@ -1809,35 +1809,68 @@
     // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
     initFacebookPixel();
     
-    // Detecta o tipo de página
+    // 🎯 CORREÇÃO CRÍTICA: Aguardar FBC para eventos iniciais (resolve perda de 9% qualidade)
     const pageInfo = detectPageType();
+    
     if (pageInfo && pageInfo.type !== 'PageView') {
-      // Adiciona um atraso antes de enviar o evento inicial, mas apenas se não for PageView
-      // pois o PageView já foi enviado na inicialização do pixel
-      console.log(`Atrasando envio do evento inicial "${pageInfo.type}" por 750ms para permitir a inicialização de cookies.`);
+      // Detectar se precisa aguardar FBC baseado na origem do tráfego
+      const needsToWaitForFbc = shouldWaitForFbc();
+      const baseDelay = needsToWaitForFbc ? 1000 : 750; // Delay maior para tráfego Facebook
+      
+      console.log(`[Meta Tracking] 🎯 Processando evento inicial "${pageInfo.type}" (aguardar FBC: ${needsToWaitForFbc})`);
+      
       setTimeout(async () => {
-        console.log(`Aguardando _fbp para evento "${pageInfo.type}"...`);
-        
         try {
-          // Aguardar _fbp com timeout mais curto para eventos subsequentes
+          // ETAPA 1: Aguardar FBP primeiro (sempre necessário)
+          console.log(`[Meta Tracking] ⏳ Aguardando _fbp para evento "${pageInfo.type}"...`);
           const fbpFound = await waitForFbpCookie(1500);
           
-          if (fbpFound) {
-            console.log(`✅ _fbp confirmado para ${pageInfo.type}, enviando evento...`);
+          // ETAPA 2: Se necessário, aguardar FBC também
+          let fbcResult = { success: false };
+          if (needsToWaitForFbc) {
+            console.log(`[Meta Tracking] ⏳ Aguardando FBC para evento "${pageInfo.type}"...`);
+            fbcResult = await waitForFbcCapture(1000);
+          }
+          
+          // ETAPA 3: Log do resultado e envio
+          if (fbpFound && (!needsToWaitForFbc || fbcResult.success)) {
+            console.log(`[Meta Tracking] ✅ Todos os cookies confirmados para ${pageInfo.type}, enviando evento...`);
+          } else if (fbpFound) {
+            console.warn(`[Meta Tracking] ⚠️ FBP OK mas FBC timeout para ${pageInfo.type}, enviando mesmo assim`);
           } else {
-            console.warn(`⚠️ Enviando ${pageInfo.type} sem _fbp (timeout de 1.5s)`);
+            console.warn(`[Meta Tracking] ⚠️ Timeout de cookies para ${pageInfo.type}, enviando mesmo assim`);
           }
           
           sendEvent(pageInfo.type, pageInfo.data);
+          
         } catch (error) {
-          console.error(`Erro ao enviar evento ${pageInfo.type}:`, error);
+          console.error(`[Meta Tracking] ❌ Erro ao processar evento ${pageInfo.type}:`, error);
           // Fallback: enviar mesmo com erro
           sendEvent(pageInfo.type, pageInfo.data);
         }
-      }, 750); // Atraso de 750 milissegundos
+      }, baseDelay);
+      
     } else if (!pageInfo || pageInfo.type === 'PageView') {
-      // Se nenhum tipo específico for detectado ou for PageView, não enviamos PageView novamente
-      console.log('Nenhum tipo de página específico detectado ou é PageView. PageView já foi enviado na inicialização.');
+      // PageView é enviado no initFacebookPixel, mas vamos aguardar FBC se necessário
+      const needsToWaitForFbc = shouldWaitForFbc();
+      
+      if (needsToWaitForFbc) {
+        console.log('[Meta Tracking] 🎯 PageView de origem Facebook - aguardando FBC para re-envio otimizado');
+        
+        setTimeout(async () => {
+          try {
+            const fbcResult = await waitForFbcCapture(800);
+            if (fbcResult.success) {
+              console.log('[Meta Tracking] ✅ FBC capturado - enviando PageView otimizado');
+              sendEvent('PageView', {});
+            }
+          } catch (error) {
+            console.warn('[Meta Tracking] Erro ao aguardar FBC para PageView:', error);
+          }
+        }, 200); // Delay menor para PageView
+      } else {
+        console.log('[Meta Tracking] 📄 PageView padrão já enviado na inicialização');
+      }
     }
 
     // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
@@ -2183,6 +2216,70 @@
       
       checkCookie();
     });
+  }
+
+  // 🎯 FUNÇÃO CRÍTICA: Aguardar FBC para resolver timing issue de 9% de perda de qualidade
+  async function waitForFbcCapture(maxWait = 1000) {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      let attempts = 0;
+      
+      const checkFbc = () => {
+        attempts++;
+        const elapsed = Date.now() - startTime;
+        
+        // Tentar obter FBC usando nossa função híbrida
+        const fbc = getFbcValue();
+        
+        if (fbc && !isTestFbc(fbc)) {
+          console.log(`[Meta Tracking] ✅ FBC capturado com sucesso após ${elapsed}ms (${attempts} tentativas): ${fbc.substring(0, 30)}...`);
+          resolve({ success: true, fbc: fbc, elapsed: elapsed });
+          return;
+        }
+        
+        // Se passou do tempo máximo, resolver sem FBC
+        if (elapsed >= maxWait) {
+          console.warn(`[Meta Tracking] ⚠️ Timeout aguardando FBC (${elapsed}ms, ${attempts} tentativas)`);
+          resolve({ success: false, fbc: null, elapsed: elapsed });
+          return;
+        }
+        
+        // Continuar aguardando
+        setTimeout(checkFbc, 50); // Check a cada 50ms para ser mais responsivo
+      };
+
+      // Iniciar verificação
+      checkFbc();
+    });
+  }
+
+  // 🔍 FUNÇÃO: Detectar se precisamos aguardar FBC baseado na origem do tráfego
+  function shouldWaitForFbc() {
+    const fbclid = getUrlParameter('fbclid');
+    const referrer = document.referrer || '';
+    const currentFbc = getFbcValue();
+    
+    // Se já temos FBC válido, não aguardar
+    if (currentFbc && !isTestFbc(currentFbc)) {
+      console.log('[Meta Tracking] 💾 FBC já disponível, não aguardar');
+      return false;
+    }
+    
+    // Se tem fbclid, aguardar processamento
+    if (fbclid && fbclid.length > 10) {
+      console.log('[Meta Tracking] 🔄 fbclid detectado, aguardando conversão para FBC');
+      return true;
+    }
+    
+    // Se origem é Facebook, aguardar FBC sintético
+    if (referrer.includes('facebook.com') || referrer.includes('fb.com') || referrer.includes('m.facebook.com')) {
+      console.log('[Meta Tracking] 📱 Origem Facebook detectada, aguardando FBC sintético');
+      return true;
+    }
+    
+    // Caso contrário, não aguardar
+    console.log('[Meta Tracking] ⚡ Tráfego direto/orgânico, enviar eventos imediatamente');
+    return false;
   }
 
   // +++ FUNÇÃO PARA VERIFICAR MODO DEBUG +++
