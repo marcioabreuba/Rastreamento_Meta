@@ -249,24 +249,36 @@ function normalizeCustomData(rawCustomData: WebCustomData | any = {}, eventName:
   normalized.order_id = rawCustomData.order_id || rawCustomData.orderId || null;
   normalized.num_items = rawCustomData.num_items || rawCustomData.numItems || null;
 
-  // Tratamento especial para content_name (deve ser string)
-  if (eventName === 'ViewCart' || eventName === 'AddToCart') { // E talvez InitiateCheckout/Purchase
-    if (Array.isArray(rawCustomData.content_name)) {
-        if (rawCustomData.content_name.length === 1) {
-            normalized.content_name = String(rawCustomData.content_name[0]);
-        } else if (rawCustomData.content_name.length > 1) {
-            // Exemplo: "Produto A e mais X itens"
-            normalized.content_name = `${String(rawCustomData.content_name[0])} e mais ${rawCustomData.content_name.length - 1} itens`;
-        } else {
-            normalized.content_name = null; // Array vazio
-        }
-    } else if (rawCustomData.content_name) {
-        normalized.content_name = String(rawCustomData.content_name);
+  // +++ CORREÇÃO CRÍTICA: content_name deve SEMPRE ser string para CAPI +++
+  const contentNameInput = rawCustomData.content_name || rawCustomData.contentName;
+  
+  if (Array.isArray(contentNameInput)) {
+    if (contentNameInput.length === 1) {
+      normalized.content_name = String(contentNameInput[0]);
+    } else if (contentNameInput.length > 1) {
+      // Para múltiplos itens: "Produto A e mais X itens"
+      normalized.content_name = `${String(contentNameInput[0])} e mais ${contentNameInput.length - 1} itens`;
     } else {
-        normalized.content_name = null;
+      normalized.content_name = null; // Array vazio
     }
+  } else if (typeof contentNameInput === 'object' && contentNameInput !== null) {
+    // +++ CORREÇÃO ESPECÍFICA: Converter objeto {"0":"Home Page"} para string +++
+    const objectValues = Object.values(contentNameInput);
+    if (objectValues.length === 1) {
+      normalized.content_name = String(objectValues[0]);
+    } else if (objectValues.length > 1) {
+      normalized.content_name = `${String(objectValues[0])} e mais ${objectValues.length - 1} itens`;
+    } else {
+      normalized.content_name = null;
+    }
+    logger.debug(`[NormalizationService] content_name convertido de objeto para string para ${eventName}:`, {
+      original: contentNameInput,
+      converted: normalized.content_name
+    });
+  } else if (contentNameInput) {
+    normalized.content_name = String(contentNameInput);
   } else {
-      normalized.content_name = rawCustomData.content_name || rawCustomData.contentName || null;
+    normalized.content_name = null;
   }
 
   normalized.content_category = rawCustomData.content_category || rawCustomData.contentCategory || null;
