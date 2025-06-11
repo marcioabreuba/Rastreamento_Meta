@@ -104,6 +104,31 @@
       return 0; // localhost ou IP = 0
     }
     
+    // 🇧🇷 TLDs compostos brasileiros (correção crítica)
+    const compositeTLDs = ['.com.br', '.org.br', '.net.br', '.gov.br', '.edu.br', '.mil.br'];
+    
+    // Verificar se usa TLD composto brasileiro
+    const hasCompositeTLD = compositeTLDs.some(tld => hostname.endsWith(tld));
+    
+    if (hasCompositeTLD) {
+      // Para TLD composto, contar partes antes do TLD
+      const parts = hostname.split('.');
+      const domainParts = parts.length - 2; // Subtrair .com.br (2 partes)
+      
+      console.log(`[Meta Tracking] 🇧🇷 TLD composto detectado: ${hostname}`, {
+        parts: parts,
+        domainParts: domainParts,
+        subdomainIndex: domainParts === 1 ? 1 : 2
+      });
+      
+      if (domainParts === 1) {
+        return 1; // salveterrah.com.br = domínio principal
+      } else if (domainParts >= 2) {
+        return 2; // www.salveterrah.com.br = com subdomínio
+      }
+    }
+    
+    // Lógica original para TLDs simples (.com, .org, etc.)
     const parts = hostname.split('.');
     
     // Documentação Facebook:
@@ -113,7 +138,7 @@
     } else if (parts.length === 2) {
       return 1; // example.com = 1
     } else {
-      return 2; // www.example.com ou sub.example.com = 2
+      return 2; // www.example.com = 2
     }
   }
 
