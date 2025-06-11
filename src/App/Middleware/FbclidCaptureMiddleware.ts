@@ -75,14 +75,6 @@ export class FbclidCaptureMiddleware {
   }
 
   /**
-   * Gera FBC no formato correto a partir do fbclid
-   */
-  static generateFbcFromFbclid(fbclid: string): string {
-    const timestamp = Date.now();
-    return `fb.1.${timestamp}.${fbclid}`;
-  }
-
-  /**
    * Middleware para injetar pixel de tracking server-side
    */
   static injectTrackingPixel(req: Request, res: Response, next: NextFunction): void {

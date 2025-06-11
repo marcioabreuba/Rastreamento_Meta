@@ -160,7 +160,7 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const externalIdInput = rawUserData?.external_id;
   const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
 
-  // --- LÓGICA FBC REVISADA PARA CONFORMIDADE COM DOCS CAPI ---
+  // --- LÓGICA FBC REVISADA: APENAS ACEITAR FBC FORMATADO DO FRONTEND ---
   let finalFbc: string | null = null;
   const rawFbcInput = rawUserData?.fbc;
 
@@ -170,28 +170,18 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     const fbcRegex = /^fb\.[0-9]+\.\d+\.[A-Za-z0-9_\-]+$/;
 
     if (fbcRegex.test(trimmedFbcInput)) {
-      // Se já está no formato correto, usar como está
+      // Se já está no formato correto, usar como está (formatado pelo frontend)
       finalFbc = trimmedFbcInput;
-      logger.debug(`[NormalizationService] Usando _fbc pré-formatado e validado: ${finalFbc}`);
+      logger.debug(`[NormalizationService] Usando _fbc pré-formatado pelo frontend: ${finalFbc}`);
     } else {
-      // Se NÃO está no formato _fbc completo, verificar se parece ser um fbclid bruto
-      // Assumimos que qualquer string não vazia aqui pode ser um fbclid,
-      // pois o frontend envia o fbclid neste campo se o cookie _fbc não existir.
-      // Uma validação mais robusta do fbclid poderia ser adicionada se necessário.
-      if (trimmedFbcInput.length > 10) { // Checagem simples: fbclid geralmente é longo
-        const creationTime = Date.now(); // Timestamp em ms para formatação
-        // Formatar conforme documentação CAPI: fb.1.timestamp.fbclidValue
-        finalFbc = `fb.1.${creationTime}.${trimmedFbcInput}`;
-        logger.info(`[NormalizationService] Formatando fbclid bruto recebido para formato _fbc: ${finalFbc}`);
-      } else {
-        // Se não passou na validação de formato _fbc e não parece ser fbclid bruto
-        logger.warn(`[NormalizationService] Valor de fbc recebido ('${trimmedFbcInput}') não está no formato _fbc válido e não foi formatado como fbclid. Descartando.`);
-        finalFbc = null; // Garante que é null se inválido
-      }
+      // ❌ REMOVIDO: Não formatamos mais fbclid bruto no backend
+      // O frontend deve sempre enviar FBC já formatado
+      logger.warn(`[NormalizationService] FBC recebido ('${trimmedFbcInput}') não está no formato válido. Frontend deve formatar. Descartando.`);
+      finalFbc = null;
     }
   } else {
-    // Se nenhum valor fbc/fbclid foi recebido
-    logger.debug(`[NormalizationService] Nenhum valor fbc/fbclid recebido.`);
+    // Se nenhum valor fbc foi recebido
+    logger.debug(`[NormalizationService] Nenhum valor fbc recebido do frontend.`);
     finalFbc = null;
   }
   // --- FIM DA LÓGICA FBC REVISADA ---

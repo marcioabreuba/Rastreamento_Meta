@@ -95,7 +95,29 @@
     return null;
   }
 
-  // +++ FUNÇÃO HÍBRIDA PARA FBC (SISTEMA DUPLO) +++
+  // 🎯 FUNÇÃO PARA DETECTAR SUBDOMAIN INDEX CORRETO (conforme documentação Facebook)
+  function getSubdomainIndex() {
+    const hostname = window.location.hostname;
+    
+    // Para desenvolvimento local
+    if (hostname === 'localhost' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      return 0; // localhost ou IP = 0
+    }
+    
+    const parts = hostname.split('.');
+    
+    // Documentação Facebook:
+    // "com" = 0, "example.com" = 1, "www.example.com" = 2
+    if (parts.length === 1) {
+      return 0; // Domínio único (raro)
+    } else if (parts.length === 2) {
+      return 1; // example.com = 1
+    } else {
+      return 2; // www.example.com ou sub.example.com = 2
+    }
+  }
+
+  // 🎯 FUNÇÃO HÍBRIDA PARA OBTER/GERAR FBC (FORMATAÇÃO ÚNICA)
   function getFbcValue() {
     // ✅ NÍVEL 1: Tentar cookie primeiro (padrão Facebook)
     const fbcCookie = getCookie('_fbc');
@@ -131,12 +153,19 @@
         }
     }
 
-    // ✅ NÍVEL 3: Gerar do fbclid se disponível
+    // ✅ NÍVEL 3: Gerar do fbclid se disponível (FORMATAÇÃO ÚNICA CONFORME DOCS)
     const fbclid = getUrlParameter('fbclid');
     if (fbclid && fbclid.trim() !== '') {
-        const timestamp = Date.now();
-        const generatedFbc = `fb.1.${timestamp}.${fbclid}`;
-        console.log('[Meta Tracking] ✅ FBC gerado do fbclid:', generatedFbc);
+        const timestamp = Date.now(); // Milliseconds conforme documentação
+        const subdomainIndex = getSubdomainIndex(); // Detectar domínio real
+        const generatedFbc = `fb.${subdomainIndex}.${timestamp}.${fbclid}`;
+        
+        console.log('[Meta Tracking] ✅ FBC gerado do fbclid (formatação única):', {
+          fbc: generatedFbc,
+          domain: window.location.hostname,
+          subdomainIndex: subdomainIndex,
+          timestamp: timestamp
+        });
         
         // Salvar em AMBOS os locais para máxima persistência
         setCookie('_fbc', generatedFbc, 90);
@@ -148,8 +177,14 @@
     const referrer = document.referrer || '';
     if (referrer.includes('facebook.com') || referrer.includes('fb.com') || referrer.includes('m.facebook.com')) {
         const timestamp = Date.now();
-        const syntheticFbc = `fb.1.${timestamp}.synthetic_${Math.random().toString(36).substring(2, 15)}`;
-        console.log('[Meta Tracking] ✅ FBC sintético gerado (origem Facebook):', syntheticFbc);
+        const subdomainIndex = getSubdomainIndex();
+        const syntheticFbc = `fb.${subdomainIndex}.${timestamp}.synthetic_${Math.random().toString(36).substring(2, 15)}`;
+        
+        console.log('[Meta Tracking] ✅ FBC sintético gerado (origem Facebook):', {
+          fbc: syntheticFbc,
+          domain: window.location.hostname,
+          subdomainIndex: subdomainIndex
+        });
         
         // Salvar em ambos os locais
         setCookie('_fbc', syntheticFbc, 90);
@@ -174,6 +209,8 @@
     const testIndicators = [
         'TESTCLICK',           // Nosso exemplo específico de teste
         'TEST123',             // Padrões específicos de teste
+        'Test999',             // ✅ ADICIONADO: Padrão Test + números
+        'ZZZ',                 // ✅ ADICIONADO: Padrão ZZZ comum em testes
         'DUMMY',               // Dados dummy
         'FAKE',                // Dados falsos
         'MOCK',                // Dados mock
@@ -182,7 +219,11 @@
         'synthetic_test',      // Sintéticos de teste
         'debug_click',         // Debug específico
         'dev_click',           // Dev específico
-        'localhost'            // Local development
+        'localhost',           // Local development
+        'test_',               // ✅ ADICIONADO: Prefixo test_
+        'TEST_',               // ✅ ADICIONADO: Prefixo TEST_
+        'example',             // ✅ ADICIONADO: Dados de exemplo
+        'EXAMPLE'              // ✅ ADICIONADO: EXAMPLE maiúsculo
     ];
     
     // Verificar se o FBC contém algum indicador de teste

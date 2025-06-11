@@ -61,18 +61,16 @@ export class ServerTrackController {
       // Gerar external_id único para servidor
       const serverExternalId = `server_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 
-             // ✅ PRIORIZAR FBC: Usar FBC enviado OU gerar do fbclid
+             // ✅ NOVA LÓGICA: Apenas aceitar FBC formatado ou passar fbclid bruto
        let fbc = null;
        if (fbcParam && fbcParam.startsWith('fb.')) {
-         // PRIORIDADE 1: FBC já formatado (localStorage backup)
+         // PRIORIDADE 1: FBC já formatado (do frontend)
          fbc = fbcParam;
-         logger.debug('[ServerTrack] ✅ Usando FBC pré-formatado do cliente');
-       } else if (fbclid && fbclid.trim().length > 10) {
-         // PRIORIDADE 2: Gerar FBC do fbclid
-         fbc = this.generateFbcFromFbclid(fbclid);
-         logger.debug('[ServerTrack] ✅ FBC gerado do fbclid');
+         logger.debug('[ServerTrack] ✅ Usando FBC pré-formatado do frontend');
        } else {
-         logger.warn('[ServerTrack] ⚠️ Nenhuma fonte de FBC disponível');
+         // ❌ REMOVIDO: Não formatamos mais fbclid no servidor
+         // O frontend deve sempre enviar FBC já formatado
+         logger.warn('[ServerTrack] ⚠️ Nenhum FBC formatado recebido. Frontend deve formatar.');
        }
 
       // Montar userData para CAPI
@@ -190,6 +188,8 @@ export class ServerTrackController {
     const testIndicators = [
         'TESTCLICK',           // Nosso exemplo específico de teste
         'TEST123',             // Padrões específicos de teste
+        'Test999',             // ✅ ADICIONADO: Padrão Test + números
+        'ZZZ',                 // ✅ ADICIONADO: Padrão ZZZ comum em testes
         'DUMMY',               // Dados dummy
         'FAKE',                // Dados falsos
         'MOCK',                // Dados mock
@@ -198,7 +198,11 @@ export class ServerTrackController {
         'synthetic_test',      // Sintéticos de teste
         'debug_click',         // Debug específico
         'dev_click',           // Dev específico
-        'localhost'            // Local development
+        'localhost',           // Local development
+        'test_',               // ✅ ADICIONADO: Prefixo test_
+        'TEST_',               // ✅ ADICIONADO: Prefixo TEST_
+        'example',             // ✅ ADICIONADO: Dados de exemplo
+        'EXAMPLE'              // ✅ ADICIONADO: EXAMPLE maiúsculo
     ];
     
     // Verificar se o FBC contém algum indicador de teste
@@ -228,14 +232,6 @@ export class ServerTrackController {
     }
     
     return false;
-  }
-
-  /**
-   * Gera FBC no formato correto a partir do fbclid
-   */
-  private static generateFbcFromFbclid(fbclid: string): string {
-    const timestamp = Date.now();
-    return `fb.1.${timestamp}.${fbclid}`;
   }
 
   /**
