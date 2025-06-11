@@ -154,6 +154,18 @@
             setLocalStorageItem('meta_tracking_fbc', null); // Limpar localStorage
             // Continuar para próximos níveis para obter FBC válido
         } else {
+            // 🛡️ PROTEÇÃO ADICIONAL: Verificar se localStorage tem FBC melhor (fb.1 vs fb.2)
+            const fbcLocalStorage = getLocalStorageItem('meta_tracking_fbc');
+            if (fbcLocalStorage && fbcLocalStorage.startsWith('fb.1.') && fbcCookie.startsWith('fb.2.')) {
+                console.warn('[Meta Tracking] 🔄 Priorizando FBC correto do localStorage sobre cookie incorreto:', {
+                    cookieIncorreto: fbcCookie,
+                    localStorageCorreto: fbcLocalStorage
+                });
+                // Restaurar FBC correto no cookie
+                setCookie('_fbc', fbcLocalStorage, 90);
+                return fbcLocalStorage;
+            }
+            
             console.log('[Meta Tracking] ✅ FBC válido encontrado no cookie:', fbcCookie);
             // Sincronizar com localStorage para backup
             setLocalStorageItem('meta_tracking_fbc', fbcCookie);
@@ -557,6 +569,19 @@
     // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
     console.log(`[Meta Tracking Debug] fbq('init') enfileirado.`);
+    
+    // 🛡️ PROTEÇÃO CRÍTICA: Evitar que Facebook Pixel sobrescreva nosso FBC correto
+    setTimeout(() => {
+      const currentFbc = getCookie('_fbc');
+      if (currentFbc && !currentFbc.startsWith('fb.1.') && fbc && fbc.startsWith('fb.1.')) {
+        console.warn('[Meta Tracking] 🚨 Facebook Pixel sobrescreveu FBC correto! Restaurando...', {
+          fbcSobrescrito: currentFbc,
+          fbcCorreto: fbc
+        });
+        setCookie('_fbc', fbc, 90); // Restaurar FBC correto
+        setLocalStorageItem('meta_tracking_fbc', fbc); // Backup
+      }
+    }, 100); // Verificar após Facebook Pixel processar
 
     // --- ETAPA 4: Enviar PageView usando novo padrão ---
     const allRawUserDataForInit = {
