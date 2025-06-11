@@ -1160,24 +1160,41 @@
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
     
-    // 🔧 COLETAR DADOS DE ADVANCED MATCHING PARA FBQ
+    // 🔧 COLETAR DADOS DE ADVANCED MATCHING CORRETOS PARA FBQ
     const externalId = getExternalId();
-    const fbp = getCookie('_fbp') || getUrlParameter('fbp');
-    const fbc = getFbc(); // Usar função melhorada
     
-    // ✅ GARANTIR FORMATO CORRETO DO eventID + ADVANCED MATCHING
+    // 📧 COLETAR PII (dados pessoais identificáveis)
+    const email = getLocalStorageItem('meta_tracking_email');
+    const phone = getLocalStorageItem('meta_tracking_phone');
+    const firstName = getLocalStorageItem('meta_tracking_first_name');
+    const lastName = getLocalStorageItem('meta_tracking_last_name');
+    
+    // 🌍 COLETAR DADOS GEOGRÁFICOS (dos placeholders do backend)
+    const city = '__GEO_CITY__';
+    const state = '__GEO_STATE__';
+    const zip = '__GEO_ZIP__';
+    const country = '__GEO_COUNTRY__';
+    
+    // ✅ MONTAR OPTIONS COM ADVANCED MATCHING CORRETO (SEM fbp/fbc manuais)
     const fbqOptions = {
-      eventID: String(serverEventId), // Converter explicitamente para string
-      // 🎯 ADICIONAR ADVANCED MATCHING PARA DEDUPLICAÇÃO
-      ...(externalId && { external_id: externalId }),
-      ...(fbp && { fbp: fbp }),
-      ...(fbc && { fbc: fbc })
+      eventID: String(serverEventId) // Converter explicitamente para string
     };
+    
+    // 🎯 ADICIONAR ADVANCED MATCHING APENAS SE DADOS EXISTIREM
+    if (externalId) fbqOptions.external_id = externalId;
+    if (email) fbqOptions.em = email;
+    if (phone) fbqOptions.ph = phone;
+    if (firstName) fbqOptions.fn = firstName;
+    if (lastName) fbqOptions.ln = lastName;
+    if (city && city !== '__GEO_CITY__') fbqOptions.ct = city;
+    if (state && state !== '__GEO_STATE__') fbqOptions.st = state;
+    if (zip && zip !== '__GEO_ZIP__') fbqOptions.zp = zip;
+    if (country && country !== '__GEO_COUNTRY__') fbqOptions.country = country;
 
     // 🔍 LOG DETALHADO PRÉ-ENVIO
     console.log(`[Meta Tracking] 📤 Enviando para fbq(): ${facebookEventName} (eventID: ${serverEventId})`);
     console.log(`[Meta Tracking] 📋 Dados: customData=${JSON.stringify(customData)}, options=${JSON.stringify(fbqOptions)}`);
-    console.log(`[Meta Tracking] 🎯 Advanced Matching: external_id=${!!externalId}, fbp=${!!fbp}, fbc=${!!fbc}`);
+    console.log(`[Meta Tracking] 🎯 Advanced Matching: external_id=${!!externalId}, email=${!!email}, phone=${!!phone}`);
     console.log(`[Meta Tracking] 🔍 fbqOptions completo:`, JSON.stringify(fbqOptions, null, 2));
 
     try {
