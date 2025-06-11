@@ -328,12 +328,14 @@
 
     // Montar parâmetros customizados para PageView
     const pageTitle = document.title || 'Page View';
-    const customParams = {
-      app: 'meta-tracking',
-      contentName: pageTitle,
-      contentType: 'page_view',
-      language: navigator.language || 'pt-BR',
-      referrer_url: document.referrer || ''
+          const customParams = {
+        app: 'meta-tracking',
+        content_name: pageTitle,
+        content_type: 'page_view',
+        content_category: 'General',
+        currency: 'BRL',
+        language: navigator.language || 'pt-BR',
+        referrer_url: document.referrer || ''
     };
     // Limpar campos vazios, nulos ou undefined
     Object.keys(customParams).forEach(key => {
@@ -506,15 +508,21 @@
     });
 
     const details = { 
-        contentIds: finalProductId ? [finalProductId] : [], 
-        contentName: productName || document.title, 
-          contentType: 'product',
+        content_ids: finalProductId ? [finalProductId] : [], 
+        content_name: productName || document.title, 
+        content_type: 'product',
         value: Math.round(finalPrice), // Arredonda para o inteiro mais próximo
-        currency: finalCurrency // Usa moeda final corrigida
+        currency: finalCurrency, // Usa moeda final corrigida
+        num_items: 1,
+        contents: finalProductId && finalPrice ? [{
+          id: finalProductId,
+          quantity: 1,
+          item_price: Math.round(finalPrice)
+        }] : []
     };
     // Adicionar category apenas se encontrada
     if (finalCategory) {
-      details.contentCategory = finalCategory;
+      details.content_category = Array.isArray(finalCategory) ? finalCategory : [finalCategory];
     }
 
      console.log('[Meta Tracking Debug] getProductDetails - Resultado Final Combinado:', details); 
@@ -535,7 +543,13 @@
     if (path === '/' || bodyClasses.includes('template-index')) {
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Home');
       // Retorna o tipo interno 'ViewHome'
-      return { type: 'ViewHome', data: { contentName: 'Home Page', contentType: 'home_page' } };
+      return { type: 'ViewHome', data: { 
+        content_name: 'Home Page', 
+        content_type: 'home_page',
+        content_category: 'Home',
+        value: 0,
+        currency: 'BRL'
+      } };
     }
     if (path.includes('/products/') || bodyClasses.includes('template-product')) {
       console.log('[Meta Tracking Debug] detectPageType - Detectado: Product');
@@ -547,9 +561,10 @@
        console.log('[Meta Tracking Debug] detectPageType - Detectado: Category/Collection');
        const categoryName = document.title.split('–')[0].trim() || 'Category Page'; // Tenta extrair do título
        const categoryData = { 
-           contentName: categoryName, 
-           contentType: 'product_group', 
-          contentCategory: categoryName
+           content_name: categoryName, 
+           content_type: 'product_group', 
+           content_category: categoryName,
+           currency: 'BRL'
        };
        console.log('[Meta Tracking Debug] detectPageType - Dados Categoria (para ViewList):', categoryData);
        // Retorna o tipo interno 'ViewCategory' que será mapeado para 'ViewList'
@@ -565,7 +580,12 @@
     // ... (outras detecções: checkout, search, etc.) ...
     
     console.log('[Meta Tracking Debug] detectPageType - Nenhum tipo específico detectado, usando PageView padrão.');
-    return { type: 'PageView', data: { contentName: document.title || 'Page View', contentType: 'page_view' } }; // Fallback
+    return { type: 'PageView', data: { 
+      content_name: document.title || 'Page View', 
+      content_type: 'page_view',
+      content_category: 'General',
+      currency: 'BRL'
+    } }; // Fallback
   }
 
   /**
@@ -1005,23 +1025,17 @@
     // +++ FIM SEGUNDA VALIDAÇÃO +++
 
     // Mesclar dados customizados específicos do evento
-    const finalCustomData = {
+    const rawCustomData = {
       app: 'meta-tracking',
       language: navigator.language || 'pt-BR',
       referrer_url: document.referrer || '',
       ...customData // Dados específicos vindos de detectPageType, etc.
     };
-    // Garantir que dados essenciais como value/currency não sejam sobrescritos por null/undefined
-     Object.keys(finalCustomData).forEach(key => {
-        if (finalCustomData[key] == null) {
-            // Se o customData específico tinha um valor, não apague
-            if (customData.hasOwnProperty(key) && customData[key] != null) {
-                 // não faz nada, mantém o valor do customData
-      } else {
-                 delete finalCustomData[key]; // Remove null/undefined gerais
-            }
-        }
-     });
+    
+    // ✅ APLICAR NORMALIZAÇÃO PARA PADRÃO FACEBOOK
+    const finalCustomData = normalizeCustomDataToFacebookStandard(rawCustomData);
+    console.log('[Meta Tracking Debug] 🔧 CustomData ANTES da normalização:', rawCustomData);
+    console.log('[Meta Tracking Debug] ✅ CustomData APÓS normalização Facebook:', finalCustomData);
 
     // +++ VALIDAÇÃO DE TIMESTAMP E CORREÇÃO +++
     // ✅ CORREÇÃO: Usar UTC diretamente (servidor Virginia + cliente qualquer = UTC como padrão)
@@ -1305,18 +1319,24 @@
         if (scrollPercentage >= 25 && !sentEvents.scroll_25) {
           sentEvents.scroll_25 = true;
           sendEvent('Scroll_25', {
-            scrollPercentage: 25,
+            scroll_percentage: 25,
             pageUrl: window.location.href,
-            contentName: document.title
+            content_name: document.title,
+            content_type: 'engagement',
+            content_category: 'Scroll',
+            currency: 'BRL'
           });
         }
         
         if (scrollPercentage >= 50 && !sentEvents.scroll_50) {
           sentEvents.scroll_50 = true;
           sendEvent('Scroll_50', {
-            scrollPercentage: 50,
+            scroll_percentage: 50,
             pageUrl: window.location.href,
-            contentName: document.title
+            content_name: document.title,
+            content_type: 'engagement',
+            content_category: 'Scroll',
+            currency: 'BRL'
           });
         }
         
@@ -1324,9 +1344,12 @@
         if (scrollPercentage >= 75 && !sentEvents.scroll_75) {
           sentEvents.scroll_75 = true;
           sendEvent('Scroll_75', {
-            scrollPercentage: 75,
+            scroll_percentage: 75,
             pageUrl: window.location.href,
-            contentName: document.title
+            content_name: document.title,
+            content_type: 'engagement',
+            content_category: 'Scroll',
+            currency: 'BRL'
           });
         }
         
@@ -1334,9 +1357,12 @@
         if (scrollPercentage >= 90 && !sentEvents.scroll_90) {
           sentEvents.scroll_90 = true;
           sendEvent('Scroll_90', {
-            scrollPercentage: 90,
+            scroll_percentage: 90,
             pageUrl: window.location.href,
-            contentName: document.title
+            content_name: document.title,
+            content_type: 'engagement',
+            content_category: 'Scroll',
+            currency: 'BRL'
           });
         }
       }
@@ -1355,7 +1381,13 @@
       if (!sentEvents.timer_1min) {
         console.log('Timer 1min reached');
         // Passar dados customizados mínimos para o evento de timer
-        sendEvent('Timer_1min', { time_on_page: 60 });
+        sendEvent('Timer_1min', { 
+          time_on_page: 60,
+          content_name: document.title,
+          content_type: 'engagement',
+          content_category: 'Timer',
+          currency: 'BRL'
+        });
         sentEvents.timer_1min = true;
       }
     }, 60000); // 60 segundos = 1 minuto
@@ -1374,9 +1406,11 @@
         
         // Dados do vídeo para enviar nos eventos
         let videoData = {
-          contentIds: [videoId],
-          contentName: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
-          contentType: 'video'
+          content_ids: [videoId],
+          content_name: video.getAttribute('title') || video.getAttribute('data-title') || videoId,
+          content_type: 'video',
+          content_category: 'Video',
+          currency: 'BRL'
         };
         
         // Armazenar pontos de progresso já rastreados
@@ -1394,7 +1428,7 @@
             trackedProgressPoints.start = true;
             
             // Adicionar duração do vídeo aos dados
-            videoData.videoDuration = video.duration;
+            videoData.video_duration = video.duration;
             
             // Enviar evento de início de vídeo
             sendEvent('PlayVideo', videoData);
@@ -1411,9 +1445,9 @@
             trackedProgressPoints['25'] = true;
             sendEvent('ViewVideo_25', {
               ...videoData,
-              videoPosition: 25,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 25,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1421,9 +1455,9 @@
             trackedProgressPoints['50'] = true;
             sendEvent('ViewVideo_50', {
               ...videoData,
-              videoPosition: 50,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 50,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1431,9 +1465,9 @@
             trackedProgressPoints['75'] = true;
             sendEvent('ViewVideo_75', {
               ...videoData,
-              videoPosition: 75,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 75,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
           
@@ -1441,9 +1475,9 @@
             trackedProgressPoints['90'] = true;
             sendEvent('ViewVideo_90', {
               ...videoData,
-              videoPosition: 90,
-              videoDuration: video.duration,
-              videoTitle: videoData.contentName
+              video_position: 90,
+              video_duration: video.duration,
+              video_title: videoData.content_name
             });
           }
         });
@@ -1505,8 +1539,10 @@
             
             // Enviar evento Lead
             sendEvent('Lead', {
-              contentName: form.getAttribute('name') || form.id || 'form_lead',
-              contentCategory: 'lead',
+              content_name: form.getAttribute('name') || form.id || 'form_lead',
+              content_category: 'Lead',
+              content_type: 'lead_form',
+              currency: 'BRL',
               value: 0
             }, leadData);
           });
@@ -1533,9 +1569,11 @@
                             button.getAttribute('title');
           
           sendEvent('AddToWishlist', {
-            contentIds: productId ? [productId] : null,
-            contentName: productName || 'Product',
-            contentCategory: 'wishlist'
+            content_ids: productId ? [productId] : null,
+            content_name: productName || 'Product',
+            content_category: 'Wishlist',
+            content_type: 'product',
+            currency: 'BRL'
           });
         });
       });
@@ -1645,12 +1683,12 @@
         
         // Exemplo de produto completo com todos os parâmetros necessários
         const completeProductData = {
-          contentName: 'Bolsa de palha trama',
-          contentType: 'product_group',
-          contentCategory: ['bolsa'],
-          contentIds: ['9068696764659'],
-          contents: [{ id: '9068696764659', quantity: 1 }],
-          numItems: 1, 
+          content_name: 'Bolsa de palha trama',
+          content_type: 'product_group',
+          content_category: ['bolsa'],
+          content_ids: ['9068696764659'],
+          contents: [{ id: '9068696764659', quantity: 1, item_price: 289 }],
+          num_items: 1, 
           currency: 'BRL',
           value: 289
         };
@@ -1851,13 +1889,13 @@
                  console.log('[Meta Tracking Debug] extractCartData - Dados FINAIS extraídos do #cart-json:', { contentIds, contents, numItems, totalValue, currency });
                  // Armazena os dados formatados se encontrados via JSON
                   cartDataExtracted = { 
-                    contentIds, 
+                    content_ids: contentIds, 
                     contents, 
-                    numItems, 
+                    num_items: numItems, 
                     value: parseFloat(totalValue.toFixed(2)), 
                     currency, 
-                    contentType: 'cart', // ou 'product_group'
-                    contentName: 'Shopping Cart' 
+                    content_type: 'cart', // ou 'product_group'
+                    content_name: 'Shopping Cart' 
                   };
              } else {
                 console.log('[Meta Tracking Debug] extractCartData - #cart-json parseado, mas sem shopifyCart.items');
@@ -1911,13 +1949,13 @@
             });
              console.log('[Meta Tracking Debug] extractCartData - Dados FINAIS extraídos do DOM:', { contentIds, contents, numItems, totalValue, currency });
              cartDataExtracted = { 
-                contentIds: contentIds.length > 0 ? contentIds : ['DOM_N/A'], // Indicador de fallback
+                content_ids: contentIds.length > 0 ? contentIds : ['DOM_N/A'], // Indicador de fallback
                 contents: contents.length > 0 ? contents : [{id: 'DOM_N/A', quantity: 0, item_price: 0}],
-                numItems: numItems > 0 ? numItems : 0, 
+                num_items: numItems > 0 ? numItems : 0, 
                 value: parseFloat(totalValue.toFixed(2)) || 0, 
                 currency: currency, 
-                contentType: 'cart', 
-                contentName: 'Shopping Cart' 
+                content_type: 'cart', 
+                content_name: 'Shopping Cart' 
              };
         } else {
              console.log('[Meta Tracking Debug] extractCartData - DOM: Nenhum item encontrado via seletores genéricos.');
@@ -1928,13 +1966,13 @@
     if (!cartDataExtracted) {
         console.log('[Meta Tracking Debug] extractCartData - Nenhuma das tentativas (JSON ou DOM) extraiu dados. Usando fallback.');
         cartDataExtracted = { 
-            contentIds: ['FALLBACK_N/A'], // Evita array vazio se falhar
+            content_ids: ['FALLBACK_N/A'], // Evita array vazio se falhar
             contents: [{id: 'FALLBACK_N/A', quantity: 0, item_price: 0}],
-            numItems: 0, 
+            num_items: 0, 
             value: 0, 
             currency: currency, 
-            contentType: 'cart', 
-            contentName: 'Shopping Cart (Fallback)' 
+            content_type: 'cart', 
+            content_name: 'Shopping Cart (Fallback)' 
         };
     }
     
@@ -2123,4 +2161,86 @@
   }
   
   // +++ FIM DAS FUNÇÕES DE CAPTURA PII +++
+
+  // +++ FUNÇÃO DE NORMALIZAÇÃO COMPLETA PARA PADRÃO FACEBOOK +++
+  function normalizeCustomDataToFacebookStandard(data) {
+    const normalized = {};
+    
+    // 1. NOMENCLATURA CORRETA (contentName → content_name, etc.)
+    if (data.contentName) normalized.content_name = Array.isArray(data.contentName) ? data.contentName : [data.contentName];
+    if (data.content_name) normalized.content_name = Array.isArray(data.content_name) ? data.content_name : [data.content_name];
+    
+    if (data.contentType) normalized.content_type = data.contentType;
+    if (data.content_type) normalized.content_type = data.content_type;
+    
+    if (data.contentCategory) normalized.content_category = Array.isArray(data.contentCategory) ? data.contentCategory : [data.contentCategory];
+    if (data.content_category) normalized.content_category = Array.isArray(data.content_category) ? data.content_category : [data.content_category];
+    
+    if (data.contentIds) normalized.content_ids = Array.isArray(data.contentIds) ? data.contentIds : [data.contentIds];
+    if (data.content_ids) normalized.content_ids = Array.isArray(data.content_ids) ? data.content_ids : [data.content_ids];
+    
+    // 2. CAMPOS MONETÁRIOS (ESSENCIAIS PARA ROI)
+    if (data.value !== undefined && data.value !== null) normalized.value = Number(data.value);
+    normalized.currency = data.currency || 'BRL';
+    
+    // 3. CAMPOS DE QUANTIDADE
+    if (data.numItems !== undefined) normalized.num_items = Number(data.numItems);
+    if (data.num_items !== undefined) normalized.num_items = Number(data.num_items);
+    
+    // 4. CONTENTS (ARRAY DE PRODUTOS)
+    if (data.contents) normalized.contents = data.contents;
+    
+    // 5. CAMPOS DE BUSCA
+    if (data.searchString) normalized.search_string = data.searchString;
+    if (data.search_string) normalized.search_string = data.search_string;
+    
+    // 6. OUTROS CAMPOS PADRÃO FACEBOOK
+    if (data.status) normalized.status = data.status;
+    if (data.order_id) normalized.order_id = data.order_id;
+    if (data.orderId) normalized.order_id = data.orderId;
+    
+    // 7. CAMPOS DE VÍDEO
+    if (data.video_title) normalized.video_title = data.video_title;
+    if (data.videoTitle) normalized.video_title = data.videoTitle;
+    if (data.video_position !== undefined) normalized.video_position = Number(data.video_position);
+    if (data.videoPosition !== undefined) normalized.video_position = Number(data.videoPosition);
+    
+    // 8. CAMPOS TÉCNICOS (PRESERVAR)
+    if (data.app) normalized.app = data.app;
+    if (data.language) normalized.language = data.language;
+    if (data.referrer_url) normalized.referrer_url = data.referrer_url;
+    if (data.client_event_time) normalized.client_event_time = data.client_event_time;
+    if (data.time_on_page !== undefined) normalized.time_on_page = Number(data.time_on_page);
+    if (data.scroll_percentage !== undefined) normalized.scroll_percentage = Number(data.scroll_percentage);
+    
+    // 9. AUTO-DETECTAR CONTENT_IDS E NUM_ITEMS QUANDO FALTAM
+    if (!normalized.content_ids && normalized.content_name && normalized.content_name.length > 0) {
+      // Gerar IDs baseados no nome se não existirem
+      normalized.content_ids = normalized.content_name.map((name, index) => `auto_id_${Date.now()}_${index}`);
+    }
+    
+    if (!normalized.num_items && normalized.content_ids) {
+      normalized.num_items = normalized.content_ids.length;
+    }
+    
+    // 10. AUTO-DETECTAR CONTENTS QUANDO FALTAM (MAS TEM VALUE E CONTENT_IDS)
+    if (!normalized.contents && normalized.content_ids && normalized.value) {
+      const itemPrice = normalized.value / (normalized.num_items || 1);
+      normalized.contents = normalized.content_ids.map((id, index) => ({
+        id: id,
+        quantity: 1,
+        item_price: itemPrice
+      }));
+    }
+    
+    // 11. REMOVER CAMPOS VAZIOS/NULOS
+    Object.keys(normalized).forEach(key => {
+      if (normalized[key] === null || normalized[key] === undefined || normalized[key] === '') {
+        delete normalized[key];
+      }
+    });
+    
+    return normalized;
+  }
+  // +++ FIM DA FUNÇÃO DE NORMALIZAÇÃO +++
 })(); 

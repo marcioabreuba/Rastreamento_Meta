@@ -4,14 +4,15 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
+        "@executeautomation/playwright-mcp-server"
       ]
     },
     "Navegador": {
       "command": "npx",
       "args": [
-        "@playwright/mcp@latest"
+        "-y",
+        "@executeautomation/playwright-mcp-server"
       ]
     }
   }
-} 
+}
