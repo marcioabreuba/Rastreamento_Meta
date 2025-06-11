@@ -281,7 +281,36 @@ function normalizeCustomData(rawCustomData: WebCustomData | any = {}, eventName:
     normalized.content_name = null;
   }
 
-  normalized.content_category = rawCustomData.content_category || rawCustomData.contentCategory || null;
+  // +++ CORREÇÃO CRÍTICA: content_category deve SEMPRE ser string para CAPI +++
+  const contentCategoryInput = rawCustomData.content_category || rawCustomData.contentCategory;
+  
+  if (Array.isArray(contentCategoryInput)) {
+    if (contentCategoryInput.length === 1) {
+      normalized.content_category = String(contentCategoryInput[0]);
+    } else if (contentCategoryInput.length > 1) {
+      normalized.content_category = contentCategoryInput.join(', ');
+    } else {
+      normalized.content_category = null;
+    }
+  } else if (typeof contentCategoryInput === 'object' && contentCategoryInput !== null) {
+    // +++ CORREÇÃO ESPECÍFICA: Converter objeto {"0":"calçados"} para string +++
+    const objectValues = Object.values(contentCategoryInput);
+    if (objectValues.length === 1) {
+      normalized.content_category = String(objectValues[0]);
+    } else if (objectValues.length > 1) {
+      normalized.content_category = objectValues.join(', ');
+    } else {
+      normalized.content_category = null;
+    }
+    logger.debug(`[NormalizationService] content_category convertido de objeto para string para ${eventName}:`, {
+      original: contentCategoryInput,
+      converted: normalized.content_category
+    });
+  } else if (contentCategoryInput) {
+    normalized.content_category = String(contentCategoryInput);
+  } else {
+    normalized.content_category = null;
+  }
   
   // +++ CORREÇÃO CRÍTICA: content_ids deve ser array, não objeto +++
   if (rawCustomData.content_ids || rawCustomData.contentIds) {
