@@ -14,10 +14,24 @@ export function normalizeBrazilianZipCode(zipCode: string | null | undefined, co
   }
 
   const numericZip = zipCode.replace(/\D/g, '');
-  if (numericZip.length > 0 && numericZip.length < 8) {
+  
+  // Se não tem dígitos, retorna null
+  if (numericZip.length === 0) {
+    return null;
+  }
+  
+  // Se tem menos de 8 dígitos, completa com zeros à direita
+  if (numericZip.length < 8) {
     return numericZip.padEnd(8, '0');
   }
-  return numericZip || null;
+  
+  // Se tem exatamente 8 dígitos, retorna como está
+  if (numericZip.length === 8) {
+    return numericZip;
+  }
+  
+  // Se tem mais de 8 dígitos, trunca para 8 (pega os primeiros 8)
+  return numericZip.substring(0, 8);
 }
 
 /**

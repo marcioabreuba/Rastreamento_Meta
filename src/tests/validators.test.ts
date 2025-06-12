@@ -22,12 +22,25 @@ function runTest(testName: string, testFunction: () => boolean): void {
 // Testes para normalizeBrazilianZipCode
 function testNormalizeBrazilianZipCode(): boolean {
   const tests = [
+    // Casos básicos
     { input: ['12345', 'br'], expected: '12345000' },
     { input: ['12345678', 'br'], expected: '12345678' },
     { input: ['12345-123', 'br'], expected: '12345123' },
     { input: ['12345', 'us'], expected: '12345' },
     { input: [null, 'br'], expected: null },
     { input: ['', 'br'], expected: null },
+    
+    // Casos corrigidos - CEPs com mais de 8 dígitos
+    { input: ['123456789', 'br'], expected: '12345678' }, // Trunca para 8
+    { input: ['75133000123', 'br'], expected: '75133000' }, // Trunca para 8
+    
+    // Casos com formatação
+    { input: ['75133-000', 'br'], expected: '75133000' },
+    { input: ['751.33.000', 'br'], expected: '75133000' },
+    
+    // Casos extremos
+    { input: ['1', 'br'], expected: '10000000' },
+    { input: ['abc123def456ghi789', 'br'], expected: '12345678' }, // Remove não-numéricos e trunca
   ];
 
   for (const test of tests) {

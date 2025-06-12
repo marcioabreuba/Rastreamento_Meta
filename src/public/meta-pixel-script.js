@@ -4,10 +4,14 @@
  * Este script detecta automaticamente o tipo de página e envia eventos equivalentes aos da TracLead
  * Incluindo Advanced Matching completo e parâmetros adicionais
  * 
- * Versão 1.4 - Suporte a Advanced Matching completo e geolocalização
+ * Versão 1.5 - CORREÇÃO CRÍTICA: SubdomainIndex correto para TLDs brasileiros (.com.br = fb.1)
+ * Cache Buster: 2025-01-11-23:15
  */
 
 (function() {
+  // 🚀 LOG DE VERSÃO PARA DEBUG DE CACHE
+  console.log('[Meta Tracking] 🚀 SCRIPT VERSÃO 1.5 CARREGADO - SubdomainIndex CORRIGIDO para .com.br');
+  
   // URL da API de rastreamento
   const API_URL = 'https://rastreamento-meta.onrender.com/track';
   
@@ -99,8 +103,11 @@
   function getSubdomainIndex() {
     const hostname = window.location.hostname;
     
+    console.log(`[Meta Tracking] 🔧 getSubdomainIndex() VERSÃO CORRIGIDA executando para: ${hostname}`);
+    
     // Para desenvolvimento local
     if (hostname === 'localhost' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      console.log(`[Meta Tracking] 🏠 Localhost/IP detectado: ${hostname} → subdomainIndex = 0`);
       return 0; // localhost ou IP = 0
     }
     
@@ -118,7 +125,8 @@
       console.log(`[Meta Tracking] 🇧🇷 TLD composto detectado: ${hostname}`, {
         parts: parts,
         domainParts: domainParts,
-        subdomainIndex: domainParts
+        subdomainIndex: domainParts,
+        versao: 'CORRIGIDA_V2'
       });
       
       // CORREÇÃO: Para TLD composto brasileiro
@@ -129,6 +137,11 @@
     
     // Lógica original para TLDs simples (.com, .org, etc.)
     const parts = hostname.split('.');
+    
+    console.log(`[Meta Tracking] 🌐 TLD simples detectado: ${hostname}`, {
+      parts: parts,
+      subdomainIndex: parts.length === 1 ? 0 : (parts.length === 2 ? 1 : 2)
+    });
     
     // Documentação Facebook:
     // "com" = 0, "example.com" = 1, "www.example.com" = 2
