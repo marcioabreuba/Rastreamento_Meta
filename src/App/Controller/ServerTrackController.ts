@@ -70,7 +70,7 @@ export class ServerTrackController {
       const userData = {
         external_id: serverExternalId,
         fbc: fbc, // FBC do cookie _fbc
-        fbclid: fbclidValue, // FBCLID da URL
+        // NOTA: fbclid não é enviado para CAPI - apenas usado internamente pelo Facebook
         fbp: null, // Não temos FBP no server-side
         ct: geoData?.city || null,
         st: geoData?.region?.code || null,

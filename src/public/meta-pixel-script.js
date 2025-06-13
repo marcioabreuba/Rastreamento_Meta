@@ -889,10 +889,12 @@
     // +++ RE-LER FBP, FBC e FBCLID AQUI para garantir valores mais recentes +++
     const currentFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
     const currentFbc = getFbcFromCookie(); // Apenas do cookie
-    const currentFbclid = getFbclidFromUrl(); // Apenas da URL
+    const currentFbclid = getFbclidFromUrl(); // Apenas da URL (para logs)
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
     console.log(`[Frontend Script] Valor FBC lido ANTES do envio para backend: ${currentFbc}`);
-    console.log(`[Frontend Script] Valor FBCLID lido ANTES do envio para backend: ${currentFbclid}`);
+    if (currentFbclid) {
+      console.log(`[Frontend Script] Valor FBCLID coletado (não enviado para backend): ${currentFbclid.substring(0, 20)}...`);
+    }
     // +++ FIM RE-LEITURA +++
 
     // Mesclar os dados recebidos com os dados coletados
@@ -1115,10 +1117,14 @@
     // Montar UserData para backend (inclui fbp para CAPI)
     const fbpForBackend = getCookie('_fbp') || getUrlParameter('fbp') || null;
     const rawUserData = {
-      external_id: externalId, visitorId: visitorId, fbc: fbc, fbclid: fbclid, fbp: fbpForBackend,
+      external_id: externalId, visitorId: visitorId, fbc: fbc, fbp: fbpForBackend,
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
+    // NOTA: fbclid coletado mas não enviado para CAPI (apenas para logs)
+    if (fbclid) {
+      console.log(`[Meta Tracking] 📋 FBCLID coletado (não enviado para CAPI): ${fbclid.substring(0, 20)}...`);
+    }
     Object.keys(rawUserData).forEach(key => rawUserData[key] == null && delete rawUserData[key]);
 
     // Montar Advanced Matching Params para fbq (sem fbp/fbc - Facebook detecta automaticamente)

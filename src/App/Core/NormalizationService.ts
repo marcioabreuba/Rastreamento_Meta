@@ -206,13 +206,11 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     userData.fbp = finalFbp;
   }
 
-  // Adicionar fbc e fbclid se disponíveis
+  // Adicionar apenas fbc se disponível (fbclid não é enviado para CAPI)
   if (finalFbc) {
     userData.fbc = finalFbc;
   }
-  if (finalFbclid) {
-    userData.fbclid = finalFbclid;
-  }
+  // NOTA: fbclid não é enviado para CAPI - apenas usado pelo Facebook internamente
 
   return userData;
   // --- FIM DA MODIFICAÇÃO ---

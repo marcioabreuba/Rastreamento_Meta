@@ -64,7 +64,7 @@ export interface NormalizedUserData {
   client_ip_address: string | null;
   client_user_agent: string | null;
   fbc: string | null;
-  fbclid: string | null;
+  // REMOVIDO: fbclid não é enviado para CAPI - apenas usado internamente pelo Facebook
   fbp: string | null;
   subscription_id: string | null;
   fb_login_id: string | null;

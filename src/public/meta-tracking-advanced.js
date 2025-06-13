@@ -41,8 +41,8 @@
         userAgent: navigator.userAgent,
         language: navigator.language || 'pt-BR',
         fbp: getCookie('_fbp'),
-        fbc: getCookie('_fbc'),
-      fbclid: getUrlParameter('fbclid'),
+                fbc: getCookie('_fbc'),
+        // NOTA: fbclid não é enviado - apenas usado internamente pelo Facebook
         referrer_url: document.referrer
       };
 
