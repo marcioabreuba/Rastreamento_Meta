@@ -154,166 +154,37 @@
     }
   }
 
-  // 🎯 FUNÇÃO HÍBRIDA PARA OBTER/GERAR FBC (FORMATAÇÃO ÚNICA)
-  function getFbcValue() {
-    // ✅ NÍVEL 1: Tentar cookie primeiro (padrão Facebook)
+  // 📥 FUNÇÃO PARA COLETAR FBC DO COOKIE (SEM GERAÇÃO)
+  function getFbcFromCookie() {
+    // Apenas ler o cookie _fbc se existir
     const fbcCookie = getCookie('_fbc');
-    if (fbcCookie && fbcCookie.startsWith('fb.')) {
-        // 🛡️ VALIDAÇÃO CRÍTICA: Detectar e remover FBCs de teste
-        if (isTestFbc(fbcCookie)) {
-            console.warn('[Meta Tracking] 🚨 FBC de teste detectado e removido:', fbcCookie);
-            // Limpar dados de teste
-            setCookie('_fbc', '', -1); // Expirar cookie
-            setLocalStorageItem('meta_tracking_fbc', null); // Limpar localStorage
-            // Continuar para próximos níveis para obter FBC válido
-        } else {
-            // 🛡️ PROTEÇÃO ADICIONAL: Verificar se localStorage tem FBC melhor (fb.1 vs fb.2)
-            const fbcLocalStorage = getLocalStorageItem('meta_tracking_fbc');
-            if (fbcLocalStorage && fbcLocalStorage.startsWith('fb.1.') && fbcCookie.startsWith('fb.2.')) {
-                console.warn('[Meta Tracking] 🔄 Priorizando FBC correto do localStorage sobre cookie incorreto:', {
-                    cookieIncorreto: fbcCookie,
-                    localStorageCorreto: fbcLocalStorage
-                });
-                // Restaurar FBC correto no cookie
-                setCookie('_fbc', fbcLocalStorage, 90);
-                return fbcLocalStorage;
-            }
-            
-            console.log('[Meta Tracking] ✅ FBC válido encontrado no cookie:', fbcCookie);
-            // Sincronizar com localStorage para backup
-            setLocalStorageItem('meta_tracking_fbc', fbcCookie);
-            return fbcCookie;
-        }
+    if (fbcCookie && fbcCookie.startsWith('fb.') && fbcCookie.length > 10) {
+      console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie.substring(0, 20) + '...');
+      return fbcCookie;
     }
-
-    // ✅ NÍVEL 2: Tentar localStorage como backup
-    const fbcLocalStorage = getLocalStorageItem('meta_tracking_fbc');
-    if (fbcLocalStorage && fbcLocalStorage.startsWith('fb.')) {
-        // 🛡️ VALIDAÇÃO: Também verificar localStorage para dados de teste
-        if (isTestFbc(fbcLocalStorage)) {
-            console.warn('[Meta Tracking] 🚨 FBC de teste detectado no localStorage e removido:', fbcLocalStorage);
-            setLocalStorageItem('meta_tracking_fbc', null); // Limpar localStorage
-            // Continuar para próximos níveis
-        } else {
-            console.log('[Meta Tracking] 🔄 FBC válido recuperado do localStorage:', fbcLocalStorage);
-            // Restaurar no cookie
-            setCookie('_fbc', fbcLocalStorage, 90);
-            return fbcLocalStorage;
-        }
-    }
-
-    // ✅ NÍVEL 3: Gerar do fbclid se disponível (FORMATAÇÃO ÚNICA CONFORME DOCS)
-    const fbclid = getUrlParameter('fbclid');
-    if (fbclid && fbclid.trim() !== '') {
-        // 🛡️ VALIDAÇÃO CRÍTICA: Verificar se o fbclid é de teste antes de gerar FBC
-        const testIndicators = ['Test999', 'ZZZ', 'TESTCLICK', 'TEST123', 'DUMMY', 'FAKE', 'MOCK', 'DEMO', 'SAMPLE', 'test_', 'TEST_', 'example', 'EXAMPLE'];
-        const fbclidLower = fbclid.toLowerCase();
-        const isTestFbclid = testIndicators.some(indicator => fbclidLower.includes(indicator.toLowerCase()));
-        
-        if (isTestFbclid) {
-            console.warn('[Meta Tracking] 🚨 FBCLID de teste detectado e rejeitado:', fbclid);
-            // Não gerar FBC para fbclids de teste, continuar para próximo nível
-        } else {
-            const timestamp = Date.now(); // Milliseconds conforme documentação
-            const subdomainIndex = getSubdomainIndex(); // Detectar domínio real
-            const generatedFbc = `fb.${subdomainIndex}.${timestamp}.${fbclid}`;
-            
-            console.log('[Meta Tracking] ✅ FBC gerado do fbclid (formatação única):', {
-              fbc: generatedFbc,
-              domain: window.location.hostname,
-              subdomainIndex: subdomainIndex,
-              timestamp: timestamp
-            });
-            
-            // Salvar em AMBOS os locais para máxima persistência
-            setCookie('_fbc', generatedFbc, 90);
-            setLocalStorageItem('meta_tracking_fbc', generatedFbc);
-            return generatedFbc;
-        }
-    }
-
-    // ✅ NÍVEL 4: Detectar origem Facebook sem fbclid
-    const referrer = document.referrer || '';
-    if (referrer.includes('facebook.com') || referrer.includes('fb.com') || referrer.includes('m.facebook.com')) {
-        const timestamp = Date.now();
-        const subdomainIndex = getSubdomainIndex();
-        const syntheticFbc = `fb.${subdomainIndex}.${timestamp}.synthetic_${Math.random().toString(36).substring(2, 15)}`;
-        
-        console.log('[Meta Tracking] ✅ FBC sintético gerado (origem Facebook):', {
-          fbc: syntheticFbc,
-          domain: window.location.hostname,
-          subdomainIndex: subdomainIndex
-        });
-        
-        // Salvar em ambos os locais
-        setCookie('_fbc', syntheticFbc, 90);
-        setLocalStorageItem('meta_tracking_fbc', syntheticFbc);
-        return syntheticFbc;
-    }
-
-    console.log('[Meta Tracking] ⚠️ FBC não disponível em nenhuma fonte');
+    
+    console.log('[Meta Tracking] ℹ️ Nenhum FBC encontrado no cookie _fbc');
     return null;
   }
 
-  // Função legada para compatibilidade
-  function getFbc() {
-    return getFbcValue();
+  // 📥 FUNÇÃO PARA COLETAR FBCLID DA URL (SEM FORMATAÇÃO)
+  function getFbclidFromUrl() {
+    const fbclid = getUrlParameter('fbclid');
+    if (fbclid && fbclid.trim().length > 10) {
+      console.log('[Meta Tracking] ✅ FBCLID encontrado na URL:', fbclid.substring(0, 20) + '...');
+      return fbclid.trim();
+    }
+    
+    console.log('[Meta Tracking] ℹ️ Nenhum FBCLID encontrado na URL');
+    return null;
   }
 
-  // 🛡️ FUNÇÃO CRÍTICA: Detectar FBCs de teste/desenvolvimento
-  function isTestFbc(fbc) {
-    if (!fbc || !fbc.startsWith('fb.')) return false;
-    
-    // Lista de indicadores de dados de teste (ESPECÍFICOS para evitar falsos positivos)
-    const testIndicators = [
-        'TESTCLICK',           // Nosso exemplo específico de teste
-        'TEST123',             // Padrões específicos de teste
-        'Test999',             // ✅ ADICIONADO: Padrão Test + números
-        'ZZZ',                 // ✅ ADICIONADO: Padrão ZZZ comum em testes
-        'DUMMY',               // Dados dummy
-        'FAKE',                // Dados falsos
-        'MOCK',                // Dados mock
-        'DEMO',                // Dados de demonstração
-        'SAMPLE',              // Dados de exemplo
-        'synthetic_test',      // Sintéticos de teste
-        'debug_click',         // Debug específico
-        'dev_click',           // Dev específico
-        'localhost',           // Local development
-        'test_',               // ✅ ADICIONADO: Prefixo test_
-        'TEST_',               // ✅ ADICIONADO: Prefixo TEST_
-        'example',             // ✅ ADICIONADO: Dados de exemplo
-        'EXAMPLE'              // ✅ ADICIONADO: EXAMPLE maiúsculo
-    ];
-    
-    // Verificar se o FBC contém algum indicador de teste
-    const fbcLower = fbc.toLowerCase();
-    for (const indicator of testIndicators) {
-        if (fbcLower.includes(indicator.toLowerCase())) {
-            return true;
-        }
-    }
-    
-    // ⏰ VALIDAÇÃO DE TIMESTAMP: FBCs muito antigos podem ser de teste
-    try {
-        // Extrair timestamp do FBC (formato: fb.X.TIMESTAMP.FBCLID)
-        const parts = fbc.split('.');
-        if (parts.length >= 3) {
-            const timestamp = parseInt(parts[2]);
-            const now = Date.now();
-            const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000); // 3 dias atrás
-            
-            // Se o FBC é muito antigo (mais de 3 dias), considerá-lo suspeito
-            if (timestamp < threeDaysAgo) {
-                console.warn('[Meta Tracking] ⚠️ FBC muito antigo detectado (mais de 3 dias):', fbc);
-                return true;
-            }
-        }
-    } catch (e) {
-        console.warn('[Meta Tracking] Erro validando timestamp do FBC:', e);
-    }
-    
-    return false;
+  // Função legada para compatibilidade - agora apenas coleta do cookie
+  function getFbc() {
+    return getFbcFromCookie();
   }
+
+  // Função removida - não validamos mais FBCs de teste pois não geramos FBC
   // +++ FIM DA FUNÇÃO HÍBRIDA PARA FBC +++
 
   // Função para definir o cookie first-party
@@ -347,30 +218,7 @@
     });
   }
 
-  // 🧹 LIMPEZA INICIAL DE DADOS DE TESTE
-  function cleanupTestData() {
-    try {
-      console.log('[Meta Tracking] 🧹 Iniciando limpeza de dados de teste...');
-      
-      // Verificar e limpar cookie _fbc
-      const fbcCookie = getCookie('_fbc');
-      if (fbcCookie && isTestFbc(fbcCookie)) {
-        console.warn('[Meta Tracking] 🚨 LIMPEZA: Removendo FBC de teste do cookie:', fbcCookie);
-        setCookie('_fbc', '', -1); // Expirar
-      }
-      
-      // Verificar e limpar localStorage
-      const fbcStorage = getLocalStorageItem('meta_tracking_fbc');
-      if (fbcStorage && isTestFbc(fbcStorage)) {
-        console.warn('[Meta Tracking] 🚨 LIMPEZA: Removendo FBC de teste do localStorage:', fbcStorage);
-        setLocalStorageItem('meta_tracking_fbc', null);
-      }
-      
-      console.log('[Meta Tracking] ✅ Limpeza de dados de teste concluída');
-    } catch (error) {
-      console.warn('[Meta Tracking] Erro na limpeza de dados de teste:', error);
-    }
-  }
+  // Função removida - não precisamos mais limpar dados de teste pois não geramos FBC
 
   // ✅ BACKUP SERVER-SIDE TRACKING HÍBRIDO
   function initServerSideBackup() {
@@ -379,9 +227,9 @@
       if (typeof window.fbq === 'undefined') {
         console.log('[Server Backup] 🛡️ Facebook Pixel bloqueado - ativando tracking server-side HÍBRIDO');
         
-        // Tentar múltiplas fontes para fbclid/fbc
-        const fbclid = getUrlParameter('fbclid');
-        const fbc = getFbcValue(); // Usa nossa função híbrida
+        // Coletar FBC do cookie e fbclid da URL
+        const fbc = getFbcFromCookie(); // Apenas coleta do cookie
+        const fbclid = getFbclidFromUrl(); // Coleta fbclid da URL
         
         if (fbclid || fbc) {
           // Criar pixel de backup para server-side tracking
@@ -401,10 +249,10 @@
           console.log('[Server Backup] ⚠️ Nenhuma fonte de tracking disponível');
         }
       } else {
-        // Mesmo com fbq funcionando, fazer backup preventivo do FBC
-        const fbc = getFbcValue();
+        // Mesmo com fbq funcionando, verificar se temos FBC disponível
+        const fbc = getFbcFromCookie();
         if (fbc) {
-          console.log('[Server Backup] 💾 FBC salvo em localStorage como backup preventivo');
+          console.log('[Server Backup] 💾 FBC disponível no cookie');
         }
       }
       
@@ -503,7 +351,7 @@
 
     const externalId = getExternalId();
     const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-    const fbc = getFbc(); // <<< USA A NOVA FUNÇÃO
+    const fbc = getFbcFromCookie(); // Coleta apenas do cookie
 
     // +++ Debug Melhorado +++
     if (fbc) { // Log apenas se fbc for encontrado/gerado
@@ -1038,11 +886,13 @@
 
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
 
-    // +++ RE-LER FBP e FBC AQUI para garantir valor mais recente +++
+    // +++ RE-LER FBP, FBC e FBCLID AQUI para garantir valores mais recentes +++
     const currentFbp = getCookie('_fbp') || getUrlParameter('fbp') || null;
-    const currentFbc = getFbc(); // <<< Usa a nova função getFbc
+    const currentFbc = getFbcFromCookie(); // Apenas do cookie
+    const currentFbclid = getFbclidFromUrl(); // Apenas da URL
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
-    console.log(`[Frontend Script] Valor FBC lido/gerado ANTES do envio para backend: ${currentFbc}`);
+    console.log(`[Frontend Script] Valor FBC lido ANTES do envio para backend: ${currentFbc}`);
+    console.log(`[Frontend Script] Valor FBCLID lido ANTES do envio para backend: ${currentFbclid}`);
     // +++ FIM RE-LEITURA +++
 
     // Mesclar os dados recebidos com os dados coletados
@@ -1238,7 +1088,8 @@
     // Coletar dados comuns
     const externalId = getExternalId();
     const visitorId = getOrCreateVisitorId();
-    const fbc = getFbc(); // <<< USAR FUNÇÃO MELHORADA
+    const fbc = getFbcFromCookie(); // Apenas do cookie
+    const fbclid = getFbclidFromUrl(); // Apenas da URL
 
     // Coletar PII novamente (pode ter sido atualizado desde o init)
     const email = getLocalStorageItem('meta_tracking_email');
@@ -1264,7 +1115,7 @@
     // Montar UserData para backend (inclui fbp para CAPI)
     const fbpForBackend = getCookie('_fbp') || getUrlParameter('fbp') || null;
     const rawUserData = {
-      external_id: externalId, visitorId: visitorId, fbc: fbc, fbp: fbpForBackend,
+      external_id: externalId, visitorId: visitorId, fbc: fbc, fbclid: fbclid, fbp: fbpForBackend,
       em: email, ph: phone, fn: firstName, ln: lastName,
       ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
@@ -1913,8 +1764,7 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // 🧹 LIMPEZA CRÍTICA: Remover dados de teste ANTES de qualquer tracking
-    cleanupTestData();
+    // Limpeza removida - não geramos mais FBC, apenas coletamos
     
     // ✅ PRIMEIRO: Inicializar backup server-side
     initServerSideBackup();
@@ -2341,10 +2191,10 @@
         attempts++;
         const elapsed = Date.now() - startTime;
         
-        // Tentar obter FBC usando nossa função híbrida
-        const fbc = getFbcValue();
+        // Tentar obter FBC do cookie
+        const fbc = getFbcFromCookie();
         
-        if (fbc && !isTestFbc(fbc)) {
+        if (fbc) {
           console.log(`[Meta Tracking] ✅ FBC capturado com sucesso após ${elapsed}ms (${attempts} tentativas): ${fbc.substring(0, 30)}...`);
           resolve({ success: true, fbc: fbc, elapsed: elapsed });
           return;
@@ -2370,10 +2220,10 @@
   function shouldWaitForFbc() {
     const fbclid = getUrlParameter('fbclid');
     const referrer = document.referrer || '';
-    const currentFbc = getFbcValue();
+    const currentFbc = getFbcFromCookie();
     
     // Se já temos FBC válido, não aguardar
-    if (currentFbc && !isTestFbc(currentFbc)) {
+    if (currentFbc) {
       console.log('[Meta Tracking] 💾 FBC já disponível, não aguardar');
       return false;
     }

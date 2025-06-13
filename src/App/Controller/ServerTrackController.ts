@@ -20,17 +20,11 @@ export class ServerTrackController {
       
              // Capturar dados da requisição
        const fbclid = req.query.fbclid as string || req.body.fbclid;
-       let fbcParam = req.query.fbc as string || req.body.fbc; // ✅ NOVO: Aceitar FBC diretamente
+       const fbcParam = req.query.fbc as string || req.body.fbc; // FBC do cookie _fbc
        const eventName = req.query.event as string || req.body.event || 'PageView';
        const clientIp = req.ip || req.connection.remoteAddress || '';
        const userAgent = req.get('User-Agent') || '';
        const sourceUrl = req.query.url as string || req.body.url || req.get('Referer') || '';
-
-       // 🛡️ VALIDAÇÃO CRÍTICA: Detectar e rejeitar FBCs de teste no backend
-       if (fbcParam && this.isTestFbc(fbcParam)) {
-         logger.warn('[ServerTrack] 🚨 FBC de teste detectado e rejeitado no servidor:', fbcParam);
-         fbcParam = null; // Anular FBC de teste
-       }
        
        logger.info(`[ServerTrack] 🛡️ BACKUP TRACKING HÍBRIDO iniciado para ${eventName}`, {
          hasJavaScript: false,
@@ -42,7 +36,7 @@ export class ServerTrackController {
        });
 
        // Validar se temos fbclid OU fbc
-       if ((!fbclid || fbclid.trim().length < 10) && (!fbcParam || !fbcParam.startsWith('fb.'))) {
+       if ((!fbclid || fbclid.trim().length < 10) && (!fbcParam || fbcParam.trim().length < 10)) {
          logger.warn('[ServerTrack] ⚠️ Nem FBCLID nem FBC disponíveis - tracking limitado', {
            fbclid: fbclid || 'null',
            fbc: fbcParam || 'null',
@@ -61,22 +55,22 @@ export class ServerTrackController {
       // Gerar external_id único para servidor
       const serverExternalId = `server_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 
-             // ✅ NOVA LÓGICA: Apenas aceitar FBC formatado ou passar fbclid bruto
-       let fbc = null;
-       if (fbcParam && fbcParam.startsWith('fb.')) {
-         // PRIORIDADE 1: FBC já formatado (do frontend)
-         fbc = fbcParam;
-         logger.debug('[ServerTrack] ✅ Usando FBC pré-formatado do frontend');
-       } else {
-         // ❌ REMOVIDO: Não formatamos mais fbclid no servidor
-         // O frontend deve sempre enviar FBC já formatado
-         logger.warn('[ServerTrack] ⚠️ Nenhum FBC formatado recebido. Frontend deve formatar.');
+             // ✅ NOVA LÓGICA: Apenas coletar FBC e FBCLID sem formatação
+       const fbc = fbcParam && fbcParam.trim().length > 10 ? fbcParam.trim() : null;
+       const fbclidValue = fbclid && fbclid.trim().length > 10 ? fbclid.trim() : null;
+       
+       if (fbc) {
+         logger.debug('[ServerTrack] ✅ FBC coletado do cookie:', fbc.substring(0, 20) + '...');
+       }
+       if (fbclidValue) {
+         logger.debug('[ServerTrack] ✅ FBCLID coletado da URL:', fbclidValue.substring(0, 20) + '...');
        }
 
       // Montar userData para CAPI
       const userData = {
         external_id: serverExternalId,
-        fbc: fbc, // FBC gerado do fbclid
+        fbc: fbc, // FBC do cookie _fbc
+        fbclid: fbclidValue, // FBCLID da URL
         fbp: null, // Não temos FBP no server-side
         ct: geoData?.city || null,
         st: geoData?.region?.code || null,
@@ -178,61 +172,7 @@ export class ServerTrackController {
     }
   }
 
-  /**
-   * 🛡️ Detecta FBCs de teste/desenvolvimento
-   */
-  private static isTestFbc(fbc: string): boolean {
-    if (!fbc || !fbc.startsWith('fb.')) return false;
-    
-    // Lista de indicadores de dados de teste (ESPECÍFICOS para evitar falsos positivos)
-    const testIndicators = [
-        'TESTCLICK',           // Nosso exemplo específico de teste
-        'TEST123',             // Padrões específicos de teste
-        'Test999',             // ✅ ADICIONADO: Padrão Test + números
-        'ZZZ',                 // ✅ ADICIONADO: Padrão ZZZ comum em testes
-        'DUMMY',               // Dados dummy
-        'FAKE',                // Dados falsos
-        'MOCK',                // Dados mock
-        'DEMO',                // Dados de demonstração
-        'SAMPLE',              // Dados de exemplo
-        'synthetic_test',      // Sintéticos de teste
-        'debug_click',         // Debug específico
-        'dev_click',           // Dev específico
-        'localhost',           // Local development
-        'test_',               // ✅ ADICIONADO: Prefixo test_
-        'TEST_',               // ✅ ADICIONADO: Prefixo TEST_
-        'example',             // ✅ ADICIONADO: Dados de exemplo
-        'EXAMPLE'              // ✅ ADICIONADO: EXAMPLE maiúsculo
-    ];
-    
-    // Verificar se o FBC contém algum indicador de teste
-    const fbcLower = fbc.toLowerCase();
-    for (const indicator of testIndicators) {
-        if (fbcLower.includes(indicator.toLowerCase())) {
-            return true;
-        }
-    }
-    
-    // ⏰ VALIDAÇÃO DE TIMESTAMP: FBCs muito antigos podem ser de teste
-    try {
-        // Extrair timestamp do FBC (formato: fb.X.TIMESTAMP.FBCLID)
-        const parts = fbc.split('.');
-        if (parts.length >= 3) {
-            const timestamp = parseInt(parts[2]); // ✅ CORRIGIDO: timestamp já está em milliseconds
-            const now = Date.now();
-            const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000); // 3 dias atrás
-            
-            // Se o FBC é muito antigo (mais de 3 dias), considerá-lo suspeito
-            if (timestamp < threeDaysAgo) {
-                return true;
-            }
-        }
-    } catch (e) {
-        logger.warn('[ServerTrack] Erro validando timestamp do FBC:', e);
-    }
-    
-    return false;
-  }
+  // Função removida - não validamos mais FBCs de teste pois não geramos FBC
 
   /**
    * Constrói customData baseado no tipo de evento

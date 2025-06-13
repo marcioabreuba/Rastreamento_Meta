@@ -41,7 +41,8 @@
         userAgent: navigator.userAgent,
         language: navigator.language || 'pt-BR',
         fbp: getCookie('_fbp'),
-        fbc: getCookie('_fbc') || getUrlParameter('fbclid'),
+        fbc: getCookie('_fbc'),
+      fbclid: getUrlParameter('fbclid'),
         referrer_url: document.referrer
       };
 

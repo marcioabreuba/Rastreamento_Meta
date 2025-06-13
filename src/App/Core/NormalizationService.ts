@@ -160,31 +160,22 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
   const externalIdInput = rawUserData?.external_id;
   const normalizedExternalIdForHash = externalIdInput ? String(externalIdInput).trim().toLowerCase() : null; // << ADICIONADO: .toLowerCase()
 
-  // --- LÓGICA FBC REVISADA: APENAS ACEITAR FBC FORMATADO DO FRONTEND ---
-  let finalFbc: string | null = null;
-  const rawFbcInput = rawUserData?.fbc;
+  // --- LÓGICA FBC SIMPLIFICADA: APENAS COLETAR SEM VALIDAÇÃO COMPLEXA ---
+  const finalFbc = rawUserData?.fbc && String(rawUserData.fbc).trim().length > 10 
+    ? String(rawUserData.fbc).trim() 
+    : null;
+  
+  const finalFbclid = rawUserData?.fbclid && String(rawUserData.fbclid).trim().length > 10 
+    ? String(rawUserData.fbclid).trim() 
+    : null;
 
-  if (rawFbcInput) {
-    const trimmedFbcInput = String(rawFbcInput).trim();
-    // Regex estrito para validar formato _fbc COMPLETO (fb.subdomain.timestamp.clickid)
-    const fbcRegex = /^fb\.[0-9]+\.\d+\.[A-Za-z0-9_\-]+$/;
-
-    if (fbcRegex.test(trimmedFbcInput)) {
-      // Se já está no formato correto, usar como está (formatado pelo frontend)
-      finalFbc = trimmedFbcInput;
-      logger.debug(`[NormalizationService] Usando _fbc pré-formatado pelo frontend: ${finalFbc}`);
-    } else {
-      // ❌ REMOVIDO: Não formatamos mais fbclid bruto no backend
-      // O frontend deve sempre enviar FBC já formatado
-      logger.warn(`[NormalizationService] FBC recebido ('${trimmedFbcInput}') não está no formato válido. Frontend deve formatar. Descartando.`);
-      finalFbc = null;
-    }
-  } else {
-    // Se nenhum valor fbc foi recebido
-    logger.debug(`[NormalizationService] Nenhum valor fbc recebido do frontend.`);
-    finalFbc = null;
+  if (finalFbc) {
+    logger.debug(`[NormalizationService] FBC coletado do cookie: ${finalFbc.substring(0, 20)}...`);
   }
-  // --- FIM DA LÓGICA FBC REVISADA ---
+  if (finalFbclid) {
+    logger.debug(`[NormalizationService] FBCLID coletado da URL: ${finalFbclid.substring(0, 20)}...`);
+  }
+  // --- FIM DA LÓGICA FBC SIMPLIFICADA ---
 
   // --- MODIFICADO: Construir objeto e adicionar fbc/fbp condicionalmente ---
   const userData: ServerUserData = {
@@ -215,9 +206,12 @@ function normalizeUserData(rawUserData: WebUserData | any = {}, geoData: GeoData
     userData.fbp = finalFbp;
   }
 
-  // Adicionar fbc somente se for válido ou formatado
+  // Adicionar fbc e fbclid se disponíveis
   if (finalFbc) {
     userData.fbc = finalFbc;
+  }
+  if (finalFbclid) {
+    userData.fbclid = finalFbclid;
   }
 
   return userData;

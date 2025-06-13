@@ -27,7 +27,8 @@ export interface UserData {
   dateOfBirth?: string;   // YYYYMMDD ou formatos que possam ser convertidos
   ip?: string;
   userAgent?: string;
-  fbc?: string | null;    // Facebook Click ID
+  fbc?: string | null;    // Facebook Click ID (do cookie _fbc)
+  fbclid?: string | null; // Facebook Click ID (da URL)
   fbp?: string | null;    // Facebook Browser ID
   subscriptionId?: string;
   fbLoginId?: string;
@@ -63,6 +64,7 @@ export interface NormalizedUserData {
   client_ip_address: string | null;
   client_user_agent: string | null;
   fbc: string | null;
+  fbclid: string | null;
   fbp: string | null;
   subscription_id: string | null;
   fb_login_id: string | null;

@@ -26,7 +26,8 @@ export interface ServerUserData {
   client_ip_address?: string | null; // IP do cliente (IPv4 ou IPv6)
   client_user_agent?: string | null; // User Agent
   fbp?: string | null;               // Facebook Browser ID (Não hashear)
-  fbc?: string | null;               // Facebook Click ID (Não hashear)
+  fbc?: string | null;               // Facebook Click ID do cookie _fbc (Não hashear)
+  fbclid?: string | null;            // Facebook Click ID da URL (Não hashear)
   subscription_id?: string | null;   // ID de assinatura
   fb_login_id?: string | null;       // ID de Login do Facebook
   lead_id?: string | null;           // ID de Lead
