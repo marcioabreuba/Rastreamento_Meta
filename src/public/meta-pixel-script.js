@@ -154,9 +154,9 @@
     }
   }
 
-  // 📥 FUNÇÃO PARA COLETAR FBC DO COOKIE (SEM GERAÇÃO)
+  // 📥 FUNÇÃO PARA COLETAR OU GERAR FBC (CONFORME DOCUMENTAÇÃO OFICIAL FACEBOOK)
   function getFbcFromCookie() {
-    // Apenas ler o cookie _fbc se existir
+    // Primeiro, tentar ler o cookie _fbc se existir
     const fbcCookie = getCookie('_fbc');
     if (fbcCookie && fbcCookie.startsWith('fb.') && fbcCookie.length > 10) {
       console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie.substring(0, 20) + '...');
@@ -167,7 +167,7 @@
     return null;
   }
 
-  // 📥 FUNÇÃO PARA COLETAR FBCLID DA URL (SEM FORMATAÇÃO)
+  // 📥 FUNÇÃO PARA COLETAR FBCLID DA URL
   function getFbclidFromUrl() {
     const fbclid = getUrlParameter('fbclid');
     if (fbclid && fbclid.trim().length > 10) {
@@ -179,9 +179,47 @@
     return null;
   }
 
-  // Função legada para compatibilidade - agora apenas coleta do cookie
+  // 🎯 FUNÇÃO PARA GERAR FBC A PARTIR DO FBCLID (CONFORME DOCUMENTAÇÃO OFICIAL)
+  function generateFbcFromFbclid(fbclid) {
+    if (!fbclid) return null;
+    
+    try {
+      const subdomainIndex = getSubdomainIndex();
+      const creationTime = Date.now(); // UNIX timestamp em milissegundos
+      const fbc = `fb.${subdomainIndex}.${creationTime}.${fbclid}`;
+      
+      console.log('[Meta Tracking] 🔧 FBC gerado a partir do FBCLID:', fbc.substring(0, 30) + '...');
+      console.log('[Meta Tracking] 📊 Detalhes:', {
+        subdomainIndex,
+        creationTime,
+        fbclid: fbclid.substring(0, 20) + '...'
+      });
+      
+      return fbc;
+    } catch (error) {
+      console.warn('[Meta Tracking] Erro ao gerar FBC:', error);
+      return null;
+    }
+  }
+
+  // 🎯 FUNÇÃO PRINCIPAL PARA OBTER FBC (COOKIE OU GERADO)
   function getFbc() {
-    return getFbcFromCookie();
+    // 1. Primeiro, tentar obter do cookie _fbc
+    let fbc = getFbcFromCookie();
+    if (fbc) return fbc;
+    
+    // 2. Se não há cookie, tentar gerar a partir do fbclid da URL
+    const fbclid = getFbclidFromUrl();
+    if (fbclid) {
+      fbc = generateFbcFromFbclid(fbclid);
+      if (fbc) {
+        console.log('[Meta Tracking] ✅ FBC gerado conforme documentação oficial Facebook');
+        return fbc;
+      }
+    }
+    
+    console.log('[Meta Tracking] ℹ️ Nenhum FBC disponível (sem cookie nem fbclid)');
+    return null;
   }
 
   // Função removida - não validamos mais FBCs de teste pois não geramos FBC
