@@ -51,7 +51,7 @@ export class ServerTrackController {
        }
 
              // Obter dados geográficos
-       const geoData = GeoIPService.getGeoData(clientIp);
+       const geoData = await GeoIPService.getGeoData(clientIp);
       logger.debug('[ServerTrack] 🌍 GeoIP obtido', {
         country: geoData?.country?.name,
         city: geoData?.city,

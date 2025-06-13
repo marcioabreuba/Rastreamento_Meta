@@ -8,6 +8,126 @@ import { GeoData } from '../../types';
 import logger from '../../utils/logger';
 import { normalizeBrazilianZipCode } from '../../utils/validators';
 
+// Cache para CEPs obtidos via lookup reverso (evita requests repetidos)
+const zipCodeCache = new Map<string, { zipCode: string; timestamp: number }>();
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 horas em millisegundos
+const RATE_LIMIT_DELAY = 1100; // 1.1 segundos entre requests (respeitando limite do Nominatim)
+let lastRequestTime = 0;
+
+/**
+ * Limpa entradas expiradas do cache de CEP
+ */
+function cleanExpiredCache(): void {
+  const now = Date.now();
+  for (const [key, value] of zipCodeCache.entries()) {
+    if (now - value.timestamp > CACHE_DURATION) {
+      zipCodeCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Implementa rate limiting básico para respeitar limites da API
+ */
+async function respectRateLimit(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+    const waitTime = RATE_LIMIT_DELAY - timeSinceLastRequest;
+    logger.debug(`[GeoIPService] Rate limiting: aguardando ${waitTime}ms`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  lastRequestTime = Date.now();
+}
+
+/**
+ * Obtém CEP preciso usando lookup reverso com coordenadas geográficas
+ * @param latitude Latitude da localização
+ * @param longitude Longitude da localização
+ * @returns CEP de 8 dígitos ou null se não encontrado
+ */
+async function getPreciseZipCode(latitude: number, longitude: number): Promise<string | null> {
+  try {
+    // 1. Verificar cache primeiro
+    const cacheKey = `${latitude.toFixed(4)}_${longitude.toFixed(4)}`;
+    cleanExpiredCache(); // Limpar cache expirado
+    
+    const cached = zipCodeCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      logger.debug(`[GeoIPService] 🎯 CEP encontrado no cache: ${cached.zipCode} para ${latitude},${longitude}`);
+      return cached.zipCode;
+    }
+
+    // 2. Rate limiting
+    await respectRateLimit();
+
+    // 3. Request para Nominatim (OpenStreetMap)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
+
+    logger.debug(`[GeoIPService] 🔍 Fazendo lookup reverso para coordenadas: ${latitude},${longitude}`);
+    
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1&zoom=18`,
+      { 
+        signal: controller.signal,
+        headers: { 
+          'User-Agent': 'meta-tracking-geoip/1.0 (contact@example.com)',
+          'Accept': 'application/json'
+        }
+      }
+    );
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      logger.warn(`[GeoIPService] ⚠️ Nominatim retornou status ${response.status} para ${latitude},${longitude}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    // 4. Extrair e validar CEP
+    const zipCode = data.address?.postcode;
+    
+    if (zipCode) {
+      // Validar formato de CEP brasileiro (XXXXX-XXX ou XXXXXXXX)
+      const cleanZip = zipCode.replace(/\D/g, ''); // Remove tudo que não é dígito
+      
+      if (/^\d{8}$/.test(cleanZip)) {
+        // CEP de 8 dígitos válido
+        zipCodeCache.set(cacheKey, { zipCode: cleanZip, timestamp: Date.now() });
+        
+        logger.info(`[GeoIPService] 🎯 CEP preciso obtido via lookup reverso: ${cleanZip} (original: ${zipCode}) para ${latitude},${longitude}`);
+        return cleanZip;
+      } else if (/^\d{5}$/.test(cleanZip)) {
+        // CEP de 5 dígitos - completar com zeros (melhor que o MaxMind genérico)
+        const completedZip = cleanZip + '000';
+        zipCodeCache.set(cacheKey, { zipCode: completedZip, timestamp: Date.now() });
+        
+        logger.info(`[GeoIPService] 🎯 CEP de 5 dígitos obtido via lookup reverso: ${completedZip} (original: ${zipCode}) para ${latitude},${longitude}`);
+        return completedZip;
+      } else {
+        logger.warn(`[GeoIPService] ⚠️ CEP inválido retornado pelo Nominatim: ${zipCode} para ${latitude},${longitude}`);
+      }
+    } else {
+      logger.debug(`[GeoIPService] 🔍 Nenhum CEP encontrado no lookup reverso para ${latitude},${longitude}`);
+    }
+    
+    return null;
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      logger.warn(`[GeoIPService] ⚠️ Timeout no lookup reverso de CEP para ${latitude},${longitude}`);
+    } else {
+      logger.warn(`[GeoIPService] ⚠️ Erro no lookup reverso de CEP para ${latitude},${longitude}:`, error.message);
+    }
+    return null;
+  }
+}
+
 // Variável para armazenar a instância do leitor GeoIP (deve ser inicializada externamente)
 let geoipReaderInstance: Reader | null = null;
 
@@ -67,10 +187,11 @@ export function convertToIPv6Format(ip: string | null | undefined): string | nul
 /**
  * Obtém informações de geolocalização a partir de um endereço IP.
  * Tenta buscar com o IP fornecido e, se for IPv4-mapped, tenta com o IPv4 extraído.
+ * Inclui lookup reverso para obter CEPs mais precisos usando coordenadas.
  * @param {string} ip - Endereço IP (IPv4 ou IPv6)
- * @returns {GeoData | null} Informações de geolocalização ou null se não encontradas/erro.
+ * @returns {Promise<GeoData | null>} Informações de geolocalização ou null se não encontradas/erro.
  */
-export function getGeoData(ip: string | null | undefined): GeoData | null {
+export async function getGeoData(ip: string | null | undefined): Promise<GeoData | null> {
   if (!geoipReaderInstance || !ip || ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
     if (!geoipReaderInstance && ip) {
         logger.warn(`[GeoIPService] Instância do GeoIP Reader não inicializada ao tentar buscar IP: ${ip}`);
@@ -129,7 +250,25 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
     });
 
     const countryCode = geoResult.country?.isoCode;
-    const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);
+    let postalCode = geoResult.postal?.code;
+
+    // 🎯 LOOKUP REVERSO PARA CEP MAIS PRECISO (apenas para Brasil)
+    if (countryCode === 'BR' && geoResult.location?.latitude && geoResult.location?.longitude) {
+      try {
+        const preciseZip = await getPreciseZipCode(geoResult.location.latitude, geoResult.location.longitude);
+        if (preciseZip) {
+          logger.info(`[GeoIPService] 🚀 CEP melhorado via lookup reverso: ${postalCode} → ${preciseZip} para IP ${ip}`);
+          postalCode = preciseZip;
+        } else {
+          logger.debug(`[GeoIPService] 📍 Lookup reverso não encontrou CEP melhor, usando MaxMind: ${postalCode} para IP ${ip}`);
+        }
+      } catch (error: any) {
+        logger.warn(`[GeoIPService] ⚠️ Erro no lookup reverso, usando CEP do MaxMind: ${postalCode} para IP ${ip}`, error.message);
+      }
+    }
+
+    // Normalizar CEP final (seja do MaxMind ou do lookup reverso)
+    const finalPostalCode = normalizeBrazilianZipCode(postalCode, countryCode);
 
     return {
       ip: ip, // Retorna sempre o IP original recebido
@@ -137,7 +276,7 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
       country: geoResult.country ? { code: countryCode, name: geoResult.country.names?.en } : null,
       region: geoResult.subdivisions?.[0] ? { code: geoResult.subdivisions[0].isoCode, name: geoResult.subdivisions[0].names?.en } : null,
       city: geoResult.city?.names?.en || null,
-      postal: postalCode,
+      postal: finalPostalCode,
       location: geoResult.location ? {
         latitude: geoResult.location.latitude,
         longitude: geoResult.location.longitude,
@@ -199,7 +338,25 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
         });
 
         const countryCode = geoResult.country?.isoCode;
-        const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);
+        let postalCode = geoResult.postal?.code;
+
+        // 🎯 LOOKUP REVERSO PARA CEP MAIS PRECISO (fallback - apenas para Brasil)
+        if (countryCode === 'BR' && geoResult.location?.latitude && geoResult.location?.longitude) {
+          try {
+            const preciseZip = await getPreciseZipCode(geoResult.location.latitude, geoResult.location.longitude);
+            if (preciseZip) {
+              logger.info(`[GeoIPService] 🚀 CEP melhorado via lookup reverso (fallback): ${postalCode} → ${preciseZip} para IP ${ip}`);
+              postalCode = preciseZip;
+            } else {
+              logger.debug(`[GeoIPService] 📍 Lookup reverso (fallback) não encontrou CEP melhor, usando MaxMind: ${postalCode} para IP ${ip}`);
+            }
+          } catch (error: any) {
+            logger.warn(`[GeoIPService] ⚠️ Erro no lookup reverso (fallback), usando CEP do MaxMind: ${postalCode} para IP ${ip}`, error.message);
+          }
+        }
+
+        // Normalizar CEP final (seja do MaxMind ou do lookup reverso)
+        const finalPostalCode = normalizeBrazilianZipCode(postalCode, countryCode);
 
         return {
           ip: ip, // Retorna sempre o IP original
@@ -207,7 +364,7 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
           country: geoResult.country ? { code: countryCode, name: geoResult.country.names?.en } : null,
           region: geoResult.subdivisions?.[0] ? { code: geoResult.subdivisions[0].isoCode, name: geoResult.subdivisions[0].names?.en } : null,
           city: geoResult.city?.names?.en || null,
-          postal: postalCode,
+          postal: finalPostalCode,
           location: geoResult.location ? {
             latitude: geoResult.location.latitude,
             longitude: geoResult.location.longitude,

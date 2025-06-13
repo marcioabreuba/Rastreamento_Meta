@@ -195,7 +195,7 @@ export const handleTrackRequest = async (req: Request, res: Response): Promise<v
     // 2. Obter Dados GeoIP
     let geoData = null;
     if (!isPrivateIP(clientIp)) {
-      geoData = GeoIPService.getGeoData(clientIp);
+      geoData = await GeoIPService.getGeoData(clientIp);
     if (geoData) {
         logger.debug(`[TrackController] GeoIP encontrado para ${clientIp}: ${geoData.city}, ${geoData.region?.code}, ${geoData.country?.code}`);
       }
