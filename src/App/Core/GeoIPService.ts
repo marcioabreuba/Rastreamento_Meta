@@ -86,6 +86,48 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
     // @ts-ignore - O tipado oficial pode não incluir city corretamente
     const geoResult = geoipReaderInstance.city(ipToUse);
 
+    // 🔍 LOG DOS DADOS BRUTOS DO MAXMIND (SEM TRATAMENTO)
+    logger.info(`[GeoIPService] 📊 DADOS BRUTOS MAXMIND para IP ${ip}:`, {
+      ip: ip,
+      maxmind_raw: {
+        country: {
+          isoCode: geoResult.country?.isoCode || null,
+          name: geoResult.country?.names?.en || null,
+          names_all: geoResult.country?.names || null
+        },
+        subdivisions: geoResult.subdivisions?.map((sub: any) => ({
+          isoCode: sub.isoCode || null,
+          name: sub.names?.en || null,
+          names_all: sub.names || null
+        })) || null,
+        city: {
+          name: geoResult.city?.names?.en || null,
+          names_all: geoResult.city?.names || null,
+          geonameId: geoResult.city?.geonameId || null
+        },
+        postal: {
+          code_original: geoResult.postal?.code || null,
+          confidence: geoResult.postal?.confidence || null
+        },
+        location: {
+          latitude: geoResult.location?.latitude || null,
+          longitude: geoResult.location?.longitude || null,
+          accuracyRadius: geoResult.location?.accuracyRadius || null,
+          timeZone: geoResult.location?.timeZone || null
+        },
+        traits: {
+          isAnonymousProxy: geoResult.traits?.isAnonymousProxy || null,
+          isSatelliteProvider: geoResult.traits?.isSatelliteProvider || null,
+          userType: geoResult.traits?.userType || null,
+          autonomousSystemNumber: geoResult.traits?.autonomousSystemNumber || null,
+          autonomousSystemOrganization: geoResult.traits?.autonomousSystemOrganization || null,
+          domain: geoResult.traits?.domain || null,
+          isp: geoResult.traits?.isp || null,
+          organization: geoResult.traits?.organization || null
+        }
+      }
+    });
+
     const countryCode = geoResult.country?.isoCode;
     const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);
 
@@ -112,6 +154,49 @@ export function getGeoData(ip: string | null | undefined): GeoData | null {
         logger.debug(`[GeoIPService] Falha na busca com ${ip}, tentando com IPv4 extraído: ${ipToUse}`);
         // @ts-ignore
         const geoResult = geoipReaderInstance.city(ipToUse);
+
+        // 🔍 LOG DOS DADOS BRUTOS DO MAXMIND (FALLBACK)
+        logger.info(`[GeoIPService] 📊 DADOS BRUTOS MAXMIND (fallback) para IP ${ip} (usando ${ipToUse}):`, {
+          ip: ip,
+          ip_used: ipToUse,
+          maxmind_raw: {
+            country: {
+              isoCode: geoResult.country?.isoCode || null,
+              name: geoResult.country?.names?.en || null,
+              names_all: geoResult.country?.names || null
+            },
+                         subdivisions: geoResult.subdivisions?.map((sub: any) => ({
+               isoCode: sub.isoCode || null,
+               name: sub.names?.en || null,
+               names_all: sub.names || null
+             })) || null,
+            city: {
+              name: geoResult.city?.names?.en || null,
+              names_all: geoResult.city?.names || null,
+              geonameId: geoResult.city?.geonameId || null
+            },
+            postal: {
+              code_original: geoResult.postal?.code || null,
+              confidence: geoResult.postal?.confidence || null
+            },
+            location: {
+              latitude: geoResult.location?.latitude || null,
+              longitude: geoResult.location?.longitude || null,
+              accuracyRadius: geoResult.location?.accuracyRadius || null,
+              timeZone: geoResult.location?.timeZone || null
+            },
+            traits: {
+              isAnonymousProxy: geoResult.traits?.isAnonymousProxy || null,
+              isSatelliteProvider: geoResult.traits?.isSatelliteProvider || null,
+              userType: geoResult.traits?.userType || null,
+              autonomousSystemNumber: geoResult.traits?.autonomousSystemNumber || null,
+              autonomousSystemOrganization: geoResult.traits?.autonomousSystemOrganization || null,
+              domain: geoResult.traits?.domain || null,
+              isp: geoResult.traits?.isp || null,
+              organization: geoResult.traits?.organization || null
+            }
+          }
+        });
 
         const countryCode = geoResult.country?.isoCode;
         const postalCode = normalizeBrazilianZipCode(geoResult.postal?.code, countryCode);

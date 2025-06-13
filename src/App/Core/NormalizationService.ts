@@ -458,14 +458,7 @@ export function normalizeEventForCAPI(rawEvent: RawEventInput): ServerEvent | nu
     qualityPercentage: piiQualityPercentage
   });
 
-  // Alertas específicos para dados PII críticos ausentes
-  if (!userData.em && !userData.ph) {
-    logger.warn(`[NormalizationService] ⚠️ ALERTA DE QUALIDADE: Evento ${rawEvent.eventName} sem EMAIL nem TELEFONE - isso reduz significativamente a qualidade de correspondência!`, {
-      eventId: rawEvent.eventId,
-      sourceUrl: rawEvent.sourceUrl,
-      hasOtherPII: piiCount > 2
-    });
-  }
+  // Alertas específicos para dados PII críticos ausentes removidos conforme solicitado
 
   if (!userData.fbp) {
     logger.warn(`[NormalizationService] ⚠️ ALERTA CRÍTICO: Evento ${rawEvent.eventName} sem _fbp - isso compromete severamente a correspondência com o Pixel!`, {
