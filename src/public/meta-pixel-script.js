@@ -126,17 +126,9 @@
 
   // 📥 FUNÇÃO PARA COLETAR OU GERAR FBC (CONFORME DOCUMENTAÇÃO OFICIAL FACEBOOK)
   function getFbcFromCookie() {
-    console.log('[Meta Tracking] 🔍 INVESTIGANDO FBC - iniciando getFbcFromCookie()');
-    
-    // Debug: listar todos os cookies para verificar o que está disponível
-    console.log('[Meta Tracking] 🍪 Cookies disponíveis:', document.cookie);
-    
     // Primeiro, tentar ler o cookie _fbc se existir
     let fbcCookie = getCookie('_fbc');
-    console.log('[Meta Tracking] 🔍 getCookie("_fbc") retornou:', fbcCookie);
-    
     if (fbcCookie && fbcCookie.startsWith('fb.') && fbcCookie.length > 10) {
-      console.log('[Meta Tracking] ✅ FBC válido encontrado, verificando formato...');
       
       // 🔧 CORRIGIR FBC fb.2 → fb.1 (para cookies antigos)
       if (fbcCookie.startsWith('fb.2.')) {
@@ -156,13 +148,7 @@
       return fbcCookie;
     }
     
-    console.log('[Meta Tracking] ❌ NENHUM FBC VÁLIDO encontrado no cookie _fbc');
-    console.log('[Meta Tracking] 🔍 Detalhes:', {
-      fbcCookie: fbcCookie,
-      temFbc: !!fbcCookie,
-      comecaComFb: fbcCookie ? fbcCookie.startsWith('fb.') : false,
-      tamanhoValido: fbcCookie ? fbcCookie.length > 10 : false
-    });
+    console.log('[Meta Tracking] ℹ️ Nenhum FBC encontrado no cookie _fbc');
     return null;
   }
 
@@ -201,54 +187,23 @@
     }
   }
 
-  // 🎯 FUNÇÃO PRINCIPAL PARA OBTER FBC (COOKIE OU GERADO) - COM DEBUG DETALHADO
+  // 🎯 FUNÇÃO PRINCIPAL PARA OBTER FBC (COOKIE OU GERADO)
   function getFbc() {
-    console.log('[Meta Tracking] 🎯 INICIANDO FLUXO COMPLETO DE FBC');
-    console.log('[Meta Tracking] 🌐 URL atual:', window.location.href);
-    console.log('[Meta Tracking] 📅 Timestamp atual:', Date.now());
-    
     // 1. Primeiro, tentar obter do cookie _fbc
-    console.log('[Meta Tracking] 🔍 ETAPA 1: Verificando cookie _fbc...');
     let fbc = getFbcFromCookie();
-    if (fbc) {
-      console.log('[Meta Tracking] ✅ SUCESSO ETAPA 1: FBC encontrado no cookie:', fbc.substring(0, 30) + '...');
-      return fbc;
-    }
-    console.log('[Meta Tracking] ❌ ETAPA 1 FALHOU: Nenhum FBC no cookie');
+    if (fbc) return fbc;
     
     // 2. Se não há cookie, tentar gerar a partir do fbclid da URL
-    console.log('[Meta Tracking] 🔍 ETAPA 2: Verificando fbclid na URL...');
     const fbclid = getFbclidFromUrl();
-    console.log('[Meta Tracking] 🔍 fbclid encontrado na URL:', fbclid || 'NENHUM');
-    
     if (fbclid) {
-      console.log('[Meta Tracking] 🔍 ETAPA 3: Tentando gerar FBC a partir do fbclid...');
       fbc = generateFbcFromFbclid(fbclid);
       if (fbc) {
-        console.log('[Meta Tracking] ✅ SUCESSO ETAPA 3: FBC gerado conforme documentação oficial Facebook');
-        console.log('[Meta Tracking] 📝 FBC gerado:', fbc.substring(0, 30) + '...');
-        
-        // Salvar o FBC gerado no cookie
-        console.log('[Meta Tracking] 💾 Salvando FBC gerado no cookie _fbc...');
-        setCookie('_fbc', fbc, 90);
-        setLocalStorageItem('meta_tracking_fbc', fbc);
-        
+        console.log('[Meta Tracking] ✅ FBC gerado conforme documentação oficial Facebook');
         return fbc;
-      } else {
-        console.log('[Meta Tracking] ❌ ETAPA 3 FALHOU: Erro ao gerar FBC a partir do fbclid');
       }
-    } else {
-      console.log('[Meta Tracking] ❌ ETAPA 2 FALHOU: Nenhum fbclid na URL');
     }
     
-    console.log('[Meta Tracking] ❌ FLUXO FBC COMPLETO FALHOU: Nem cookie nem fbclid disponíveis');
-    console.log('[Meta Tracking] 🔍 DIAGNÓSTICO FINAL:', {
-      cookieFbc: !!getFbcFromCookie(),
-      urlFbclid: !!getFbclidFromUrl(),
-      cookiesDisponiveis: document.cookie.split(';').length,
-      urlCompleta: window.location.href
-    });
-    
+    console.log('[Meta Tracking] ℹ️ Nenhum FBC disponível (sem cookie nem fbclid)');
     return null;
   }
 
@@ -403,39 +358,19 @@
     return externalId;
   }
 
-  // 🎯 FUNÇÃO PARA OBTER FBC COM MÚLTIPLAS TENTATIVAS E TIMEOUT
-  async function getFbcWithRetry(maxAttempts = 5, delayMs = 200) {
-    console.log('[Meta Tracking] 🔄 Iniciando captura de FBC com retry...');
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`[Meta Tracking] 🔍 Tentativa ${attempt}/${maxAttempts} para capturar FBC...`);
-      
-      // Tentar capturar FBC completo (cookie + geração)
-      const fbc = getFbc();
-      
-      if (fbc) {
-        console.log(`[Meta Tracking] ✅ FBC capturado com sucesso na tentativa ${attempt}:`, fbc.substring(0, 30) + '...');
-        return fbc;
-      }
-      
-      // Se não foi a última tentativa, aguardar antes de tentar novamente
-      if (attempt < maxAttempts) {
-        console.log(`[Meta Tracking] ⏳ FBC não encontrado, aguardando ${delayMs}ms antes da próxima tentativa...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        delayMs *= 1.5; // Aumentar delay progressivamente
-      }
-    }
-    
-    console.log('[Meta Tracking] ❌ FBC não capturado após todas as tentativas');
-    return null;
-  }
-
-  // Inicializar o Facebook Pixel (Nativo - Como TrackLead)
+  // Inicializar o Facebook Pixel (Reestruturado)
   function initFacebookPixel() {
     
-    console.log('[Meta Tracking] 🚀 Inicializando Facebook Pixel NATIVO (testado massivamente pelo Facebook)');
-    
-    // --- ETAPA 1: Definir fbq e fila (padrão FB) ---
+    // --- ETAPA 1: Definir fbq e fila (padrão FB) --- 
+    if (window.fbq) {
+        console.log('[Meta Tracking Debug] FBQ já inicializado.'); // Mantido para clareza
+        // Poderíamos tentar reenviar o init/track aqui se necessário, 
+        // mas geralmente não é preciso se já foi inicializado.
+        // Por segurança, vamos apenas retornar se já existir.
+        // Se houver problemas com múltiplas inicializações, revisar esta lógica.
+         // return; 
+         // Removido o return para garantir que nosso track explícito ocorra.
+    }
     var n = window.fbq = function() {
       n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
     };
@@ -450,16 +385,27 @@
     t.async = !0;
     t.src = 'https://connect.facebook.net/en_US/fbevents.js';
     var s = document.getElementsByTagName('script')[0];
-    if (!s) {
+    if (!s) { // Fallback se não encontrar script algum
         s = document.body;
     }
     s.parentNode.insertBefore(t, s);
-    console.log('[Meta Tracking] ✅ fbevents.js carregado - Facebook gerenciará FBC/FBP automaticamente');
+    console.log('[Meta Tracking Debug] Script fbevents.js sendo carregado...'); // Mudança de [Meta Tracking] para [Meta Tracking Debug]
 
-    // --- ETAPA 3: Advanced Matching SIMPLES (sem FBC/FBP manuais) ---
+    // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init --- 
+
     const externalId = getExternalId();
-    
-    // Coletar apenas PII básico
+    const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
+    const fbc = getFbcFromCookie(); // Coleta apenas do cookie
+
+    // +++ Debug Melhorado +++
+    if (fbc) { // Log apenas se fbc for encontrado/gerado
+        console.log('✅ FBC encontrado/gerado:', fbc);
+    } else {
+        console.log('🟡 FBC não encontrado (nem cookie _fbc válido, nem parâmetro fbclid na URL).');
+    }
+    // +++ Fim Debug Melhorado +++
+
+    // Coletar PII (sem hash)
     const email = getLocalStorageItem('meta_tracking_email');
     const phone = getLocalStorageItem('meta_tracking_phone');
     const firstName = getLocalStorageItem('meta_tracking_first_name');
@@ -467,43 +413,128 @@
     const gender = getLocalStorageItem('meta_tracking_gender');
     const dob = getLocalStorageItem('meta_tracking_dob');
 
-    // Usar placeholders do backend para geo
-    const city = '__GEO_CITY__';
-    const state = '__GEO_STATE__';
-    const zip = '__GEO_ZIP__';
-    const country = '__GEO_COUNTRY__';
+    // --- MODIFICADO: Usar placeholders injetados pelo backend para GeoIP ---
+    const city = '__GEO_CITY__';       // Placeholder será substituído por string JSON (ex: "sao paulo" ou null)
+    const state = '__GEO_STATE__';      // Placeholder será substituído por string JSON (ex: "sp" ou null)
+    const zip = '__GEO_ZIP__';          // Placeholder será substituído por string JSON (ex: "01000000" ou null)
+    const country = '__GEO_COUNTRY__';  // Placeholder será substituído por string JSON (ex: "br" ou null)
+    // --- FIM DA MODIFICAÇÃO ---
 
-    // ✅ PARÂMETROS SIMPLES PARA FACEBOOK NATIVO (sem FBC/FBP manuais)
+    // --- ADICIONADO: Capturar IP injetado ---
+    const clientIpAddress = '__CLIENT_IP__'; // Placeholder será substituído por string JSON (ex: "123.45.67.89" ou null)
+    // --- FIM DA ADIÇÃO ---
+
+    console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress }); // Adicionado IP ao log
+
+    // Montar parâmetros para init (sem hash)
     const pixelParams = {
-      external_id: externalId,
-      em: email,
-      ph: phone,
-      fn: firstName,
-      ln: lastName,
-      ge: gender,
-      db: dob,
-      ct: city,
-      st: state,
-      zp: zip,
-      country: country
+      external_id: externalId, fbp: fbp, fbc: fbc, // <<< Usa fbc da nova função
+      // --- MODIFICADO: Adicionar client_ip_address e remover comentário antigo ---
+      client_ip_address: clientIpAddress, // Adiciona o IP obtido do backend
+      client_user_agent: navigator.userAgent, // User Agent é seguro enviar
+      // --- FIM DA MODIFICAÇÃO ---
+      em: email, ph: phone, fn: firstName, ln: lastName,
+      ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
     };
-    // Limpar campos vazios
     Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
-    
-    console.log('[Meta Tracking] 🔧 Advanced Matching configurado:', Object.keys(pixelParams));
-    console.log('[Meta Tracking] ✅ Facebook gerenciará FBC/FBP automaticamente (testado massivamente)');
+    console.log('[Meta Tracking Debug] Parâmetros para fbq(\'init\'):', pixelParams); // Log dos parâmetros do init (ASPAS ESCAPADAS)
 
-    // --- ETAPA 4: Inicializar Pixel (Facebook gerencia tudo automaticamente) ---
+    // 🔧 LOG DETALHADO DE CONFIGURAÇÃO INICIAL (PRELOAD)
+    if (isDebugEnabled()) {
+      console.groupCollapsed(`🔧 [CONFIGURAÇÃO_INICIAL] Facebook Pixel Init (Pixel ID: ${PIXEL_ID})`);
+      console.log('📊 DADOS DE PRELOAD:');
+      console.log('  • Pixel ID:', PIXEL_ID);
+      console.log('  • External ID:', externalId);
+      console.log('  • FBP (Cookie):', fbp);
+      console.log('  • FBC (Click ID):', fbc);
+      console.log('  • User Agent:', navigator.userAgent);
+      console.log('  • Client IP:', clientIpAddress);
+      console.log('  • Idioma:', navigator.language);
+      console.log('  • Referrer URL:', document.referrer);
+      console.log('');
+      console.log('🌍 DADOS GEOGRÁFICOS (GeoIP):');
+      console.log('  • País:', country);
+      console.log('  • Estado:', state);
+      console.log('  • Cidade:', city);
+      console.log('  • CEP:', zip);
+      console.log('');
+      console.log('👤 DADOS PII (Identificação):');
+      console.log('  • Email:', email ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Telefone:', phone ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Nome:', firstName ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Sobrenome:', lastName ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('  • Gênero:', gender || '[AUSENTE]');
+      console.log('  • Data Nascimento:', dob ? '[PRESENTE]' : '[AUSENTE]');
+      console.log('');
+      console.log('📤 PAYLOAD COMPLETO PARA fbq(\'init\'):');
+      console.log(JSON.stringify(pixelParams, null, 2));
+      console.groupEnd();
+    }
+
+    // ENFILEIRAR init (dispara PageView automático SEM eventID visível no helper)
     fbq('init', PIXEL_ID, pixelParams);
-    fbq('track', 'PageView');
+    console.log(`[Meta Tracking Debug] fbq('init') enfileirado.`);
     
-    console.log('[Meta Tracking] ✅ Facebook Pixel inicializado com fbq() nativo');
-    console.log('[Meta Tracking] 📊 PageView enviado pelo Facebook (automático)');
-    
-    // --- ETAPA 5: Configurar eventos customizados após delay ---
+    // 🛡️ PROTEÇÃO CRÍTICA: Evitar que Facebook Pixel sobrescreva nosso FBC correto
     setTimeout(() => {
-      setupCustomEventTracking();
-    }, 500); // Delay para fbq() se inicializar 
+      const currentFbc = getCookie('_fbc');
+      if (currentFbc && !currentFbc.startsWith('fb.1.') && fbc && fbc.startsWith('fb.1.')) {
+        console.warn('[Meta Tracking] 🚨 Facebook Pixel sobrescreveu FBC correto! Restaurando...', {
+          fbcSobrescrito: currentFbc,
+          fbcCorreto: fbc
+        });
+        setCookie('_fbc', fbc, 90); // Restaurar FBC correto
+        setLocalStorageItem('meta_tracking_fbc', fbc); // Backup
+      }
+    }, 100); // Verificar após Facebook Pixel processar
+
+    // --- ETAPA 4: Enviar PageView usando novo padrão ---
+    const allRawUserDataForInit = {
+        external_id: externalId, visitorId: getOrCreateVisitorId(),
+        fbp: fbp, // Adicionar fbp lido do cookie
+        fbc: fbc, // Adicionar fbc lido do cookie
+        em: email, ph: phone, fn: firstName, ln: lastName,
+        ge: gender, db: dob, ct: city, st: state, zp: zip, country: country // Usar variáveis com placeholders
+    };
+
+    // Montar parâmetros customizados para PageView
+    const pageTitle = document.title || 'Page View';
+          const customParams = {
+        app: 'meta-tracking',
+        content_name: pageTitle,
+        content_type: 'page_view',
+        content_category: 'General',
+        currency: 'BRL',
+        language: navigator.language || 'pt-BR',
+        referrer_url: document.referrer || ''
+    };
+    // Limpar campos vazios, nulos ou undefined
+    Object.keys(customParams).forEach(key => {
+      if (customParams[key] == null || customParams[key] === '') {
+        delete customParams[key];
+      }
+    });
+
+    // Delay pequeno para garantir que o init foi processado, depois aguardar _fbp
+    setTimeout(async function() {
+         console.log('[Meta Tracking Debug] Aguardando _fbp cookie ser criado...');
+         
+         try {
+             // Aguardar até o _fbp existir ou timeout de 3 segundos
+             const fbpFound = await waitForFbpCookie(3000);
+             
+             if (fbpFound) {
+                 console.log('[Meta Tracking Debug] ✅ _fbp confirmado, enviando PageView...');
+             } else {
+                 console.warn('[Meta Tracking Debug] ⚠️ Enviando PageView sem _fbp (timeout de 3s atingido)');
+             }
+             
+             // Usar sendEvent que agora implementa o padrão correto
+             await sendEvent('PageView', customParams);
+         } catch (error) {
+             console.error('[Meta Tracking Debug] Erro ao enviar PageView inicial:', error);
+         }
+    }, 200); // Delay mínimo para garantir que fbq('init') processou 
 
   }
 
@@ -1324,32 +1355,6 @@
     } 
   }
 
-  // Configurar rastreamento de eventos customizados
-  function setupCustomEventTracking() {
-    console.log('[Meta Tracking] 🎯 Configurando eventos customizados adicionais...');
-    
-    // Detectar tipo de página e enviar eventos customizados via API
-    const pageInfo = detectPageType();
-    
-    if (pageInfo && pageInfo.type !== 'PageView') {
-      console.log('[Meta Tracking] 📄 Enviando evento customizado:', pageInfo.type);
-      
-      // Usar apenas API server-side para eventos customizados (sem fbq duplicado)
-      setTimeout(() => {
-        sendEvent(pageInfo.type, pageInfo.data || {});
-      }, 750); // Delay para permitir Facebook processar
-    }
-
-    // Configurar outros rastreadores
-    setupScrollTracking();
-    setupTimerTracking();
-    setupVideoTracking();
-    setupLeadTracking();
-    setupAddToCartListener();
-    
-    console.log('[Meta Tracking] ✅ Eventos customizados configurados');
-  }
-
   // +++ NOVA FUNÇÃO SENDPIXEL COM DEDUPLICAÇÃO GARANTIDA +++
   function sendFBQEvent(eventName, customData, serverEventId) {
     
@@ -1389,7 +1394,7 @@
     const state = '__GEO_STATE__';
     const zip = '__GEO_ZIP__';
     const country = '__GEO_COUNTRY__';
-
+    
     // ✅ MONTAR OPTIONS COM ADVANCED MATCHING CORRETO (SEM fbp/fbc manuais)
     const fbqOptions = {
       eventID: String(serverEventId) // Converter explicitamente para string
@@ -1794,7 +1799,7 @@
         button.dataset.processingAddToCart = 'true';
 
         // Pequeno delay para dar tempo a outras ações do navegador/tema ocorrerem
-    setTimeout(() => {
+        setTimeout(() => {
           console.log('[Meta Tracking Debug] Executando lógica AddToCart após delay...');
           try {
             // Obter os dados do produto ATUAL da página
@@ -1823,20 +1828,85 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    console.log('[Meta Tracking] 🚀 INICIALIZANDO META-TRACKING COM FBQ() NATIVO');
-    
     // 🔧 PRIMEIRO: Corrigir cookies legados fb.2 → fb.1
     fixLegacyCookies();
     
     // ✅ SEGUNDO: Inicializar backup server-side
     initServerSideBackup();
     
-    // ✅ TERCEIRO: Inicializar Facebook Pixel nativo (como TrackLead)
+    // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
     initFacebookPixel();
     
-    console.log('[Meta Tracking] ✅ Sistema inicializado com fbq() nativo');
-    console.log('[Meta Tracking] 📊 Facebook gerencia FBC/FBP automaticamente');
-    console.log('[Meta Tracking] 🎯 Eventos customizados configurados via setupCustomEventTracking()');
+    // 🎯 CORREÇÃO CRÍTICA: Aguardar FBC para eventos iniciais (resolve perda de 9% qualidade)
+    const pageInfo = detectPageType();
+    
+    if (pageInfo && pageInfo.type !== 'PageView') {
+      // Detectar se precisa aguardar FBC baseado na origem do tráfego
+      const needsToWaitForFbc = shouldWaitForFbc();
+      const baseDelay = needsToWaitForFbc ? 1000 : 750; // Delay maior para tráfego Facebook
+      
+      console.log(`[Meta Tracking] 🎯 Processando evento inicial "${pageInfo.type}" (aguardar FBC: ${needsToWaitForFbc})`);
+      
+      setTimeout(async () => {
+        try {
+          // ETAPA 1: Aguardar FBP primeiro (sempre necessário)
+          console.log(`[Meta Tracking] ⏳ Aguardando _fbp para evento "${pageInfo.type}"...`);
+          const fbpFound = await waitForFbpCookie(1500);
+          
+          // ETAPA 2: Se necessário, aguardar FBC também
+          let fbcResult = { success: false };
+          if (needsToWaitForFbc) {
+            console.log(`[Meta Tracking] ⏳ Aguardando FBC para evento "${pageInfo.type}"...`);
+            fbcResult = await waitForFbcCapture(1000);
+          }
+          
+          // ETAPA 3: Log do resultado e envio
+          if (fbpFound && (!needsToWaitForFbc || fbcResult.success)) {
+            console.log(`[Meta Tracking] ✅ Todos os cookies confirmados para ${pageInfo.type}, enviando evento...`);
+          } else if (fbpFound) {
+            console.warn(`[Meta Tracking] ⚠️ FBP OK mas FBC timeout para ${pageInfo.type}, enviando mesmo assim`);
+          } else {
+            console.warn(`[Meta Tracking] ⚠️ Timeout de cookies para ${pageInfo.type}, enviando mesmo assim`);
+          }
+          
+          sendEvent(pageInfo.type, pageInfo.data);
+          
+        } catch (error) {
+          console.error(`[Meta Tracking] ❌ Erro ao processar evento ${pageInfo.type}:`, error);
+          // Fallback: enviar mesmo com erro
+          sendEvent(pageInfo.type, pageInfo.data);
+        }
+      }, baseDelay);
+      
+    } else if (!pageInfo || pageInfo.type === 'PageView') {
+      // PageView é enviado no initFacebookPixel, mas vamos aguardar FBC se necessário
+      const needsToWaitForFbc = shouldWaitForFbc();
+      
+      if (needsToWaitForFbc) {
+        console.log('[Meta Tracking] 🎯 PageView de origem Facebook - aguardando FBC para re-envio otimizado');
+        
+        setTimeout(async () => {
+          try {
+            const fbcResult = await waitForFbcCapture(800);
+            if (fbcResult.success) {
+              console.log('[Meta Tracking] ✅ FBC capturado - enviando PageView otimizado');
+              sendEvent('PageView', {});
+            }
+          } catch (error) {
+            console.warn('[Meta Tracking] Erro ao aguardar FBC para PageView:', error);
+          }
+        }, 200); // Delay menor para PageView
+      } else {
+        console.log('[Meta Tracking] 📄 PageView padrão já enviado na inicialização');
+      }
+    }
+
+    // Configurar outros rastreadores (scroll, timer, etc.) - Isso pode continuar fora do timeout
+    setupScrollTracking();
+    setupTimerTracking();
+    setupVideoTracking();
+    setupLeadTracking();
+    setupAddToCartListener();
     
     // Função para testar o envio completo de todos os parâmetros
     function testCompleteEvent() {
