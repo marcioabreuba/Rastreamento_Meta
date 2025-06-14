@@ -9,7 +9,7 @@
  * - Usa fbq nativo quando disponível (modo híbrido)
  * - Mantém implementação própria como fallback (modo standalone)
  * - 100% compatível com versão anterior
- * Cache Buster: 2025-01-12-00:00
+ * Cache Buster: 2025-01-12-01:00
  * CORREÇÃO CRÍTICA: FBP e FBC sempre normalizados para fb.1 (Pixel e CAPI consistentes)
  */
 
@@ -86,142 +86,17 @@
     return urlParams.get(name);
   }
   
-  // Função para obter cookies
+  // Função para obter cookies (conforme documentação oficial Facebook)
   function getCookie(name) {
-    // Primeiro verificar se o cookie existe como parâmetro na URL (para domínios cruzados)
-    // IMPORTANTE: Manter esta lógica se você precisa passar o ID entre domínios via URL
-    const urlValue = getUrlParameter(name);
-    if (urlValue) return urlValue;
-
-    // Caso contrário, buscar no cookie
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for(var i=0; i < ca.length; i++) {
-      var c = ca[i];
-      while (c.charAt(0)==' ') c = c.substring(1,c.length);
-      if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
-    }
-    return null;
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : undefined;
   }
 
-  // 🎯 FUNÇÃO PARA DETECTAR SUBDOMAIN INDEX CORRETO (conforme documentação Facebook)
-  function getSubdomainIndex() {
-    const hostname = window.location.hostname;
-    
-    console.log(`[Meta Tracking] 🔧 getSubdomainIndex() FRONTEND/CLIENT-SIDE executando para: ${hostname}`);
-    
-    // Para desenvolvimento local
-    if (hostname === 'localhost' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-      console.log(`[Meta Tracking] 🏠 Localhost/IP detectado: ${hostname} → subdomainIndex = 0`);
-      return 0; // localhost ou IP = 0
-    }
-    
-    // 🎯 CORREÇÃO CRÍTICA: Para scripts frontend/client-side, sempre usar 1
-    // Documentação Facebook:
-    // fb.1 = Client-side (websites/frontend) ← ESTE SCRIPT
-    // fb.2 = Server-side (aplicações/backend)
-    console.log(`[Meta Tracking] 🌐 Website/Frontend detectado: ${hostname} → subdomainIndex = 1`, {
-      hostname: hostname,
-      contexto: 'CLIENT_SIDE_FRONTEND',
-      justificativa: 'Scripts frontend sempre usam fb.1 conforme documentação Facebook'
-    });
-    
-    return 1; // ✅ SEMPRE 1 para client-side/frontend
-  }
 
-  // 📥 FUNÇÃO PARA COLETAR OU GERAR FBC (CONFORME DOCUMENTAÇÃO OFICIAL FACEBOOK)
-  function getFbcFromCookie() {
-    // 🔍 LOG DETALHADO: Estado dos cookies
-    console.log('[Meta Tracking] 🔍 getFbcFromCookie() - Verificando cookies:', {
-      documentCookie: document.cookie ? 'PRESENTE' : 'VAZIO',
-      cookieLength: document.cookie.length,
-      containsFbc: document.cookie.includes('_fbc'),
-      allCookies: document.cookie.split(';').map(c => c.trim().split('=')[0])
-    });
-    
-    // Primeiro, tentar ler o cookie _fbc se existir
-    let fbcCookie = getCookie('_fbc');
-    console.log('[Meta Tracking] 🔍 getCookie("_fbc") retornou:', fbcCookie ? fbcCookie.substring(0, 30) + '...' : 'NULL');
-    
-    if (fbcCookie && fbcCookie.startsWith('fb.') && fbcCookie.length > 10) {
-      
-      // 🔧 CORRIGIR FBC fb.2 → fb.1 (para cookies antigos)
-      if (fbcCookie.startsWith('fb.2.')) {
-        const correctedFbc = fbcCookie.replace('fb.2.', 'fb.1.');
-        console.log('[Meta Tracking] 🔧 FBC corrigido fb.2 → fb.1:', {
-          original: fbcCookie.substring(0, 20) + '...',
-          corrected: correctedFbc.substring(0, 20) + '...'
-        });
-        
-        // Salvar cookie corrigido
-        setCookie('_fbc', correctedFbc, 90);
-        setLocalStorageItem('meta_tracking_fbc', correctedFbc); // Backup
-        fbcCookie = correctedFbc;
-      }
-      
-      console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie.substring(0, 20) + '...');
-      return fbcCookie;
-    }
-    
-    console.log('[Meta Tracking] ℹ️ Nenhum FBC encontrado no cookie _fbc');
-    return null;
-  }
 
-  // 📥 FUNÇÃO PARA COLETAR FBCLID DA URL
-  function getFbclidFromUrl() {
-    const fbclid = getUrlParameter('fbclid');
-    if (fbclid && fbclid.trim().length > 10) {
-      console.log('[Meta Tracking] ✅ FBCLID encontrado na URL:', fbclid.substring(0, 20) + '...');
-      return fbclid.trim();
-    }
-    
-    console.log('[Meta Tracking] ℹ️ Nenhum FBCLID encontrado na URL');
-    return null;
-  }
 
-  // 🎯 FUNÇÃO PARA GERAR FBC A PARTIR DO FBCLID (CONFORME DOCUMENTAÇÃO OFICIAL)
-  function generateFbcFromFbclid(fbclid) {
-    if (!fbclid) return null;
-    
-    try {
-      const subdomainIndex = getSubdomainIndex();
-      const creationTime = Date.now(); // UNIX timestamp em milissegundos
-      const fbc = `fb.${subdomainIndex}.${creationTime}.${fbclid}`;
-      
-      console.log('[Meta Tracking] 🔧 FBC gerado a partir do FBCLID:', fbc.substring(0, 30) + '...');
-      console.log('[Meta Tracking] 📊 Detalhes:', {
-        subdomainIndex,
-        creationTime,
-        fbclid: fbclid.substring(0, 20) + '...'
-      });
-      
-      return fbc;
-    } catch (error) {
-      console.warn('[Meta Tracking] Erro ao gerar FBC:', error);
-      return null;
-    }
-  }
 
-  // 🎯 FUNÇÃO PRINCIPAL PARA OBTER FBC (COOKIE OU GERADO)
-  function getFbc() {
-    // 1. Primeiro, tentar obter do cookie _fbc
-    let fbc = getFbcFromCookie();
-    if (fbc) return fbc;
-    
-    // 2. Se não há cookie, tentar gerar a partir do fbclid da URL
-    const fbclid = getFbclidFromUrl();
-    if (fbclid) {
-      fbc = generateFbcFromFbclid(fbclid);
-      if (fbc) {
-        console.log('[Meta Tracking] ✅ FBC gerado conforme documentação oficial Facebook');
-        // ✅ ADICIONADO: Validar FBC gerado para garantir fb.1
-        return validateFbc(fbc);
-      }
-    }
-    
-    console.log('[Meta Tracking] ℹ️ Nenhum FBC disponível (sem cookie nem fbclid)');
-    return null;
-  }
+
 
   // Função removida - não validamos mais FBCs de teste pois não geramos FBC
   // +++ FIM DA FUNÇÃO HÍBRIDA PARA FBC +++
@@ -288,8 +163,8 @@
         console.log('[Server Backup] 🛡️ Facebook Pixel bloqueado - ativando tracking server-side HÍBRIDO');
         
         // Coletar FBC do cookie e fbclid da URL
-        const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
-        const fbclid = getFbclidFromUrl(); // Coleta fbclid da URL
+        const fbc = getFbc();
+        const fbclid = getUrlParameter('fbclid');
         
         if (fbclid || fbc) {
           // Criar pixel de backup para server-side tracking
@@ -310,8 +185,8 @@
         }
       } else {
                       // Mesmo com fbq funcionando, verificar se temos FBC disponível
-        const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
-        const fbp = validateFbp(getCookie('_fbp')); // ✅ ADICIONADO: Validar FBP também no backup
+        const fbc = getFbc();
+        const fbp = getFbp();
       if (fbc) {
         console.log('[Server Backup] 💾 FBC disponível no cookie');
       }
@@ -326,7 +201,7 @@
         form.addEventListener('submit', function(e) {
           // Não bloquear o submit, apenas adicionar tracking
           const fbclid = getUrlParameter('fbclid');
-          const fbc = getFbcValue();
+          const fbc = getFbc();
           
           if (fbclid || fbc) {
             const backupImg = new Image(1, 1);
@@ -352,8 +227,8 @@
       
       // Coletar dados para advanced matching
       const externalId = getExternalId();
-      const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-      const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
+      const fbp = getFbp();
+      const fbc = getFbc();
       
       // Coletar PII
       const email = getLocalStorageItem('meta_tracking_email');
@@ -527,8 +402,8 @@
     // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init --- 
 
     const externalId = getExternalId();
-    const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
-    const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
+          const fbp = getFbp();
+      const fbc = getFbc();
 
     // +++ Debug Melhorado +++
     if (fbc) { // Log apenas se fbc for encontrado/gerado
@@ -953,94 +828,27 @@
     return userData;
   }
 
-  /**
-   * Valida e corrige o formato do FBP
-   * @param {string|null} fbp - Valor do FBP a ser validado
-   * @returns {string|null} FBP válido ou null
-   */
-  function validateFbp(fbp) {
-    // 1. Tentar ler o cookie _fbp diretamente
-    let fbpValue = getCookie('_fbp');
-    
-    // 2. Se não estiver no cookie, tentar ler o parâmetro da URL 'fbp'
-    if (!fbpValue) {
-      fbpValue = getUrlParameter('fbp');
-    }
-    
-    // 🔧 CORRIGIR FBP fb.2 → fb.1 (para cookies antigos)
-    if (fbpValue && fbpValue.startsWith('fb.2.')) {
-      const correctedFbp = fbpValue.replace('fb.2.', 'fb.1.');
-      console.log('[Meta Tracking] 🔧 FBP corrigido fb.2 → fb.1:', {
-        original: fbpValue.substring(0, 20) + '...',
-        corrected: correctedFbp.substring(0, 20) + '...'
-      });
-      
-      // Salvar cookie corrigido
-      setCookie('_fbp', correctedFbp, 90);
-      setLocalStorageItem('meta_tracking_fbp', correctedFbp); // Backup
-      fbpValue = correctedFbp;
-    }
-    
-    // 3. ✅ DETECÇÃO ESPECÍFICA PARA FACEBOOK IN-APP BROWSER
-    if (!fbpValue && navigator.userAgent.includes('FB_IAB')) {
-      console.log('[Meta Tracking] 📱 Facebook In-App Browser detectado - FBP não disponível por limitações de cookies');
-      console.log('[Meta Tracking] ✅ Usando FBC como identificador principal para advanced matching');
-      // Não gerar FBP falso - deixar null para indicar que não está disponível
-      return null;
-    }
-    
-    // 4. Retornar o valor encontrado (pode ser null)
-    return fbpValue;
-    
-    /* LÓGICA ANTIGA REMOVIDA:
-    // Se não existir ou for inválido, GERAR um novo FBP válido
-    // if (!fbp || !/^fb\.[12]\.\d+\.\d+$/.test(fbp)) { ... }
-    // Verificar se já está no formato correto fb.1...
-    // if (/^fb\.1\.\d+\.\d+$/.test(fbp)) { ... }
-    // Se começar com fb.2, corrigir para fb.1
-    // if (fbp.startsWith('fb.2.')) { ... }
-    // Fallback final
-    // const timestamp = Date.now(); ... 
-    */
+  // Obtém o FBP do cookie (conforme documentação oficial Facebook)
+  function getFbp() {
+    return getCookie('_fbp');
   }
 
-  /**
-   * Valida e corrige o formato do FBC (similar ao validateFbp)
-   * @param {string|null} fbc - Valor do FBC a ser validado (opcional)
-   * @returns {string|null} FBC válido normalizado para fb.1 ou null
-   */
-  function validateFbc(fbc = null) {
-    // 1. Usar FBC fornecido ou coletar do cookie
-    let fbcValue = fbc || getFbcFromCookie();
-    
-    // 2. Se não há FBC, retornar null
-    if (!fbcValue) {
-      return null;
+  // Busca o cookie primeiro, depois tenta criar pelo fbclid na URL
+  function getFbc() {
+    const cookieFbc = getCookie('_fbc');
+    if (cookieFbc) return cookieFbc;
+
+    // Se não tem cookie, tenta criar pelo fbclid na URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const fbclid = urlParams.get('fbclid');
+    if (fbclid) {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const fbc = `fb.1.${timestamp}.${fbclid}`;
+      // Salvar como cookie para futuras requisições
+      document.cookie = `_fbc=${fbc}; path=/; domain=${location.hostname}; max-age=${60 * 60 * 24 * 90}`;
+      return fbc;
     }
-    
-    // 3. 🔧 CORRIGIR FBC fb.2 → fb.1 (para consistência com FBP)
-    if (fbcValue.startsWith('fb.2.')) {
-      const correctedFbc = fbcValue.replace('fb.2.', 'fb.1.');
-      console.log('[Meta Tracking] 🔧 FBC corrigido fb.2 → fb.1:', {
-        original: fbcValue.substring(0, 20) + '...',
-        corrected: correctedFbc.substring(0, 20) + '...'
-      });
-      
-      // Salvar cookie corrigido
-      setCookie('_fbc', correctedFbc, 90);
-      setLocalStorageItem('meta_tracking_fbc', correctedFbc); // Backup
-      fbcValue = correctedFbc;
-    }
-    
-    // 4. Validar formato básico do FBC
-    if (fbcValue && fbcValue.startsWith('fb.') && fbcValue.length > 10) {
-      console.log('[Meta Tracking] ✅ FBC validado:', fbcValue.substring(0, 20) + '...');
-      return fbcValue;
-    }
-    
-    // 5. Se formato inválido, retornar null
-    console.warn('[Meta Tracking] ⚠️ FBC com formato inválido:', fbcValue ? fbcValue.substring(0, 20) + '...' : 'null');
-    return null;
+    return undefined;
   }
 
   // >>> INÍCIO DA SEÇÃO MODIFICADA <<<
@@ -1110,16 +918,16 @@
       eventName: facebookEventName, // Usa o nome mapeado para FB
       eventId: clientEventId, // Incluir eventId gerado
       externalId: rawUserData.external_id || getExternalId(), // Pega do userData ou recalcula
-      fbp: rawUserData.fbp || validateFbp(getCookie('_fbp')), // ✅ CORRIGIDO: Usar validateFbp
-      fbc: rawUserData.fbc || validateFbc() // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
+      fbp: rawUserData.fbp || getFbp(),
+      fbc: rawUserData.fbc || getFbc()
     });
 
     console.log(`[Frontend Script] Preparando envio para backend: ${eventName}`);
 
     // +++ RE-LER FBP, FBC e FBCLID AQUI para garantir valores mais recentes +++
-    const currentFbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp')); // ✅ CORRIGIDO: Usar validateFbp para garantir fb.1
-    const currentFbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
-    const currentFbclid = getFbclidFromUrl(); // Apenas da URL (para logs)
+          const currentFbp = getFbp();
+      const currentFbc = getFbc();
+          const currentFbclid = getUrlParameter('fbclid');
     console.log(`[Frontend Script] Valor FBP lido ANTES do envio para backend: ${currentFbp}`);
     console.log(`[Frontend Script] Valor FBC lido ANTES do envio para backend: ${currentFbc}`);
     if (currentFbclid) {
@@ -1311,7 +1119,7 @@
     // +++ FIM GERAÇÃO TIMESTAMP ÚNICO +++
 
     // +++ DIAGNÓSTICO INICIAL DE _FBP +++
-    const initialFbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp')); // ✅ CORRIGIDO: Usar validateFbp
+          const initialFbp = getFbp();
     console.log(`[Meta Tracking Debug] 🔍 DIAGNÓSTICO _FBP INICIAL para ${eventName}:`);
     console.log(`  • Cookie _fbp: ${getCookie('_fbp') || 'AUSENTE'}`);
     console.log(`  • URL param fbp: ${getUrlParameter('fbp') || 'AUSENTE'}`);
@@ -1334,8 +1142,8 @@
     // Coletar dados comuns
     const externalId = getExternalId();
     const visitorId = getOrCreateVisitorId();
-    const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
-    const fbclid = getFbclidFromUrl(); // Apenas da URL
+            const fbc = getFbc();
+          const fbclid = getUrlParameter('fbclid');
 
     // Coletar PII novamente (pode ter sido atualizado desde o init)
     const email = getLocalStorageItem('meta_tracking_email');
@@ -1359,7 +1167,7 @@
     console.log('[Meta Tracking Debug] Dados PII/Geo/IP coletados:', { email, phone, firstName, lastName, gender, dob, city, state, zip, country, clientIpAddress });
 
     // Montar UserData para backend (inclui fbp para CAPI)
-    const fbpForBackend = validateFbp(getCookie('_fbp') || getUrlParameter('fbp')); // ✅ CORRIGIDO: Usar validateFbp
+          const fbpForBackend = getFbp();
     const rawUserData = {
       external_id: externalId, visitorId: visitorId, fbc: fbc, fbp: fbpForBackend,
       em: email, ph: phone, fn: firstName, ln: lastName,
@@ -1392,7 +1200,7 @@
     Object.keys(advancedMatchingParams).forEach(key => advancedMatchingParams[key] == null && delete advancedMatchingParams[key]);
 
     // +++ SEGUNDA VALIDAÇÃO DE _FBP (APÓS COLETA) +++
-    const fbpForValidation = validateFbp(getCookie('_fbp') || getUrlParameter('fbp')); // ✅ CORRIGIDO: Usar validateFbp
+          const fbpForValidation = getFbp();
     if (!fbpForValidation) {
       console.error(`[Meta Tracking Debug] ❌ _FBP AINDA AUSENTE após coleta para ${eventName}!`);
       console.error('[Meta Tracking Debug] 📊 Estado dos cookies no momento da coleta:');
@@ -2210,7 +2018,7 @@
         
         // Obter os parâmetros que vamos passar
         const external_id = getExternalId();
-        const fbp = validateFbp(getCookie('_fbp')); // ✅ CORRIGIDO: Usar validateFbp
+        const fbp = getFbp();
         const fbc = getCookie('_fbc');
         
         // Criar a URL com os parâmetros
@@ -2518,7 +2326,7 @@
         const elapsed = Date.now() - startTime;
         
         // Tentar obter FBC do cookie
-        const fbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
+        const fbc = getFbc();
         
         if (fbc) {
           console.log(`[Meta Tracking] ✅ FBC capturado com sucesso após ${elapsed}ms (${attempts} tentativas): ${fbc.substring(0, 30)}...`);
@@ -2546,7 +2354,7 @@
   function shouldWaitForFbc() {
     const fbclid = getUrlParameter('fbclid');
     const referrer = document.referrer || '';
-    const currentFbc = validateFbc(); // ✅ CORRIGIDO: Usar validateFbc para garantir fb.1
+            const currentFbc = getFbc();
     
     // Se já temos FBC válido, não aguardar
     if (currentFbc) {
