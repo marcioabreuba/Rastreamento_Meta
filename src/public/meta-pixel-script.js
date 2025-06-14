@@ -103,7 +103,7 @@
   function getSubdomainIndex() {
     const hostname = window.location.hostname;
     
-    console.log(`[Meta Tracking] 🔧 getSubdomainIndex() VERSÃO CORRIGIDA executando para: ${hostname}`);
+    console.log(`[Meta Tracking] 🔧 getSubdomainIndex() FRONTEND/CLIENT-SIDE executando para: ${hostname}`);
     
     // Para desenvolvimento local
     if (hostname === 'localhost' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
@@ -111,47 +111,17 @@
       return 0; // localhost ou IP = 0
     }
     
-    // 🇧🇷 TLDs compostos brasileiros (correção crítica)
-    const compositeTLDs = ['.com.br', '.org.br', '.net.br', '.gov.br', '.edu.br', '.mil.br'];
-    
-    // Verificar se usa TLD composto brasileiro
-    const hasCompositeTLD = compositeTLDs.some(tld => hostname.endsWith(tld));
-    
-    if (hasCompositeTLD) {
-      // Para TLD composto, contar partes antes do TLD
-      const parts = hostname.split('.');
-      const domainParts = parts.length - 2; // Subtrair .com.br (2 partes)
-      
-      console.log(`[Meta Tracking] 🇧🇷 TLD composto detectado: ${hostname}`, {
-        parts: parts,
-        domainParts: domainParts,
-        subdomainIndex: domainParts,
-        versao: 'CORRIGIDA_V2'
-      });
-      
-      // CORREÇÃO: Para TLD composto brasileiro
-      // salveterrah.com.br = ['salveterrah', 'com', 'br'] = 3 partes - 2 (TLD) = 1 parte = subdomainIndex 1
-      // www.salveterrah.com.br = ['www', 'salveterrah', 'com', 'br'] = 4 partes - 2 (TLD) = 2 partes = subdomainIndex 2
-      return domainParts;
-    }
-    
-    // Lógica original para TLDs simples (.com, .org, etc.)
-    const parts = hostname.split('.');
-    
-    console.log(`[Meta Tracking] 🌐 TLD simples detectado: ${hostname}`, {
-      parts: parts,
-      subdomainIndex: parts.length === 1 ? 0 : (parts.length === 2 ? 1 : 2)
+    // 🎯 CORREÇÃO CRÍTICA: Para scripts frontend/client-side, sempre usar 1
+    // Documentação Facebook:
+    // fb.1 = Client-side (websites/frontend) ← ESTE SCRIPT
+    // fb.2 = Server-side (aplicações/backend)
+    console.log(`[Meta Tracking] 🌐 Website/Frontend detectado: ${hostname} → subdomainIndex = 1`, {
+      hostname: hostname,
+      contexto: 'CLIENT_SIDE_FRONTEND',
+      justificativa: 'Scripts frontend sempre usam fb.1 conforme documentação Facebook'
     });
     
-    // Documentação Facebook:
-    // "com" = 0, "example.com" = 1, "www.example.com" = 2
-    if (parts.length === 1) {
-      return 0; // Domínio único (raro)
-    } else if (parts.length === 2) {
-      return 1; // example.com = 1
-    } else {
-      return 2; // www.example.com = 2
-    }
+    return 1; // ✅ SEMPRE 1 para client-side/frontend
   }
 
   // 📥 FUNÇÃO PARA COLETAR OU GERAR FBC (CONFORME DOCUMENTAÇÃO OFICIAL FACEBOOK)
