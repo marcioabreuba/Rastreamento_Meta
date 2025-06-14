@@ -127,8 +127,23 @@
   // 📥 FUNÇÃO PARA COLETAR OU GERAR FBC (CONFORME DOCUMENTAÇÃO OFICIAL FACEBOOK)
   function getFbcFromCookie() {
     // Primeiro, tentar ler o cookie _fbc se existir
-    const fbcCookie = getCookie('_fbc');
+    let fbcCookie = getCookie('_fbc');
     if (fbcCookie && fbcCookie.startsWith('fb.') && fbcCookie.length > 10) {
+      
+      // 🔧 CORRIGIR FBC fb.2 → fb.1 (para cookies antigos)
+      if (fbcCookie.startsWith('fb.2.')) {
+        const correctedFbc = fbcCookie.replace('fb.2.', 'fb.1.');
+        console.log('[Meta Tracking] 🔧 FBC corrigido fb.2 → fb.1:', {
+          original: fbcCookie.substring(0, 20) + '...',
+          corrected: correctedFbc.substring(0, 20) + '...'
+        });
+        
+        // Salvar cookie corrigido
+        setCookie('_fbc', correctedFbc, 90);
+        setLocalStorageItem('meta_tracking_fbc', correctedFbc); // Backup
+        fbcCookie = correctedFbc;
+      }
+      
       console.log('[Meta Tracking] ✅ FBC encontrado no cookie:', fbcCookie.substring(0, 20) + '...');
       return fbcCookie;
     }
@@ -226,7 +241,28 @@
     });
   }
 
-  // Função removida - não precisamos mais limpar dados de teste pois não geramos FBC
+  // 🔧 FUNÇÃO PARA CORRIGIR COOKIES ANTIGOS fb.2 → fb.1 NA INICIALIZAÇÃO
+  function fixLegacyCookies() {
+    console.log('[Meta Tracking] 🔧 Verificando e corrigindo cookies antigos fb.2 → fb.1...');
+    
+    // Corrigir FBC
+    const currentFbc = getCookie('_fbc');
+    if (currentFbc && currentFbc.startsWith('fb.2.')) {
+      const correctedFbc = currentFbc.replace('fb.2.', 'fb.1.');
+      setCookie('_fbc', correctedFbc, 90);
+      console.log('[Meta Tracking] ✅ Cookie _fbc corrigido:', correctedFbc.substring(0, 20) + '...');
+    }
+    
+    // Corrigir FBP
+    const currentFbp = getCookie('_fbp');
+    if (currentFbp && currentFbp.startsWith('fb.2.')) {
+      const correctedFbp = currentFbp.replace('fb.2.', 'fb.1.');
+      setCookie('_fbp', correctedFbp, 90);
+      console.log('[Meta Tracking] ✅ Cookie _fbp corrigido:', correctedFbp.substring(0, 20) + '...');
+    }
+    
+    console.log('[Meta Tracking] 🔧 Verificação de cookies legados concluída');
+  }
 
   // ✅ BACKUP SERVER-SIDE TRACKING HÍBRIDO
   function initServerSideBackup() {
@@ -796,6 +832,20 @@
     // 2. Se não estiver no cookie, tentar ler o parâmetro da URL 'fbp'
     if (!fbpValue) {
       fbpValue = getUrlParameter('fbp');
+    }
+    
+    // 🔧 CORRIGIR FBP fb.2 → fb.1 (para cookies antigos)
+    if (fbpValue && fbpValue.startsWith('fb.2.')) {
+      const correctedFbp = fbpValue.replace('fb.2.', 'fb.1.');
+      console.log('[Meta Tracking] 🔧 FBP corrigido fb.2 → fb.1:', {
+        original: fbpValue.substring(0, 20) + '...',
+        corrected: correctedFbp.substring(0, 20) + '...'
+      });
+      
+      // Salvar cookie corrigido
+      setCookie('_fbp', correctedFbp, 90);
+      setLocalStorageItem('meta_tracking_fbp', correctedFbp); // Backup
+      fbpValue = correctedFbp;
     }
     
     // 3. ✅ DETECÇÃO ESPECÍFICA PARA FACEBOOK IN-APP BROWSER
@@ -1778,9 +1828,10 @@
 
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // Limpeza removida - não geramos mais FBC, apenas coletamos
+    // 🔧 PRIMEIRO: Corrigir cookies legados fb.2 → fb.1
+    fixLegacyCookies();
     
-    // ✅ PRIMEIRO: Inicializar backup server-side
+    // ✅ SEGUNDO: Inicializar backup server-side
     initServerSideBackup();
     
     // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
