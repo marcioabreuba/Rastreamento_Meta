@@ -4,13 +4,17 @@
  * Este script detecta automaticamente o tipo de página e envia eventos equivalentes aos da TracLead
  * Incluindo Advanced Matching completo e parâmetros adicionais
  * 
- * Versão 1.5 - CORREÇÃO CRÍTICA: SubdomainIndex correto para TLDs brasileiros (.com.br = fb.1)
- * Cache Buster: 2025-01-11-23:15
+ * Versão 1.6 - MODO HÍBRIDO: Compatível com fbq() nativo do Facebook
+ * - Detecta automaticamente se fbq nativo já existe
+ * - Usa fbq nativo quando disponível (modo híbrido)
+ * - Mantém implementação própria como fallback (modo standalone)
+ * - 100% compatível com versão anterior
+ * Cache Buster: 2025-01-11-23:45
  */
 
 (function() {
   // 🚀 LOG DE VERSÃO PARA DEBUG DE CACHE
-  console.log('[Meta Tracking] 🚀 SCRIPT VERSÃO 1.5 CARREGADO - SubdomainIndex CORRIGIDO para .com.br');
+  console.log('[Meta Tracking] 🚀 SCRIPT VERSÃO 1.6 CARREGADO - MODO HÍBRIDO: Compatível com fbq() nativo');
   
   // URL da API de rastreamento
   const API_URL = 'https://rastreamento-meta.onrender.com/track';
@@ -325,6 +329,62 @@
     }
   }
 
+  // 🎯 FUNÇÃO PARA INICIALIZAR COM FBQ NATIVO EXISTENTE
+  function initializeWithNativeFbq() {
+    try {
+      console.log('[Meta Tracking] 🔧 Inicializando com fbq nativo...');
+      
+      // Coletar dados para advanced matching
+      const externalId = getExternalId();
+      const fbp = validateFbp(getCookie('_fbp') || getUrlParameter('fbp'));
+      const fbc = getFbcFromCookie();
+      
+      // Coletar PII
+      const email = getLocalStorageItem('meta_tracking_email');
+      const phone = getLocalStorageItem('meta_tracking_phone');
+      const firstName = getLocalStorageItem('meta_tracking_first_name');
+      const lastName = getLocalStorageItem('meta_tracking_last_name');
+      const gender = getLocalStorageItem('meta_tracking_gender');
+      const dob = getLocalStorageItem('meta_tracking_dob');
+      
+      // Dados geográficos (placeholders do backend)
+      const city = '__GEO_CITY__';
+      const state = '__GEO_STATE__';
+      const zip = '__GEO_ZIP__';
+      const country = '__GEO_COUNTRY__';
+      const clientIpAddress = '__CLIENT_IP__';
+      
+      // Montar parâmetros para init
+      const pixelParams = {
+        external_id: externalId, fbp: fbp, fbc: fbc,
+        client_ip_address: clientIpAddress,
+        client_user_agent: navigator.userAgent,
+        em: email, ph: phone, fn: firstName, ln: lastName,
+        ge: gender, db: dob, ct: city, st: state, zp: zip, country: country
+      };
+      
+      // Limpar campos vazios
+      Object.keys(pixelParams).forEach(key => pixelParams[key] == null && delete pixelParams[key]);
+      
+      console.log('[Meta Tracking] 📤 Enviando init para fbq nativo:', {
+        pixelId: PIXEL_ID,
+        paramsCount: Object.keys(pixelParams).length
+      });
+      
+      // Usar fbq nativo para init
+      window.fbq('init', PIXEL_ID, pixelParams);
+      
+      // Marcar que inicializamos
+      window._metaTrackingPixelInit = PIXEL_ID;
+      
+      console.log('[Meta Tracking] ✅ fbq nativo inicializado com nossos parâmetros');
+      
+    } catch (error) {
+      console.error('[Meta Tracking] ❌ Erro ao inicializar com fbq nativo:', error);
+      // Em caso de erro, não fazer nada - o sistema continuará funcionando
+    }
+  }
+
   // Cria ou recupera o ID de Visitante First-Party
   function getOrCreateVisitorId() {
     let visitorId = getCookie(VISITOR_COOKIE_NAME);
@@ -358,38 +418,95 @@
     return externalId;
   }
 
-  // Inicializar o Facebook Pixel (Reestruturado)
+  // 🔍 FUNÇÃO PARA DETECTAR SE FBQ NATIVO ESTÁ FUNCIONANDO
+  function isNativeFbqReady() {
+    try {
+      // Verificar se fbq existe como função
+      if (typeof window.fbq !== 'function') {
+        return false;
+      }
+      
+      // Verificar se fbevents.js foi carregado (fbq.loaded é definido pelo Facebook)
+      if (!window.fbq.loaded) {
+        return false;
+      }
+      
+      // Verificar se tem a estrutura básica do Facebook Pixel
+      if (!window.fbq.callMethod && !window.fbq.queue) {
+        return false;
+      }
+      
+      console.log('[Meta Tracking] ✅ fbq() nativo detectado e funcionando:', {
+        version: window.fbq.version || 'unknown',
+        loaded: window.fbq.loaded,
+        hasCallMethod: !!window.fbq.callMethod
+      });
+      
+      return true;
+    } catch (error) {
+      console.warn('[Meta Tracking] Erro ao verificar fbq nativo:', error);
+      return false;
+    }
+  }
+
+  // Inicializar o Facebook Pixel (Híbrido - Compatível com fbq nativo)
   function initFacebookPixel() {
     
-    // --- ETAPA 1: Definir fbq e fila (padrão FB) --- 
-    if (window.fbq) {
-        console.log('[Meta Tracking Debug] FBQ já inicializado.'); // Mantido para clareza
-        // Poderíamos tentar reenviar o init/track aqui se necessário, 
-        // mas geralmente não é preciso se já foi inicializado.
-        // Por segurança, vamos apenas retornar se já existir.
-        // Se houver problemas com múltiplas inicializações, revisar esta lógica.
-         // return; 
-         // Removido o return para garantir que nosso track explícito ocorra.
+    // 🚀 NOVA LÓGICA: Detectar se fbq nativo já está funcionando
+    const nativeFbqReady = isNativeFbqReady();
+    
+    if (nativeFbqReady) {
+      console.log('[Meta Tracking] 🎯 MODO HÍBRIDO: Usando fbq nativo existente');
+      
+      // Verificar se nosso pixel já foi inicializado
+      const pixelAlreadyInit = window._metaTrackingPixelInit === PIXEL_ID;
+      
+      if (!pixelAlreadyInit) {
+        console.log('[Meta Tracking] 📤 Complementando fbq nativo com nossos parâmetros avançados...');
+        
+        // Usar fbq nativo mas complementar com nossos dados
+        initializeWithNativeFbq();
+      } else {
+        console.log('[Meta Tracking] 💾 Pixel já inicializado com nossos parâmetros');
+      }
+      
+      // Marcar que usamos modo híbrido
+      window._metaTrackingMode = 'hybrid';
+      
+    } else {
+      console.log('[Meta Tracking] 🔧 MODO PRÓPRIO: Inicializando implementação própria do fbq');
+      
+      // --- ETAPA 1: Definir fbq e fila (padrão FB) --- 
+      if (window.fbq) {
+          console.log('[Meta Tracking Debug] FBQ já inicializado.'); // Mantido para clareza
+      }
+      var n = window.fbq = function() {
+        n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
+      };
+      if (!window._fbq) window._fbq = n;
+      n.push = n;
+      n.loaded = !0;
+      n.version = '2.0';
+      n.queue = [];
+      
+      // Marcar que usamos modo próprio
+      window._metaTrackingMode = 'standalone';
     }
-    var n = window.fbq = function() {
-      n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
-    };
-    if (!window._fbq) window._fbq = n;
-    n.push = n;
-    n.loaded = !0;
-    n.version = '2.0';
-    n.queue = [];
 
-    // --- ETAPA 2: Carregar fbevents.js assincronamente (padrão FB) --- 
-    var t = document.createElement('script');
-    t.async = !0;
-    t.src = 'https://connect.facebook.net/en_US/fbevents.js';
-    var s = document.getElementsByTagName('script')[0];
-    if (!s) { // Fallback se não encontrar script algum
-        s = document.body;
+    // --- ETAPA 2: Carregar fbevents.js assincronamente (apenas se modo próprio) --- 
+    if (window._metaTrackingMode === 'standalone') {
+      var t = document.createElement('script');
+      t.async = !0;
+      t.src = 'https://connect.facebook.net/en_US/fbevents.js';
+      var s = document.getElementsByTagName('script')[0];
+      if (!s) { // Fallback se não encontrar script algum
+          s = document.body;
+      }
+      s.parentNode.insertBefore(t, s);
+      console.log('[Meta Tracking Debug] Script fbevents.js sendo carregado (modo próprio)...');
+    } else {
+      console.log('[Meta Tracking Debug] Pulando carregamento fbevents.js (usando nativo)...');
     }
-    s.parentNode.insertBefore(t, s);
-    console.log('[Meta Tracking Debug] Script fbevents.js sendo carregado...'); // Mudança de [Meta Tracking] para [Meta Tracking Debug]
 
     // --- ETAPA 3: Preparar dados e ENFILEIRAR chamadas init --- 
 
@@ -1355,7 +1472,7 @@
     } 
   }
 
-  // +++ NOVA FUNÇÃO SENDPIXEL COM DEDUPLICAÇÃO GARANTIDA +++
+  // +++ FUNÇÃO SENDPIXEL HÍBRIDA COM DEDUPLICAÇÃO GARANTIDA +++
   function sendFBQEvent(eventName, customData, serverEventId) {
     
     // ⚠️ CRÍTICO: Verificar se serverEventId existe
@@ -1364,18 +1481,38 @@
       return;
     }
 
-    // ⚠️ CRÍTICO: Verificar se fbq está disponível
-    if (!window.fbq || typeof window.fbq !== 'function') {
-      console.error(`[Meta Tracking] ❌ ERRO CRÍTICO: fbq não está disponível para ${eventName}! Aguardando inicialização...`);
-      // Tentar aguardar um pouco e retentar
-      setTimeout(() => {
-        if (window.fbq && typeof window.fbq === 'function') {
-          sendFBQEvent(eventName, customData, serverEventId);
-        } else {
-          console.error(`[Meta Tracking] ❌ fbq ainda não disponível após espera para ${eventName}`);
-        }
-      }, 500);
+    // 🔍 VERIFICAÇÃO INTELIGENTE DE FBQ (HÍBRIDO)
+    const fbqAvailable = typeof window.fbq === 'function';
+    const isHybridMode = window._metaTrackingMode === 'hybrid';
+    const isStandaloneMode = window._metaTrackingMode === 'standalone';
+    
+    if (!fbqAvailable) {
+      console.error(`[Meta Tracking] ❌ ERRO CRÍTICO: fbq não está disponível para ${eventName}! Modo: ${window._metaTrackingMode || 'unknown'}`);
+      
+      // Tentar aguardar um pouco e retentar (apenas uma vez)
+      if (!window._fbqRetryAttempted) {
+        window._fbqRetryAttempted = true;
+        setTimeout(() => {
+          if (window.fbq && typeof window.fbq === 'function') {
+            console.log(`[Meta Tracking] ✅ fbq disponível após espera, reenviando ${eventName}`);
+            sendFBQEvent(eventName, customData, serverEventId);
+          } else {
+            console.error(`[Meta Tracking] ❌ fbq ainda não disponível após espera para ${eventName}`);
+          }
+        }, 500);
+      }
       return;
+    }
+    
+    // 📊 LOG DO MODO DE OPERAÇÃO
+    console.log(`[Meta Tracking] 📤 Enviando ${eventName} via fbq (Modo: ${window._metaTrackingMode || 'unknown'})`);
+    
+    if (isHybridMode) {
+      console.log(`[Meta Tracking] 🎯 MODO HÍBRIDO: Usando fbq nativo para ${eventName}`);
+    } else if (isStandaloneMode) {
+      console.log(`[Meta Tracking] 🔧 MODO PRÓPRIO: Usando fbq próprio para ${eventName}`);
+    } else {
+      console.warn(`[Meta Tracking] ⚠️ MODO INDEFINIDO: Usando fbq disponível para ${eventName}`);
     }
 
     const facebookEventName = EVENT_MAPPING[eventName] || eventName;
@@ -1395,21 +1532,35 @@
     const zip = '__GEO_ZIP__';
     const country = '__GEO_COUNTRY__';
     
-    // ✅ MONTAR OPTIONS COM ADVANCED MATCHING CORRETO (SEM fbp/fbc manuais)
+    // ✅ MONTAR OPTIONS COM ADVANCED MATCHING CORRETO
     const fbqOptions = {
       eventID: String(serverEventId) // Converter explicitamente para string
     };
     
-    // 🎯 ADICIONAR ADVANCED MATCHING APENAS SE DADOS EXISTIREM
-    if (externalId) fbqOptions.external_id = externalId;
-    if (email) fbqOptions.em = email;
-    if (phone) fbqOptions.ph = phone;
-    if (firstName) fbqOptions.fn = firstName;
-    if (lastName) fbqOptions.ln = lastName;
-    if (city && city !== '__GEO_CITY__') fbqOptions.ct = city;
-    if (state && state !== '__GEO_STATE__') fbqOptions.st = state;
-    if (zip && zip !== '__GEO_ZIP__') fbqOptions.zp = zip;
-    if (country && country !== '__GEO_COUNTRY__') fbqOptions.country = country;
+    // 🎯 LÓGICA HÍBRIDA PARA ADVANCED MATCHING
+    if (isHybridMode) {
+      // No modo híbrido, ser mais conservador com advanced matching
+      // para não conflitar com configurações existentes
+      console.log(`[Meta Tracking] 🎯 Modo híbrido: Advanced matching conservador`);
+      
+      // Apenas adicionar dados essenciais que não conflitam
+      if (externalId) fbqOptions.external_id = externalId;
+      // PII pode já estar configurado no fbq nativo, então ser seletivo
+      
+    } else {
+      // No modo standalone, usar todos os dados disponíveis
+      console.log(`[Meta Tracking] 🔧 Modo standalone: Advanced matching completo`);
+      
+      if (externalId) fbqOptions.external_id = externalId;
+      if (email) fbqOptions.em = email;
+      if (phone) fbqOptions.ph = phone;
+      if (firstName) fbqOptions.fn = firstName;
+      if (lastName) fbqOptions.ln = lastName;
+      if (city && city !== '__GEO_CITY__') fbqOptions.ct = city;
+      if (state && state !== '__GEO_STATE__') fbqOptions.st = state;
+      if (zip && zip !== '__GEO_ZIP__') fbqOptions.zp = zip;
+      if (country && country !== '__GEO_COUNTRY__') fbqOptions.country = country;
+    }
 
     // 🔍 LOG DETALHADO PRÉ-ENVIO
     console.log(`[Meta Tracking] 📤 Enviando para fbq(): ${facebookEventName} (eventID: ${serverEventId})`);
@@ -1826,15 +1977,56 @@
     console.log('[Meta Tracking Debug] Listener AddToCart (delegação) configurado no body.');
   }
 
+  // 🔍 FUNÇÃO DE VERIFICAÇÃO DE COMPATIBILIDADE
+  function checkCompatibility() {
+    console.log('[Meta Tracking] 🔍 Verificando compatibilidade do ambiente...');
+    
+    // Verificar se há conflitos potenciais
+    const existingFbq = typeof window.fbq === 'function';
+    const existingGtag = typeof window.gtag === 'function';
+    const existingGa = typeof window.ga === 'function';
+    
+    console.log('[Meta Tracking] 📊 Estado do ambiente:', {
+      fbq: existingFbq ? 'PRESENTE' : 'AUSENTE',
+      gtag: existingGtag ? 'PRESENTE' : 'AUSENTE', 
+      ga: existingGa ? 'PRESENTE' : 'AUSENTE',
+      userAgent: navigator.userAgent.substring(0, 50) + '...'
+    });
+    
+    // Verificar se estamos em um ambiente Shopify
+    const isShopify = window.Shopify || document.querySelector('script[src*="shopify"]') || window.location.hostname.includes('.myshopify.com');
+    if (isShopify) {
+      console.log('[Meta Tracking] 🛍️ Ambiente Shopify detectado - modo híbrido recomendado');
+    }
+    
+    // Verificar se há outros pixels Facebook
+    const existingPixels = document.querySelectorAll('script[src*="fbevents.js"], script[src*="facebook.net"]');
+    if (existingPixels.length > 0) {
+      console.log('[Meta Tracking] 📱 Outros scripts Facebook detectados:', existingPixels.length);
+    }
+    
+    return {
+      compatible: true, // Sempre compatível, mas com informações para debug
+      environment: {
+        shopify: isShopify,
+        existingFbq: existingFbq,
+        existingPixels: existingPixels.length
+      }
+    };
+  }
+
   // Função principal - detecta a página e envia os eventos
   function init() {
-    // 🔧 PRIMEIRO: Corrigir cookies legados fb.2 → fb.1
+    // 🔍 PRIMEIRO: Verificar compatibilidade
+    const compatibility = checkCompatibility();
+    
+    // 🔧 SEGUNDO: Corrigir cookies legados fb.2 → fb.1
     fixLegacyCookies();
     
-    // ✅ SEGUNDO: Inicializar backup server-side
+    // ✅ TERCEIRO: Inicializar backup server-side
     initServerSideBackup();
     
-    // Carrega script fbevents.js e inicializa o pixel (o PageView já foi disparado na função initFacebookPixel)
+    // 🚀 QUARTO: Carrega script fbevents.js e inicializa o pixel (híbrido ou próprio)
     initFacebookPixel();
     
     // 🎯 CORREÇÃO CRÍTICA: Aguardar FBC para eventos iniciais (resolve perda de 9% qualidade)
